@@ -1,0 +1,120 @@
+/* 1. IMPORTANTE: Esta línea carga los íconos */
+@import 'primeicons/primeicons.css';
+
+/* 2. Sistema de diseño PrimeFlex */
+@import 'primeflex/primeflex.css';
+
+/* 3. Corrección de fuentes (opcional, pero recomendada) */
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&display=swap');
+
+body {
+    font-family: 'Instrument Sans', sans-serif;
+}
+
+/* =========================================
+   DISEÑO "GLASS" MODERNO DE ALERTAS (TOAST)
+   ========================================= */
+
+/* 1. Contenedor General */
+.p-toast {
+    width: 26rem !important; /* Un poco más ancho para leer mejor */
+    font-family: 'Instrument Sans', sans-serif !important;
+    opacity: 1 !important;
+}
+
+/* 2. La Tarjeta (Base) */
+.p-toast-message {
+    border: none !important;
+    border-radius: 12px !important;
+    /* Sombra suave pero profunda */
+    box-shadow: 0 10px 30px -5px rgba(0,0,0,0.1) !important; 
+    margin-bottom: 1rem;
+    overflow: hidden;
+    /* Efecto de desenfoque de fondo (Frosted Glass) */
+    backdrop-filter: blur(8px); 
+    -webkit-backdrop-filter: blur(8px);
+}
+
+/* 3. Contenido Interno (Hacemos transparente el fondo interno para que se vea el color de la tarjeta) */
+.p-toast-message-content {
+    background: transparent !important; /* CLAVE: Fondo transparente */
+    padding: 1.25rem !important;
+    align-items: flex-start;
+}
+
+/* 4. Iconos */
+.p-toast-message .p-toast-icon {
+    font-size: 1.6rem !important;
+    margin-right: 1rem !important;
+}
+
+/* 5. Títulos y Textos */
+.p-toast-summary {
+    font-weight: 800 !important;
+    font-size: 1rem !important;
+    margin-bottom: 0.25rem !important;
+}
+
+.p-toast-detail {
+    font-size: 0.95rem !important;
+    font-weight: 500 !important;
+    line-height: 1.4;
+}
+
+/* =========================================
+   COLORES TINTADOS (Background + Texto)
+   ========================================= */
+
+/* --- ERROR (Rojo Suave Transparente) --- */
+.p-toast-message-error {
+    background: rgba(254, 226, 226, 0.75) !important; /* Rojo muy suave al 95% opacidad */
+    border-left: 6px solid #ef4444 !important;
+}
+.p-toast-message-error .p-toast-icon {
+    color: #dc2626 !important; /* Rojo fuerte icono */
+}
+.p-toast-message-error .p-toast-summary {
+    color: #991b1b !important; /* Rojo oscuro título */
+}
+.p-toast-message-error .p-toast-detail {
+    color: #b91c1c !important; /* Rojo medio texto */
+}
+
+/* --- WARNING (Naranja/Amarillo Suave Transparente) --- */
+.p-toast-message-warn {
+    background: rgba(255, 251, 235, 0.75) !important; /* Ambar suave */
+    border-left: 6px solid #f59e0b !important;
+}
+.p-toast-message-warn .p-toast-icon {
+    color: #d97706 !important;
+}
+.p-toast-message-warn .p-toast-summary {
+    color: #92400e !important;
+}
+.p-toast-message-warn .p-toast-detail {
+    color: #b45309 !important;
+}
+
+/* --- SUCCESS (Verde Suave Transparente) --- */
+.p-toast-message-success {
+    background: rgba(236, 253, 245, 0.75) !important; /* Verde menta suave */
+    border-left: 6px solid #10b981 !important;
+}
+.p-toast-message-success .p-toast-icon {
+    color: #059669 !important;
+}
+.p-toast-message-success .p-toast-summary {
+    color: #065f46 !important;
+}
+.p-toast-message-success .p-toast-detail {
+    color: #047857 !important;
+}
+
+/* --- INFO (Azul Suave Transparente) --- */
+.p-toast-message-info {
+    background: rgba(239, 246, 255, 0.75) !important;
+    border-left: 6px solid #3b82f6 !important;
+}
+.p-toast-message-info .p-toast-icon { color: #2563eb !important; }
+.p-toast-message-info .p-toast-summary { color: #1e40af !important; }
+.p-toast-message-info .p-toast-detail { color: #1d4ed8 !important; }
