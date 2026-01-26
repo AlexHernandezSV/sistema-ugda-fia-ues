@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, reactive, nextTick } from 'vue';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Toast from 'primevue/toast';
@@ -15,7 +15,10 @@ const loading = ref(false);
 // Datos
 const email = ref('');
 const password = ref('');
-const twoFactorCode = ref('');
+
+// --- CAMBIO PARA 6 CAJITAS ---
+const digits = ref(['', '', '', '', '', '']); // Array para los 6 dígitos
+const inputs = ref([]); // Referencia a los elementos input del DOM
 
 // --- PASO 1: Enviar Credenciales ---
 const handleLogin = async () => {
@@ -26,10 +29,14 @@ const handleLogin = async () => {
             password: password.value
         });
 
-        // Si el backend dice que requiere 2FA
         if (response.data.require_2fa) {
-            step.value = 2; // Cambiamos la vista
+            step.value = 2;
             toast.add({ severity: 'success', summary: 'Código Enviado', detail: 'Revisa tu correo electrónico.', life: 4000 });
+            
+            // Enfocar la primera cajita automáticamente al cambiar de pantalla
+            nextTick(() => {
+                if (inputs.value[0]) inputs.value[0].$el.focus();
+            });
         }
 
     } catch (error) {
@@ -41,11 +48,19 @@ const handleLogin = async () => {
 
 // --- PASO 2: Verificar Código ---
 const handleVerifyCode = async () => {
+    // Unimos los 6 dígitos en un solo string
+    const code = digits.value.join('');
+
+    if (code.length < 6) {
+        toast.add({ severity: 'warn', summary: 'Incompleto', detail: 'Ingresa los 6 dígitos del código.', life: 3000 });
+        return;
+    }
+
     loading.value = true;
     try {
         const response = await axios.post('/login-verify', {
             email: email.value,
-            code: twoFactorCode.value
+            code: code // Enviamos el código unido
         });
 
         toast.add({ severity: 'success', summary: 'Acceso Correcto', detail: 'Ingresando al sistema...', life: 2000 });
@@ -57,11 +72,47 @@ const handleVerifyCode = async () => {
     } catch (error) {
         if (error.response && error.response.status === 401) {
              toast.add({ severity: 'error', summary: 'Código Inválido', detail: 'El código es incorrecto o expiró.', life: 4000 });
+             // Limpiar código si falla
+             digits.value = ['', '', '', '', '', ''];
+             inputs.value[0].$el.focus();
         } else {
             handleErrors(error);
         }
     } finally {
         loading.value = false;
+    }
+};
+
+// --- LÓGICA DE AUTO-FOCUS (AVANZAR Y RETROCEDER) ---
+const handleInput = (event, index) => {
+    const value = event.target.value;
+    
+    // Si escribió un número y no es la última casilla, avanza
+    if (value && index < 5) {
+        inputs.value[index + 1].$el.focus();
+    }
+    // Si ya completó los 6, intentamos enviar automáticamente (opcional)
+    if (index === 5 && value) {
+        handleVerifyCode();
+    }
+};
+
+const handleKeyDown = (event, index) => {
+    // Si presiona Backspace y la casilla está vacía, retrocede
+    if (event.key === 'Backspace' && !digits.value[index] && index > 0) {
+        inputs.value[index - 1].$el.focus();
+    }
+};
+
+const handlePaste = (event) => {
+    const pasteData = event.clipboardData.getData('text');
+    // Si pegan un código de 6 números (ej: 123456)
+    if (/^\d{6}$/.test(pasteData)) {
+        digits.value = pasteData.split(''); // Llenar array
+        nextTick(() => {
+            handleVerifyCode(); // Enviar directo
+        });
+        event.preventDefault(); // Evitar comportamiento default
     }
 };
 
@@ -81,10 +132,9 @@ const handleErrors = (error) => {
     }
 };
 
-// Volver atrás si se equivocó de correo
 const goBack = () => {
     step.value = 1;
-    twoFactorCode.value = '';
+    digits.value = ['', '', '', '', '', ''];
 };
 </script>
 
@@ -186,16 +236,25 @@ const goBack = () => {
                                     </div>
                                 </div>
                                 <h2 class="text-blue-800 font-bold mb-2 text-2xl">Verificación</h2>
-                                <p class="text-500 text-sm m-0">Hemos enviado un código a:</p>
+                                <p class="text-500 text-sm m-0">Ingresa el código enviado a:</p>
                                 <p class="text-blue-700 font-bold text-sm mt-1">{{ email }}</p>
                             </div>
 
-                            <div class="mb-4">
-                                <label class="block text-900 font-bold mb-2 text-center text-sm">Ingresa el código de 6 dígitos</label>
-                                <InputText v-model="twoFactorCode" placeholder="Código 2FA" class="w-full bg-gray-50 border-gray-300 text-900 text-center text-2xl letter-spacing-2" maxlength="6" @keyup.enter="handleVerifyCode" />
+                            <div class="flex gap-2 justify-content-center mb-5">
+                                <InputText 
+                                    v-for="(digit, index) in 6" 
+                                    :key="index"
+                                    :ref="el => inputs[index] = el"
+                                    v-model="digits[index]"
+                                    maxlength="1"
+                                    class="w-3rem h-3rem text-center text-2xl font-bold p-0 border-round-md border-gray-300 focus:border-blue-600 focus:text-blue-700"
+                                    @input="handleInput($event, index)"
+                                    @keydown="handleKeyDown($event, index)"
+                                    @paste="handlePaste"
+                                />
                             </div>
 
-                            <Button label="Verificar y Acceder" class="w-full border-round-md bg-green-600 border-green-600 hover:bg-green-700 font-bold shadow-3 mb-3 py-3" :loading="loading" @click="handleVerifyCode"></Button>
+                            <Button label="Verificar Acceso" class="w-full border-round-md bg-green-600 border-green-600 hover:bg-green-700 font-bold shadow-3 mb-3 py-3" :loading="loading" @click="handleVerifyCode"></Button>
                             
                             <div class="text-center">
                                 <Button label="Volver / Cambiar correo" class="p-button-text p-button-sm text-gray-500 text-xs" @click="goBack" />
@@ -215,7 +274,8 @@ const goBack = () => {
 <style>
 /* SOLO ESTILOS LOCALES */
 .font-custom, .font-custom * { font-family: 'Instrument Sans', sans-serif !important; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
-.p-inputtext { padding: 0.75rem 1rem !important; border-radius: 6px !important; }
+.p-inputtext { border-radius: 6px !important; }
 .grid { margin-right: -0.5rem; margin-left: -0.5rem; margin-top: -0.5rem; margin-bottom: -0.5rem; }
-.letter-spacing-2 { letter-spacing: 4px; }
+/* Estilo específico para las cajitas de otp */
+.p-inputtext.text-center { padding: 0 !important; }
 </style>
