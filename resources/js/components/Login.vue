@@ -139,7 +139,6 @@ const goBack = () => {
 </script>
 
 <template>
-    <Toast position="top-right" />
 
     <div class="min-h-screen md:h-screen w-screen flex flex-column font-custom overflow-y-auto md:overflow-hidden relative"
         style="background-color: #f0f6ff;">

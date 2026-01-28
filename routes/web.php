@@ -1,22 +1,31 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\HomeController;
 use App\Http\Controllers\AuthController;
 
-// Ruta del Login (Vista)
-Route::get('/login', [HomeController::class, 'showLogin'])->name('login');
+/*
+|--------------------------------------------------------------------------
+| Web Routes (Modo SPA con Vue Router)
+|--------------------------------------------------------------------------
+*/
 
-// Ruta para PROCESAR el Login (Recibe los datos de Vue)
+// ------------------------------------------------------------------------
+// 1. RUTAS DE BACKEND (API / Autenticación)
+// Estas rutas SI son procesadas por Laravel y devuelven datos JSON o realizan acciones.
+// ------------------------------------------------------------------------
+
 Route::post('/login-auth', [AuthController::class, 'login']);
-
 Route::post('/login-verify', [AuthController::class, 'verify2FA']);
+Route::get('/logout', [AuthController::class, 'logout']);
 
-// Ruta del Dashboard (Protegida: Solo usuarios logueados pueden verla)
-Route::middleware('auth')->group(function () {
-    Route::get('/', function () {
-        return "<h1>¡Bienvenido al Panel de Control de la UGDA!</h1><a href='/logout'>Salir</a>";
-    })->name('dashboard');
-    
-    Route::get('/logout', [AuthController::class, 'logout']);
-});
+
+// ------------------------------------------------------------------------
+// 2. RUTA COMODÍN (Catch-all) PARA VUE ROUTER
+// Esta es la "magia". Le dice a Laravel: "Si te piden CUALQUIER otra ruta 
+// (como /login, /dashboard, /usuarios), no des error 404.
+// Simplemente carga la vista 'welcome' y deja que Vue Router tome el control".
+// ------------------------------------------------------------------------
+
+Route::get('/{any}', function () {
+    return view('welcome'); // Asegúrate que tu vista blade se llame 'welcome.blade.php'
+})->where('any', '.*');
