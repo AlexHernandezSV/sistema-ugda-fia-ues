@@ -1,41 +1,39 @@
-/* =========================================
-   1. SOLUCIÓN DEFINITIVA DE ÍCONOS (CDN)
-   ========================================= */
-/* Esto descarga los íconos directamente de internet, saltándose errores locales */
-@import url("https://unpkg.com/primeicons@latest/primeicons.css");
-
-/* 2. Sistema de diseño PrimeFlex (Local) */
+/* 1. IMPORTS (OBLIGATORIO: Deben ser las primeras líneas) */
 @import 'primeflex/primeflex.css';
-
-/* 3. Fuentes Google */
 @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&display=swap');
 
-/* =========================================
-   PARCHE DE SEGURIDAD PARA ÍCONOS
-   ========================================= */
-/* Esto fuerza a que cualquier elemento con clase .pi use la fuente correcta */
-.pi {
-    font-family: 'primeicons' !important;
-}
+/* 2. DIRECTIVAS DE TAILWIND (Van justo después de los imports) */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
+/* 3. ESTILOS GLOBALES */
 body {
     font-family: 'Instrument Sans', sans-serif;
-    margin: 0; /* Buena práctica: resetear margen del body */
-    background-color: #f0f6ff; /* Fondo general suave */
+    margin: 0;
+    background-color: #f0f6ff;
 }
 
-/* =========================================
-   DISEÑO "GLASS" MODERNO DE ALERTAS (TOAST)
-   ========================================= */
+/* 4. PARCHE PARA ÍCONOS (Vital para que no se bloqueen) */
+/* Esto protege la fuente de los íconos contra el reset de Tailwind */
+i.pi, span.pi, .pi {
+    font-family: 'primeicons' !important;
+    font-style: normal;
+    font-weight: normal;
+    font-variant: normal;
+    text-transform: none;
+    line-height: 1;
+    display: inline-block;
+    -webkit-font-smoothing: antialiased;
+}
 
-/* 1. Contenedor General */
+/* 5. TUS ESTILOS DE TOAST (Alertas) */
 .p-toast {
     width: 26rem !important;
     font-family: 'Instrument Sans', sans-serif !important;
     opacity: 1 !important;
 }
 
-/* 2. La Tarjeta (Base) */
 .p-toast-message {
     border: none !important;
     border-radius: 12px !important;
@@ -46,20 +44,17 @@ body {
     -webkit-backdrop-filter: blur(8px);
 }
 
-/* 3. Contenido Interno */
 .p-toast-message-content {
     background: transparent !important;
     padding: 1.25rem !important;
     align-items: flex-start;
 }
 
-/* 4. Iconos */
 .p-toast-message .p-toast-icon {
     font-size: 1.6rem !important;
     margin-right: 1rem !important;
 }
 
-/* 5. Títulos y Textos */
 .p-toast-summary {
     font-weight: 800 !important;
     font-size: 1rem !important;
@@ -72,42 +67,23 @@ body {
     line-height: 1.4;
 }
 
-/* =========================================
-   COLORES TINTADOS (Background + Texto)
-   ========================================= */
-
-/* --- ERROR --- */
-.p-toast-message-error {
-    background: rgba(254, 226, 226, 0.75) !important;
-    border-left: 6px solid #ef4444 !important;
-}
+/* Colores Toast */
+.p-toast-message-error { background: rgba(254, 226, 226, 0.75) !important; border-left: 6px solid #ef4444 !important; }
 .p-toast-message-error .p-toast-icon { color: #dc2626 !important; }
 .p-toast-message-error .p-toast-summary { color: #991b1b !important; }
 .p-toast-message-error .p-toast-detail { color: #b91c1c !important; }
 
-/* --- WARNING --- */
-.p-toast-message-warn {
-    background: rgba(255, 251, 235, 0.75) !important;
-    border-left: 6px solid #f59e0b !important;
-}
+.p-toast-message-warn { background: rgba(255, 251, 235, 0.75) !important; border-left: 6px solid #f59e0b !important; }
 .p-toast-message-warn .p-toast-icon { color: #d97706 !important; }
 .p-toast-message-warn .p-toast-summary { color: #92400e !important; }
 .p-toast-message-warn .p-toast-detail { color: #b45309 !important; }
 
-/* --- SUCCESS --- */
-.p-toast-message-success {
-    background: rgba(236, 253, 245, 0.75) !important;
-    border-left: 6px solid #10b981 !important;
-}
+.p-toast-message-success { background: rgba(236, 253, 245, 0.75) !important; border-left: 6px solid #10b981 !important; }
 .p-toast-message-success .p-toast-icon { color: #059669 !important; }
 .p-toast-message-success .p-toast-summary { color: #065f46 !important; }
 .p-toast-message-success .p-toast-detail { color: #047857 !important; }
 
-/* --- INFO --- */
-.p-toast-message-info {
-    background: rgba(239, 246, 255, 0.75) !important;
-    border-left: 6px solid #3b82f6 !important;
-}
+.p-toast-message-info { background: rgba(239, 246, 255, 0.75) !important; border-left: 6px solid #3b82f6 !important; }
 .p-toast-message-info .p-toast-icon { color: #2563eb !important; }
 .p-toast-message-info .p-toast-summary { color: #1e40af !important; }
 .p-toast-message-info .p-toast-detail { color: #1d4ed8 !important; }
