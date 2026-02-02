@@ -24,6 +24,7 @@ import Dialog from 'primevue/dialog';
 import Dropdown from 'primevue/dropdown';
 import Toast from 'primevue/toast';
 import Card from 'primevue/card';
+import DatePicker from 'primevue/datepicker';
 
 // Interceptor para sesión expirada
 axios.interceptors.response.use(
@@ -46,6 +47,26 @@ app.use(PrimeVue, {
         options: {
             darkModeSelector: '.fake-dark-mode', 
         }
+    },
+    // --- AQUÍ AGREGAMOS LA TRADUCCIÓN AL ESPAÑOL ---
+    locale: 
+    {
+        dayNames: ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"],
+        dayNamesShort: ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"],
+        dayNamesMin: ["D", "L", "M", "X", "J", "V", "S"],
+        monthNames: ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"],
+        monthNamesShort: ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"],
+        today: 'Hoy',
+        clear: 'Limpiar',
+        weekHeader: 'Sm',
+        firstDayOfWeek: 1, // 1 = Lunes, 0 = Domingo
+        dateFormat: 'dd/mm/yy',
+        weak: 'Débil',
+        medium: 'Medio',
+        strong: 'Fuerte',
+        passwordPrompt: 'Escriba una contraseña',
+        emptyFilterMessage: 'Sin resultados encontrados', // Para tablas
+        emptyMessage: 'No hay opciones disponibles' // Para dropdowns
     }
 });
 
@@ -61,5 +82,6 @@ app.component('Dialog', Dialog);
 app.component('Dropdown', Dropdown);
 app.component('Toast', Toast);
 app.component('Card', Card);
+app.component('DatePicker', DatePicker);
 
 app.mount('#app');

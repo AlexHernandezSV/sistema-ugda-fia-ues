@@ -6,6 +6,8 @@ import Login from './components/Login.vue';
 import Dashboard from './components/Dashboard.vue';
 import Unidades from './components/views/Unidades.vue';
 import Usuarios from './components/views/Usuarios.vue'; // <--- NUEVO IMPORT
+import Solicitudes from './components/views/Solicitudes.vue';
+import NuevaSolicitud from './components/views/NuevaSolicitud.vue';
 
 const routes = [
     // Redirección inicial
@@ -46,7 +48,17 @@ const routes = [
     { 
         path: '/:pathMatch(.*)*', 
         redirect: '/login' 
-    }
+    },
+    // ... dentro del array de routes ...
+    { path: '/solicitudes', 
+        component: Solicitudes 
+    },
+
+    { path: '/solicitudes/crear', 
+        component: NuevaSolicitud 
+    },
+
+
 ];
 
 const router = createRouter({
