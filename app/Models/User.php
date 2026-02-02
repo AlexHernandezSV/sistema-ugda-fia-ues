@@ -18,9 +18,19 @@ class User extends Authenticatable
      * @var list<string>
      */
     protected $fillable = [
-        'name',
+        // Campos de identificación personal
+        'first_name',
+        'second_name',
+        'first_last_name',
+        'second_last_name',
+        'carnet',
+        
+        // Campos de sistema y organización
         'email',
         'password',
+        'role',
+        'unit_id',   // Llave foránea para la unidad
+        'is_active', // Estado del usuario
     ];
 
     /**
@@ -43,6 +53,17 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_active' => 'boolean', // Convierte 1/0 a true/false automáticamente
         ];
+    }
+
+    /**
+     * RELACIONES
+     */
+
+    // Un usuario pertenece a una Unidad
+    public function unit()
+    {
+        return $this->belongsTo(Unit::class);
     }
 }

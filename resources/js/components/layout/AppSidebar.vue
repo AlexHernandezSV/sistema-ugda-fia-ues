@@ -1,62 +1,111 @@
 <script setup>
-import { ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { ref, onMounted, watch } from 'vue'; 
+import { useRoute, useRouter } from 'vue-router'; 
 import axios from 'axios';
 
 const route = useRoute();
-const isExpanded = ref(true); // Controla si la barra lateral está ancha o delgada
-const isProfileMenuOpen = ref(false); // Controla el popup del usuario
+const router = useRouter(); 
+const isExpanded = ref(true); 
+const isProfileMenuOpen = ref(false); 
 
-// Controla qué menús están desplegados (Ej: 'Configuración': true/false)
+// Controla qué menús están desplegados
 const expandedMenus = ref({});
 
-// Función para abrir/cerrar submenús
-const toggleSubmenu = (label) => {
-    // Si la barra está cerrada (80px), la abrimos automáticamente al intentar ver un submenú
-    if (!isExpanded.value) {
-        isExpanded.value = true;
-    }
-    // Invierte el estado: Si estaba abierto se cierra, si cerrado se abre
-    expandedMenus.value[label] = !expandedMenus.value[label];
-};
+// DATOS DEL USUARIO
+const userData = ref({
+    fullName: 'Cargando...',
+    unitName: '',
+    role: ''
+});
 
-// --- DEFINICIÓN DEL MENÚ ---
+// DEFINICIÓN DEL MENÚ
 const menuItems = ref([
     { label: 'Inicio', icon: 'pi pi-home', to: '/dashboard' },
-    { label: 'Todas las Solicitudes', icon: 'pi pi-file', to: '/solicitudes' }, // (Ruta futura)
-    { label: 'Archivo General', icon: 'pi pi-box', to: '/archivo' }, // (Ruta futura)
+    { label: 'Todas las Solicitudes', icon: 'pi pi-file', to: '/solicitudes' },
+    { label: 'Archivo General', icon: 'pi pi-box', to: '/archivo' },
     { 
         label: 'Configuración', 
         icon: 'pi pi-cog', 
-        // IMPORTANTE: Este ítem no tiene 'to', tiene 'children'
         children: [
-            { label: 'Unidades', to: '/unidades' }, // <--- AQUÍ ESTÁ EL ENLACE A TU NUEVA VISTA
-            { label: 'Usuarios', to: '/usuarios' }, // (Futuro)
-            { label: 'Sistema', to: '/sistema' }    // (Futuro)
+            { label: 'Unidades', to: '/unidades' },
+            { label: 'Usuarios', to: '/usuarios' },
+            { label: 'Sistema', to: '/sistema' }
         ]
     },
 ]);
 
-// Verifica si la ruta actual coincide exactamente
+// --- LÓGICA DE SINCRONIZACIÓN ---
+const syncMenuWithRoute = () => {
+    menuItems.value.forEach(item => {
+        if (item.children && isChildActive(item.children)) {
+            expandedMenus.value[item.label] = true;
+        }
+    });
+};
+
+// --- OBTENER DATOS REALES ---
+const fetchUserProfile = async () => {
+    try {
+        const response = await axios.get('/api/user');
+        const user = response.data;
+        userData.value.fullName = `${user.first_name} ${user.first_last_name}`;
+        userData.value.unitName = user.unit ? user.unit.name : 'Sin Unidad Asignada';
+        userData.value.role = user.role;
+    } catch (error) {
+        console.error('Error al cargar perfil:', error);
+        userData.value.fullName = 'Usuario';
+    }
+};
+
+// --- WATCHERS ---
+watch(() => route.path, () => {
+    if (isExpanded.value) {
+        syncMenuWithRoute();
+    }
+});
+
+watch(isExpanded, (newVal) => {
+    if (newVal) {
+        syncMenuWithRoute(); // Al expandir, recuperar posición
+    } else {
+        isProfileMenuOpen.value = false; // Al contraer, cerrar popup
+    }
+});
+
+onMounted(() => {
+    fetchUserProfile(); 
+    syncMenuWithRoute(); 
+});
+
+// --- FUNCIONES ---
+const toggleSubmenu = (label) => {
+    if (!isExpanded.value) {
+        isExpanded.value = true;
+        setTimeout(() => { expandedMenus.value[label] = true; }, 50);
+    } else {
+        expandedMenus.value[label] = !expandedMenus.value[label];
+    }
+};
+
 const isActive = (path) => route.path === path;
 
-// Verifica si alguno de los hijos está activo (para mantener el padre iluminado)
 const isChildActive = (children) => {
     if (!children) return false;
     return children.some(child => child.to === route.path);
 };
 
-// Lógica para abrir/cerrar la barra lateral completa
 const toggleSidebar = () => {
     isExpanded.value = !isExpanded.value;
-    if (!isExpanded.value) {
-        isProfileMenuOpen.value = false;
-        // Opcional: Cerrar todos los submenús al contraer la barra
-        // expandedMenus.value = {}; 
-    }
 };
 
 const toggleProfileMenu = () => isProfileMenuOpen.value = !isProfileMenuOpen.value;
+
+// Acción para "Mi Perfil"
+const goToProfile = () => {
+    // Aquí puedes poner router.push('/perfil') cuando crees la vista
+    console.log("Navegando a Mi Perfil...");
+    isProfileMenuOpen.value = false;
+};
 
 const handleLogout = async () => {
     try { 
@@ -93,14 +142,14 @@ const handleLogout = async () => {
                 <li v-for="item in menuItems" :key="item.label">
                     
                     <router-link v-if="!item.children" :to="item.to" 
-                       class="flex align-items-center cursor-pointer p-3 border-round-lg transition-duration-200 no-underline overflow-hidden"
-                       :class="[
-                           isActive(item.to) ? 'bg-white-alpha-20 text-white font-bold shadow-1' : 'text-white hover:bg-white-alpha-10 opacity-90 hover:opacity-100',
-                           isExpanded ? 'justify-content-start' : 'justify-content-center'
-                       ]"
-                       :title="!isExpanded ? item.label : ''">
-                        <i :class="[item.icon, 'text-xl flex-shrink-0', isExpanded ? 'mr-3' : '']"></i>
-                        <span v-if="isExpanded" class="text-sm fadein white-space-nowrap">{{ item.label }}</span>
+                        class="flex align-items-center cursor-pointer p-3 border-round-lg transition-duration-200 no-underline overflow-hidden"
+                        :class="[
+                            isActive(item.to) ? 'bg-white-alpha-20 text-white font-bold shadow-1' : 'text-white hover:bg-white-alpha-10 opacity-90 hover:opacity-100',
+                            isExpanded ? 'justify-content-start' : 'justify-content-center'
+                        ]"
+                        :title="!isExpanded ? item.label : ''">
+                         <i :class="[item.icon, 'text-xl flex-shrink-0', isExpanded ? 'mr-3' : '']"></i>
+                         <span v-if="isExpanded" class="text-sm fadein white-space-nowrap">{{ item.label }}</span>
                     </router-link>
 
                     <div v-else>
@@ -142,9 +191,16 @@ const handleLogout = async () => {
             <div v-if="isProfileMenuOpen && isExpanded" 
                  class="absolute left-0 px-3 pb-2 z-5 fadein animation-duration-200" 
                  style="bottom: 100%; width: 280px;">
-                <div class="bg-white border-round-xl shadow-6 overflow-hidden text-gray-800">
-                    <div @click="handleLogout" class="flex align-items-center gap-3 p-3 cursor-pointer hover:surface-100 text-blue-600">
-                        <i class="pi pi-sign-out text-lg"></i><span class="font-medium text-sm">Cerrar Sesión</span>
+                <div class="bg-white border-round-xl shadow-6 overflow-hidden text-gray-800 flex flex-column">
+                    
+                    <div @click="goToProfile" class="flex align-items-center gap-3 p-3 cursor-pointer hover:surface-100 text-gray-700 transition-colors transition-duration-150 border-bottom-1 border-gray-100">
+                        <i class="pi pi-user-edit text-lg"></i>
+                        <span class="font-medium text-sm">Mi Perfil</span>
+                    </div>
+
+                    <div @click="handleLogout" class="flex align-items-center gap-3 p-3 cursor-pointer hover:surface-100 text-red-600 transition-colors transition-duration-150">
+                        <i class="pi pi-sign-out text-lg"></i>
+                        <span class="font-medium text-sm">Cerrar Sesión</span>
                     </div>
                 </div>
             </div>
@@ -157,16 +213,20 @@ const handleLogout = async () => {
                  style="background-color: rgba(255, 255, 255, 0.05);"
                  @click="isExpanded ? toggleProfileMenu() : toggleSidebar()">
                 
-                <div class="flex align-items-center gap-3">
+                <div class="flex align-items-center gap-3 overflow-hidden">
                     <div class="w-2rem h-2rem border-round-md bg-white-alpha-10 flex align-items-center justify-content-center flex-shrink-0">
                         <i class="pi pi-user text-white text-lg"></i>
                     </div>
-                    <div v-if="isExpanded" class="flex flex-column fadein white-space-nowrap">
-                        <span class="text-sm font-bold text-white">Carlos Rodríguez</span>
-                        <span class="text-xs text-white-alpha-70">Decanato</span>
+                    <div v-if="isExpanded" class="flex flex-column fadein white-space-nowrap overflow-hidden">
+                        <span class="text-sm font-bold text-white text-overflow-ellipsis overflow-hidden">{{ userData.fullName }}</span>
+                        <span class="text-xs text-white-alpha-70 text-overflow-ellipsis overflow-hidden">{{ userData.unitName }}</span>
                     </div>
                 </div>
-                 <i v-if="isExpanded" class="pi pi-chevron-up text-xs text-white-alpha-70" :style="{ transform: isProfileMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)' }"></i>
+                
+                <i v-if="isExpanded" 
+                   class="pi pi-chevron-up text-xs text-white-alpha-70 flex-shrink-0 transition-transform transition-duration-200" 
+                   :style="{ transform: isProfileMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)' }">
+                </i>
             </div>
         </div>
     </aside>

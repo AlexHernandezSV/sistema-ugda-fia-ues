@@ -4,30 +4,29 @@ namespace App\Http\Controllers;
 
 use App\Models\Unit;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class UnitController extends Controller
 {
     public function index()
     {
-        // Traemos las unidades con sus padres cargados
         return response()->json(Unit::with('parents')->orderBy('id', 'desc')->get());
     }
 
     public function store(Request $request)
     {
         $request->validate([
-            'name' => 'required|string|max:255',
+            // CAMBIO: max:100
+            'name' => 'required|string|max:100|unique:units,name', 
             'is_active' => 'required|boolean',
             'parents' => 'nullable|array'
         ]);
 
-        // 1. Crear Unidad
         $unit = Unit::create([
             'name' => $request->name,
             'is_active' => $request->is_active
         ]);
 
-        // 2. Guardar dependencias
         if ($request->has('parents')) {
             $unit->parents()->sync($request->parents);
         }
@@ -40,18 +39,22 @@ class UnitController extends Controller
         $unit = Unit::findOrFail($id);
         
         $request->validate([
-            'name' => 'required|string|max:255',
+            'name' => [
+                'required', 
+                'string', 
+                // CAMBIO: max:100
+                'max:100', 
+                Rule::unique('units', 'name')->ignore($unit->id)
+            ],
             'is_active' => 'required|boolean',
             'parents' => 'nullable|array'
         ]);
 
-        // 1. Actualizar datos
         $unit->update([
             'name' => $request->name,
             'is_active' => $request->is_active
         ]);
 
-        // 2. Sincronizar dependencias
         if ($request->has('parents')) {
             $unit->parents()->sync($request->parents);
         }

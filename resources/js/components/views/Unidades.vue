@@ -10,6 +10,9 @@ const units = ref([]);
 const loading = ref(true);    
 const isSaving = ref(false); 
 
+// Paginación
+const rowsPerPageOptions = ref([5, 10, 25, 50]);
+
 // Filtros
 const filters = ref({
     global: { value: null, matchMode: 'contains' }
@@ -144,7 +147,22 @@ const saveUnit = async () => {
         fetchUnits(); 
     } catch (error) {
         console.error(error);
-        toast.add({ severity: 'error', summary: 'Error', detail: 'Ocurrió un error al guardar', life: 3000 });
+        if (error.response && error.response.status === 422) {
+            const errors = error.response.data.errors;
+            if (errors && errors.name) {
+                // Si el error es por unicidad
+                if (errors.name[0].includes('ya ha sido registrado') || errors.name[0].includes('taken')) {
+                     nameError.value = 'Ya existe una unidad con este nombre.';
+                } else if (errors.name[0].includes('must not be greater than')) {
+                     // Si el error es por longitud (backup del backend)
+                     nameError.value = 'El nombre no puede exceder los 100 caracteres.';
+                } else {
+                     nameError.value = errors.name[0];
+                }
+            }
+        } else {
+            toast.add({ severity: 'error', summary: 'Error', detail: 'Ocurrió un error al guardar', life: 3000 });
+        }
     } finally {
         isSaving.value = false; 
     }
@@ -195,7 +213,9 @@ const clearFilter = () => {
         </div>
 
         <div class="surface-card p-0 border-round-xl shadow-1 overflow-hidden">
-            <DataTable :value="units" :paginator="true" :rows="10" :loading="loading"
+            <DataTable :value="units" :paginator="true" :rows="5" 
+                       :rowsPerPageOptions="rowsPerPageOptions"
+                       :loading="loading"
                        v-model:filters="filters"
                        :globalFilterFields="['name']"
                        tableStyle="min-width: 50rem"
@@ -208,7 +228,7 @@ const clearFilter = () => {
                     </div>
                 </template>
 
-                <Column field="id" header="N°" style="width: 5%" headerClass="bg-primary-custom text-white"></Column>
+                <!--<Column field="id" header="N°" style="width: 5%" headerClass="bg-primary-custom text-white"></Column>-->
                 <Column field="name" header="Nombre de la Unidad/Escuela/Departamento" sortable style="width: 40%" headerClass="bg-primary-custom text-white font-semibold"></Column>
                 
                 <Column header="Dependencia jerárquica" style="width: 35%" headerClass="bg-primary-custom text-white font-semibold">
@@ -255,9 +275,13 @@ const clearFilter = () => {
                            @input="validateName" 
                            :class="{ 'p-invalid': nameError }"
                            class="w-full mt-1 bg-gray-50" 
+                           maxlength="100"
                            placeholder="Ingrese el nombre" />
                 
-                <small v-if="nameError" class="p-error block mt-1">{{ nameError }}</small>
+                <div class="flex justify-content-between mt-1">
+                    <small class="p-error block">{{ nameError }}</small>
+                    <small class="text-gray-500 text-xs">{{ form.name ? form.name.length : 0 }}/100</small>
+                </div>
             </div>
 
             <div class="field mt-3">
@@ -311,23 +335,20 @@ const clearFilter = () => {
 </template>
 
 <style>
-/* 1. Quitamos el borde inferior gris */
+/* Estilos globales para el modal */
 .blue-header-dialog .p-dialog-header {
     border-bottom: none !important; 
     background-color: white !important;
-    /* 2. Redondeamos las esquinas superiores para que no se vea el cuadro blanco */
     border-top-left-radius: 12px !important; 
     border-top-right-radius: 12px !important;
 }
 
-/* 3. Forzamos el color del título a AZUL */
 .blue-header-dialog .p-dialog-title {
     color: #1560bd !important; 
     font-weight: 700 !important;
     font-size: 1.25rem;
 }
 
-/* 4. Icono de cerrar (X) */
 .blue-header-dialog .p-dialog-header-icons .p-dialog-header-icon {
     color: #6b7280 !important;
 }
@@ -336,7 +357,6 @@ const clearFilter = () => {
     color: #1560bd !important;
 }
 
-/* 5. Aseguramos que el contenido del modal también tenga esquinas redondeadas abajo */
 .blue-header-dialog .p-dialog-content {
     border-bottom-left-radius: 12px !important;
     border-bottom-right-radius: 12px !important;
