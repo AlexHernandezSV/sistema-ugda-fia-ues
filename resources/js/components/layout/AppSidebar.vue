@@ -8,17 +8,15 @@ const router = useRouter();
 const isExpanded = ref(true); 
 const isProfileMenuOpen = ref(false); 
 
-// Controla qué menús están desplegados
 const expandedMenus = ref({});
 
 // DATOS DEL USUARIO
 const userData = ref({
-    fullName: 'Cargando...',
+    fullName: '', 
     unitName: '',
     role: ''
 });
 
-// DEFINICIÓN DEL MENÚ
 const menuItems = ref([
     { label: 'Inicio', icon: 'pi pi-home', to: '/dashboard' },
     { label: 'Todas las Solicitudes', icon: 'pi pi-file', to: '/solicitudes' },
@@ -34,7 +32,6 @@ const menuItems = ref([
     },
 ]);
 
-// --- LÓGICA DE SINCRONIZACIÓN ---
 const syncMenuWithRoute = () => {
     menuItems.value.forEach(item => {
         if (item.children && isChildActive(item.children)) {
@@ -43,33 +40,40 @@ const syncMenuWithRoute = () => {
     });
 };
 
-// --- OBTENER DATOS REALES ---
 const fetchUserProfile = async () => {
+    const cachedUser = localStorage.getItem('ugda_user_profile');
+    if (cachedUser) {
+        userData.value = JSON.parse(cachedUser);
+    } else {
+        userData.value.fullName = 'Cargando...';
+    }
+
     try {
         const response = await axios.get('/api/user');
         const user = response.data;
-        userData.value.fullName = `${user.first_name} ${user.first_last_name}`;
-        userData.value.unitName = user.unit ? user.unit.name : 'Sin Unidad Asignada';
-        userData.value.role = user.role;
+        
+        const freshData = {
+            fullName: `${user.first_name} ${user.first_last_name}`,
+            unitName: user.unit ? user.unit.name : 'Sin Unidad Asignada',
+            role: user.role
+        };
+
+        userData.value = freshData;
+        localStorage.setItem('ugda_user_profile', JSON.stringify(freshData));
+
     } catch (error) {
         console.error('Error al cargar perfil:', error);
-        userData.value.fullName = 'Usuario';
+        if (!userData.value.fullName) userData.value.fullName = 'Usuario';
     }
 };
 
-// --- WATCHERS ---
 watch(() => route.path, () => {
-    if (isExpanded.value) {
-        syncMenuWithRoute();
-    }
+    if (isExpanded.value) syncMenuWithRoute();
 });
 
 watch(isExpanded, (newVal) => {
-    if (newVal) {
-        syncMenuWithRoute(); // Al expandir, recuperar posición
-    } else {
-        isProfileMenuOpen.value = false; // Al contraer, cerrar popup
-    }
+    if (newVal) syncMenuWithRoute(); 
+    else isProfileMenuOpen.value = false; 
 });
 
 onMounted(() => {
@@ -77,7 +81,6 @@ onMounted(() => {
     syncMenuWithRoute(); 
 });
 
-// --- FUNCIONES ---
 const toggleSubmenu = (label) => {
     if (!isExpanded.value) {
         isExpanded.value = true;
@@ -100,15 +103,14 @@ const toggleSidebar = () => {
 
 const toggleProfileMenu = () => isProfileMenuOpen.value = !isProfileMenuOpen.value;
 
-// Acción para "Mi Perfil"
 const goToProfile = () => {
-    // Aquí puedes poner router.push('/perfil') cuando crees la vista
     console.log("Navegando a Mi Perfil...");
     isProfileMenuOpen.value = false;
 };
 
 const handleLogout = async () => {
     try { 
+        localStorage.removeItem('ugda_user_profile');
         await axios.get('/logout'); 
         window.location.href = '/login'; 
     } catch (e) { 
@@ -137,7 +139,7 @@ const handleLogout = async () => {
 
         <div class="w-full h-1px bg-white-alpha-10 mb-3"></div>
 
-        <div class="flex-grow-1 overflow-y-auto px-2 py-2">
+        <div class="flex-grow-1 overflow-y-auto overflow-x-hidden px-2 py-2">
             <ul class="list-none p-0 m-0 flex flex-column gap-2">
                 <li v-for="item in menuItems" :key="item.label">
                     
@@ -192,12 +194,10 @@ const handleLogout = async () => {
                  class="absolute left-0 px-3 pb-2 z-5 fadein animation-duration-200" 
                  style="bottom: 100%; width: 280px;">
                 <div class="bg-white border-round-xl shadow-6 overflow-hidden text-gray-800 flex flex-column">
-                    
                     <div @click="goToProfile" class="flex align-items-center gap-3 p-3 cursor-pointer hover:surface-100 text-gray-700 transition-colors transition-duration-150 border-bottom-1 border-gray-100">
                         <i class="pi pi-user-edit text-lg"></i>
                         <span class="font-medium text-sm">Mi Perfil</span>
                     </div>
-
                     <div @click="handleLogout" class="flex align-items-center gap-3 p-3 cursor-pointer hover:surface-100 text-red-600 transition-colors transition-duration-150">
                         <i class="pi pi-sign-out text-lg"></i>
                         <span class="font-medium text-sm">Cerrar Sesión</span>

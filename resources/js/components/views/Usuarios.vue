@@ -1,6 +1,5 @@
 <script setup>
 import { ref, onMounted } from 'vue';
-import AdminLayout from '../layout/AdminLayout.vue';
 import axios from 'axios';
 import { useToast } from 'primevue/usetoast';
 
@@ -227,7 +226,6 @@ const clearFilter = () => {
 </script>
 
 <template>
-    <AdminLayout>
         <Toast />
         <div class="mb-4">
             <h1 class="text-2xl font-bold" style="color: #1560bd;">Gestión de Usuarios</h1>
@@ -395,29 +393,35 @@ const clearFilter = () => {
                 </div>
             </template>
         </Dialog>
-    </AdminLayout>
 </template>
 
-<style>
-/* Estilos Globales para el Modal */
+<style> 
+/* Quitamos 'scoped' para que estas clases afecten al Modal que vive en el body */
+
 .blue-header-dialog .p-dialog-header {
     border-bottom: none !important; 
     background-color: white !important;
     border-top-left-radius: 12px !important; 
     border-top-right-radius: 12px !important;
 }
+
 .blue-header-dialog .p-dialog-title {
     color: #1560bd !important; 
     font-weight: 700 !important;
     font-size: 1.25rem;
 }
+
+/* Icono de cerrar */
 .blue-header-dialog .p-dialog-header-icons .p-dialog-header-icon {
     color: #6b7280 !important;
 }
+
+/* Hover del icono de cerrar */
 .blue-header-dialog .p-dialog-header-icons .p-dialog-header-icon:hover {
     background-color: #f3f4f6 !important;
     color: #1560bd !important;
 }
+
 .blue-header-dialog .p-dialog-content {
     border-bottom-left-radius: 12px !important;
     border-bottom-right-radius: 12px !important;
@@ -425,11 +429,8 @@ const clearFilter = () => {
 </style>
 
 <style scoped>
+/* Estilos solo para la tabla o botones internos */
 :deep(.bg-primary-custom) {
     background-color: #1560bd !important; border: none;
 }
-:deep(.p-datatable-thead > tr > th) {
-    border-width: 0 0 1px 0; padding: 1rem;
-}
-.p-error { color: #e24c4c; font-size: 0.875rem; }
 </style>

@@ -5,12 +5,17 @@ import Aura from '@primevue/themes/aura';
 import ToastService from 'primevue/toastservice';
 import router from './router';
 import App from './components/App.vue';
+
+// 1. ESTILOS DE ICONOS
 import 'primeicons/primeicons.css';
 
-// 1. IMPORTAR AXIOS (Para configurar el interceptor)
+// 2. ESTILOS DE LAYOUT (¡ESTO ES LO QUE FALTA!)
+// Sin esto, 'col-12', 'md:col-6', 'grid' no funcionan y el modal se ve roto.
+import 'primeflex/primeflex.css'; 
+
 import axios from 'axios';
 
-// 2. IMPORTAR LOS COMPONENTES QUE USAMOS EN LAS VISTAS
+// Componentes
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import DataTable from 'primevue/datatable';
@@ -20,14 +25,11 @@ import Dropdown from 'primevue/dropdown';
 import Toast from 'primevue/toast';
 import Card from 'primevue/card';
 
-// --- CONFIGURACIÓN DEL INTERCEPTOR (SOLUCIÓN SESIÓN EXPIRADA) ---
-// Esto detecta si el servidor rechaza la petición por tiempo de inactividad (419 o 401)
-// y recarga la página para renovar el token y evitar el error de "Credenciales incorrectas".
+// Interceptor para sesión expirada
 axios.interceptors.response.use(
     response => response,
     error => {
         if (error.response && (error.response.status === 419 || error.response.status === 401)) {
-            // Si no estamos ya en el login, forzamos la recarga hacia el login
             if (window.location.pathname !== '/login') {
                 window.location.href = '/login';
             }
@@ -38,7 +40,6 @@ axios.interceptors.response.use(
 
 const app = createApp(App);
 
-// Configuración de PrimeVue (Mantenemos tu config de Aura)
 app.use(PrimeVue, {
     theme: {
         preset: Aura,
@@ -51,7 +52,7 @@ app.use(PrimeVue, {
 app.use(ToastService);
 app.use(router);
 
-// 3. REGISTRAR LOS COMPONENTES GLOBALMENTE
+// Registrar Componentes
 app.component('Button', Button);
 app.component('InputText', InputText);
 app.component('DataTable', DataTable);

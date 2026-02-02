@@ -3,7 +3,6 @@ import { ref } from 'vue';
 // 1. IMPORTAR EL LAYOUT
 // Ajusta la ruta '../layout/AdminLayout.vue' si tu carpeta es distinta, 
 // pero basándome en lo anterior, esta debería ser la correcta.
-import AdminLayout from './layout/AdminLayout.vue';
 
 // --- DATOS DE EJEMPLO ---
 const stats = ref([
@@ -29,7 +28,6 @@ const transfers = ref([
 </script>
 
 <template>
-    <AdminLayout>
         
         <div class="grid p-fluid animation-duration-500 fadein">
             
@@ -126,8 +124,6 @@ const transfers = ref([
             </div>
 
         </div>
-
-    </AdminLayout>
 </template>
 
 <style scoped>

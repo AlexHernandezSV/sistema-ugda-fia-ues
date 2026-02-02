@@ -1,6 +1,5 @@
 <script setup>
 import { ref, onMounted } from 'vue';
-import AdminLayout from '../layout/AdminLayout.vue';
 import axios from 'axios';
 import { useToast } from 'primevue/usetoast';
 
@@ -174,7 +173,6 @@ const clearFilter = () => {
 </script>
 
 <template>
-    <AdminLayout>
         <Toast />
 
         <div class="mb-4">
@@ -331,7 +329,6 @@ const clearFilter = () => {
                 </div>
             </template>
         </Dialog>
-    </AdminLayout>
 </template>
 
 <style>
