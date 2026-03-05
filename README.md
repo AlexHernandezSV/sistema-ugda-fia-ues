@@ -1,3 +1,45 @@
+## Desarrollo con Docker (hot reload)
+
+Este proyecto ya incluye configuración Docker para desarrollo en tiempo real (Laravel + Vite).
+
+### Requisitos
+
+- Docker Desktop
+- Docker Compose (incluido en Docker Desktop reciente)
+
+### Levantar proyecto
+
+```bash
+docker compose up --build
+```
+
+### Accesos
+
+- App Laravel: `http://localhost:8000`
+- Vite (HMR): `http://localhost:5173`
+
+### Qué hace automáticamente al iniciar
+
+- Crea `.env` si no existe
+- Crea `database/database.sqlite` si no existe
+- Instala dependencias de PHP (`composer install`) si falta `vendor`
+- Instala dependencias de Node (`npm ci`) si falta `node_modules`
+- Genera `APP_KEY` si no existe
+- Ejecuta migraciones
+- Levanta Laravel y Vite en paralelo
+
+### Detener
+
+```bash
+docker compose down
+```
+
+### Limpiar dependencias en volúmenes (opcional)
+
+```bash
+docker compose down -v
+```
+
 <p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
 
 <p align="center">

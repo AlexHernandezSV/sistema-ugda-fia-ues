@@ -22,4 +22,17 @@ export default defineConfig({
             vue: 'vue/dist/vue.esm-bundler.js',
         },
     },
+    server: {
+        host: '0.0.0.0',
+        port: 5173,
+        strictPort: true,
+        hmr: {
+            host: process.env.VITE_HMR_HOST || 'localhost',
+            port: 5173,
+        },
+        watch: {
+            usePolling: process.env.CHOKIDAR_USEPOLLING === 'true',
+            interval: 500,
+        },
+    },
 });
