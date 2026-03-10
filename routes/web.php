@@ -1,7 +1,7 @@
 <?php
 
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use Illuminate\Http\Request; // <--- IMPORTANTE: Necesario para obtener el usuario actual
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\UnitController;
 use App\Http\Controllers\UserController;
@@ -12,45 +12,57 @@ use App\Http\Controllers\UserController;
 |--------------------------------------------------------------------------
 */
 
-// ------------------------------------------------------------------------
-// 1. RUTAS PÚBLICAS (Autenticación)
-// ------------------------------------------------------------------------
-
+// 1. Rutas publicas (autenticacion)
 Route::post('/login-auth', [AuthController::class, 'login']);
 Route::post('/login-verify', [AuthController::class, 'verify2FA']);
 Route::get('/logout', [AuthController::class, 'logout']);
 
-// ------------------------------------------------------------------------
-// 2. RUTAS PROTEGIDAS (API Interna para Vue)
-// Estas rutas solo funcionan si el usuario ha iniciado sesión.
-// ------------------------------------------------------------------------
-
+// 2. Rutas protegidas (API interna para Vue)
 Route::middleware('auth')->group(function () {
-    
-    // --- OBTENER USUARIO LOGUEADO (PARA EL SIDEBAR) ---
+    // Obtener usuario logueado (sidebar)
     Route::get('/api/user', function (Request $request) {
-        // Devolvemos el usuario y cargamos la relación 'unit' para saber su unidad
-        return $request->user()->load('unit');
+        $user = $request->user()->load([
+            'unit',
+            'person',
+            'profiles' => function ($query) {
+                $query->whereNull('user_profile.deleted_at')
+                    ->where('profile.is_active', true);
+            },
+        ]);
+
+        $activeProfile = $user->profiles
+            ->first(fn ($profile) => (bool) ($profile->pivot->is_active ?? false))
+            ?? $user->profiles->first();
+
+        return response()->json([
+            'id' => $user->id,
+            'email' => $user->email,
+            'first_name' => $user->person?->first_name,
+            'second_name' => $user->person?->second_name,
+            'first_last_name' => $user->person?->first_last_name,
+            'second_last_name' => $user->person?->second_last_name,
+            'carnet' => $user->person?->carnet,
+            'unit_id' => $user->unit_id,
+            'role' => $activeProfile?->name,
+            'is_active' => (bool) $user->is_active,
+            'unit' => $user->unit,
+        ]);
     });
 
-    // --- CRUD DE UNIDADES ACADÉMICAS ---
+    // CRUD de unidades
     Route::get('/api/units', [UnitController::class, 'index']);
     Route::post('/api/units', [UnitController::class, 'store']);
     Route::put('/api/units/{id}', [UnitController::class, 'update']);
     Route::delete('/api/units/{id}', [UnitController::class, 'destroy']);
 
-    // --- CRUD DE USUARIOS ---
-    Route::get('/api/users', [UserController::class, 'index']); // Listar
-    Route::post('/api/users', [UserController::class, 'store']); // Crear
-    Route::put('/api/users/{id}', [UserController::class, 'update']); // Editar
-
+    // CRUD de usuarios
+    Route::get('/api/users', [UserController::class, 'index']);
+    Route::post('/api/users', [UserController::class, 'store']);
+    Route::put('/api/users/{id}', [UserController::class, 'update']);
+    Route::delete('/api/users/{id}', [UserController::class, 'destroy']);
 });
 
-// ------------------------------------------------------------------------
-// 3. RUTA COMODÍN (Catch-all) PARA VUE ROUTER
-// IMPORTANTE: Esta ruta DEBE ir siempre al FINAL del archivo.
-// ------------------------------------------------------------------------
-
+// 3. Ruta comodin para Vue Router
 Route::get('/{any}', function () {
-    return view('welcome'); 
+    return view('welcome');
 })->where('any', '.*');

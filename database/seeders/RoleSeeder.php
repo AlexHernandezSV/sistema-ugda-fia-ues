@@ -15,21 +15,13 @@ class RoleSeeder extends Seeder
         }
 
         $now = now();
-        $baseRoles = ['Administrador'];
-
-        if (Schema::hasTable('users') && Schema::hasColumn('users', 'role')) {
-            $dynamicRoles = DB::table('users')
-                ->whereNotNull('role')
-                ->select('role')
-                ->distinct()
-                ->pluck('role')
-                ->filter(fn ($role) => trim((string) $role) !== '')
-                ->map(fn ($role) => trim((string) $role))
-                ->values()
-                ->all();
-
-            $baseRoles = array_values(array_unique(array_merge($baseRoles, $dynamicRoles)));
-        }
+        $baseRoles = [
+            'Administrador',
+            'Docente',
+            'Estudiante',
+            'Jefe de Unidad',
+            'Secretaria',
+        ];
 
         foreach ($baseRoles as $roleName) {
             DB::table('role')->updateOrInsert(
