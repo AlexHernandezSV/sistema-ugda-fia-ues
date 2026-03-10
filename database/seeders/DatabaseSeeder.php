@@ -24,5 +24,13 @@ class DatabaseSeeder extends Seeder
             'unit_id' => null,
             'is_active' => true,
         ]);
+
+        $this->call([
+            RoleSeeder::class,
+            ProfileSeeder::class,
+            ProfileRoleSeeder::class,
+            TypeDocumentSeeder::class,
+            LegacySchemaSyncSeeder::class,
+        ]);
     }
 }
