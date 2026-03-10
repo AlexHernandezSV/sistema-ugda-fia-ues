@@ -1,8 +1,7 @@
 <script setup>
-import { ref, reactive, nextTick } from 'vue';
+import { ref, nextTick } from 'vue';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
-import Toast from 'primevue/toast';
 import { useToast } from 'primevue/usetoast';
 import axios from 'axios';
 
@@ -180,7 +179,7 @@ const goBack = () => {
             class="flex flex-column md:flex-row flex-grow-1 relative z-1 align-items-center justify-content-center w-full">
             <div class="grid w-full max-w-7xl mx-auto flex flex-column md:flex-row align-items-center m-0 h-full">
 
-                <div class="col-12 md:col-7 flex flex-column justify-content-center p-4">
+                <div class="landing-col col-12 md:col-7 flex flex-column justify-content-center p-4">
                     <div class="flex flex-column w-full mx-auto" style="max-width: 40rem;">
                         <div class="mb-3">
                             <div
@@ -204,7 +203,7 @@ const goBack = () => {
                         <div class="grid w-full m-0 align-items-stretch">
                             <div class="col-12 md:col-4 pl-0 pr-1 pb-2 md:pb-0">
                                 <div
-                                    class="bg-white p-2 shadow-2 border-round-xl h-full flex flex-column align-items-start">
+                                    class="feature-card bg-white p-2 shadow-2 border-round-xl h-full flex flex-column align-items-start">
                                     <div
                                         class="bg-blue-50 text-blue-600 border-circle w-2rem h-2rem flex align-items-center justify-content-center mb-2">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"
@@ -220,7 +219,7 @@ const goBack = () => {
                             </div>
                             <div class="col-12 md:col-4 px-1 pb-2 md:pb-0">
                                 <div
-                                    class="bg-white p-2 shadow-2 border-round-xl h-full flex flex-column align-items-start">
+                                    class="feature-card bg-white p-2 shadow-2 border-round-xl h-full flex flex-column align-items-start">
                                     <div
                                         class="bg-orange-50 text-orange-600 border-circle w-2rem h-2rem flex align-items-center justify-content-center mb-2">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"
@@ -240,7 +239,7 @@ const goBack = () => {
                             </div>
                             <div class="col-12 md:col-4 px-1 pb-2 md:pb-0">
                                 <div
-                                    class="bg-white p-2 shadow-2 border-round-xl h-full flex flex-column align-items-start">
+                                    class="feature-card bg-white p-2 shadow-2 border-round-xl h-full flex flex-column align-items-start">
                                     <div
                                         class="bg-green-50 text-green-600 border-circle w-2rem h-2rem flex align-items-center justify-content-center mb-2">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"
@@ -257,8 +256,8 @@ const goBack = () => {
                     </div>
                 </div>
 
-                <div class="col-12 md:col-5 flex flex-column justify-content-center align-items-center p-4">
-                    <div class="bg-white shadow-6 border-round-2xl p-5 w-full max-w-26rem relative overflow-hidden">
+                <div class="auth-col col-12 md:col-5 flex flex-column justify-content-center align-items-center p-4">
+                    <div class="login-card bg-white shadow-6 border-round-2xl p-5 w-full max-w-26rem relative overflow-hidden">
 
                         <div v-if="step === 1" class="fadein animation-duration-500">
                             <div class="text-center mb-4">
@@ -266,30 +265,38 @@ const goBack = () => {
                                     <img src="/images/Logo-UES-Blue.png" alt="Icono Login" class="w-6rem h-6rem block"
                                         onerror="this.style.display='none'" />
                                 </div>
-                                <h2 class="text-blue-800 font-bold mb-2 text-2xl">Iniciar Sesión</h2>
-                                <p class="text-500 text-sm m-0">Ingresa tus credenciales para acceder</p>
+                                <h2 class="text-blue-800 font-bold mb-2 text-2xl">Iniciar sesion</h2>
+                                <p class="text-500 text-sm m-0">Ingresa tus credenciales para acceder al sistema</p>
                             </div>
 
                             <div class="mb-3">
-                                <label class="block text-900 font-bold mb-2 text-sm">Correo Electrónico</label>
-                                <InputText v-model="email" placeholder="usuario@ues.edu.sv"
-                                    class="w-full bg-gray-50 border-gray-300 text-900" />
+                                <label class="login-label block font-bold mb-2 text-base">Correo Electrónico</label>
+                                <span class="p-input-icon-left w-full">
+                                    <i class="pi pi-envelope text-bluegray-400" />
+                                    <InputText v-model="email" placeholder="usuario@ues.edu.sv"
+                                        class="login-input w-full text-900" />
+                                </span>
                             </div>
 
                             <div class="mb-4">
-                                <label class="block text-900 font-bold mb-2 text-sm">Contraseña</label>
-                                <InputText v-model="password" type="password" placeholder="••••••••"
-                                    class="w-full bg-gray-50 border-gray-300 text-900" @keyup.enter="handleLogin" />
+                                <label class="login-label block font-bold mb-2 text-base">Contrasena</label>
+                                <span class="p-input-icon-left w-full">
+                                    <i class="pi pi-lock text-bluegray-400" />
+                                    <InputText v-model="password" type="password" placeholder="********"
+                                        class="login-input w-full text-900" @keyup.enter="handleLogin" />
+                                </span>
                             </div>
 
-                            <Button label="Continuar"
-                                class="w-full border-round-md bg-blue-700 border-blue-700 hover:bg-blue-800 font-bold shadow-3 mb-4 py-3"
+                            <Button label="Iniciar sesion" icon="pi pi-sign-in"
+                                class="login-btn w-full border-round-md font-bold shadow-3 mb-3 py-3"
                                 :loading="loading" @click="handleLogin"></Button>
 
-                            <div class="text-center">
-                                <a href="#" class="text-blue-600 text-sm no-underline hover:underline font-bold">Olvidé
-                                    mi contraseña</a>
+                            <div class="text-center mb-3">
+                                <a href="#" class="text-blue-600 text-sm no-underline hover:underline">Olvide
+                                    mi contrasena</a>
                             </div>
+
+                            <div class="border-top-1 border-200"></div>
                         </div>
 
                         <div v-if="step === 2" class="fadein animation-duration-500">
@@ -346,8 +353,67 @@ const goBack = () => {
     -moz-osx-font-smoothing: grayscale;
 }
 
+.font-custom {
+    --brand-blue: #2f56c7;
+    --brand-blue-dark: #2749a8;
+    --brand-blue-soft: #3b67d3;
+}
+
+.font-custom .bg-blue-800,
+.font-custom .bg-blue-700 {
+    background-color: var(--brand-blue) !important;
+    border-color: var(--brand-blue) !important;
+}
+
+.font-custom .text-blue-900,
+.font-custom .text-blue-800,
+.font-custom .text-blue-700,
+.font-custom .text-blue-600 {
+    color: var(--brand-blue-dark) !important;
+}
+
 .p-inputtext {
     border-radius: 6px !important;
+}
+
+.login-card {
+    background: #f7f8fb !important;
+    border: 1px solid #d8e1ee;
+}
+
+.login-label {
+    color: var(--brand-blue-dark) !important;
+}
+
+.login-input.p-inputtext {
+    height: 42px;
+    border-radius: 10px !important;
+    border: 1px solid #b8c8da !important;
+    background: #f9fbff !important;
+}
+
+.p-input-icon-left {
+    position: relative;
+    display: block;
+}
+
+.p-input-icon-left > i {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #7f92a7 !important;
+    z-index: 2;
+    pointer-events: none;
+}
+
+.p-input-icon-left > .p-inputtext {
+    padding-left: 2.3rem !important;
+}
+
+.login-btn.p-button {
+    border: 0 !important;
+    background: linear-gradient(180deg, var(--brand-blue-soft) 0%, var(--brand-blue) 100%) !important;
 }
 
 .grid {
@@ -360,5 +426,44 @@ const goBack = () => {
 /* Estilo específico para las cajitas de otp */
 .p-inputtext.text-center {
     padding: 0 !important;
+}
+
+@media (max-width: 768px) {
+    .landing-col {
+        padding-left: 0.75rem !important;
+        padding-right: 0.75rem !important;
+    }
+
+    .landing-col > div {
+        max-width: 26rem !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+        align-items: center !important;
+    }
+
+    .landing-col h1 {
+        text-align: center !important;
+        line-height: 1.2 !important;
+    }
+
+    .landing-col p {
+        text-align: center !important;
+    }
+
+    .auth-col {
+        padding-left: 0.75rem !important;
+        padding-right: 0.75rem !important;
+    }
+
+    .login-card {
+        max-width: 26rem !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+    }
+
+    .feature-card {
+        align-items: center !important;
+        text-align: center !important;
+    }
 }
 </style>
