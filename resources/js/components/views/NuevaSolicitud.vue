@@ -52,7 +52,7 @@ onMounted(async () => {
     try {
         const userRes = await axios.get('/api/user');
         headerForm.value.user_name = `${userRes.data.first_name} ${userRes.data.first_last_name}`;
-        headerForm.value.unit_id = userRes.data.unit_id; 
+        headerForm.value.unit_id = userRes.data.unit_id ?? userRes.data.unit?.id ?? null; 
         const unitsRes = await axios.get('/api/units');
         unitsList.value = unitsRes.data.map(u => ({ label: u.name, value: u.id }));
     } catch (e) { console.error(e); }
@@ -185,7 +185,7 @@ const goBack = () => router.back();
     <div class="mb-4">
         <div class="flex align-items-center gap-2 mb-3">
             <Button icon="pi pi-arrow-left" text rounded class="text-gray-700" @click="goBack" />
-            <h1 class="text-2xl font-bold m-0" style="color: #1560bd;">Nueva Transferencia Documental</h1>
+            <h1 class="text-2xl font-bold m-0 mobile-page-title" style="color: #1560bd;">Nueva Transferencia Documental</h1>
         </div>
 
         <div class="surface-card shadow-1 border-round-xl overflow-hidden mb-4">

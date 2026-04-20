@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import axios from 'axios';
 import { useToast } from 'primevue/usetoast';
 
@@ -22,6 +22,7 @@ const rowsPerPageOptions = ref([5, 10, 25, 50]);
 const filters = ref({
     global: { value: null, matchMode: 'contains' }
 });
+const selectedUnitId = ref(null);
 
 // Modal
 const displayModal = ref(false);
@@ -42,10 +43,16 @@ const form = ref({
     second_last_name: '',
     carnet: '',
     email: '',
-    unit_id: null,
+    unit_ids: [],
     role: null,
     is_active: true
 });
+
+const selectedUnits = computed(() =>
+    form.value.unit_ids
+        .map(unitId => unitsList.value.find(unit => unit.value === unitId))
+        .filter(Boolean)
+);
 
 // --- CARGAR DATOS ---
 const fetchData = async () => {
@@ -135,8 +142,9 @@ const openCreateModal = () => {
     form.value = { 
         first_name: '', second_name: '', 
         first_last_name: '', second_last_name: '', 
-        carnet: '', email: '', unit_id: null, role: null, is_active: true 
+        carnet: '', email: '', unit_ids: [], role: null, is_active: true 
     };
+    selectedUnitId.value = null;
     displayModal.value = true;
 };
 
@@ -156,11 +164,28 @@ const openEditModal = (user) => {
         second_last_name: user.second_last_name,
         carnet: user.carnet,
         email: user.email,
-        unit_id: user.unit_id,
+        unit_ids: Array.isArray(user.unit_ids) ? [...user.unit_ids] : (user.unit_id ? [user.unit_id] : []),
         role: user.role,
         is_active: Boolean(user.is_active)
     };
+    selectedUnitId.value = null;
     displayModal.value = true;
+};
+
+const addUnitToForm = () => {
+    if (!selectedUnitId.value) {
+        return;
+    }
+
+    if (!form.value.unit_ids.includes(selectedUnitId.value)) {
+        form.value.unit_ids.push(selectedUnitId.value);
+    }
+
+    selectedUnitId.value = null;
+};
+
+const removeUnitFromForm = (unitId) => {
+    form.value.unit_ids = form.value.unit_ids.filter(id => id !== unitId);
 };
 
 // --- GUARDAR ---
@@ -168,7 +193,7 @@ const saveUser = async () => {
     if (isSaving.value) return;
 
     // 1. Validar Campos Obligatorios
-    if (!form.value.first_name || !form.value.first_last_name || !form.value.email || !form.value.unit_id || !form.value.role) {
+    if (!form.value.first_name || !form.value.first_last_name || !form.value.email || form.value.unit_ids.length === 0 || !form.value.role) {
         toast.add({ severity: 'warn', summary: 'Atención', detail: 'Complete los campos obligatorios (*)', life: 3000 });
         return;
     }
@@ -228,20 +253,18 @@ const clearFilter = () => {
 <template>
         <Toast />
         <div class="mb-4">
-            <h1 class="text-2xl font-bold" style="color: #1560bd;">Gestión de Usuarios</h1>
+            <h1 class="text-2xl font-bold mobile-page-title" style="color: #1560bd;">Gestión de Usuarios</h1>
         </div>
 
         <div class="surface-card p-4 border-round-xl shadow-1 mb-4">
-            <div class="flex flex-column md:flex-row justify-content-between gap-3 align-items-center">
-                <div class="flex w-full md:w-8 gap-2">
-                    <div class="relative w-full">
-                        <i class="pi pi-search absolute text-gray-500" style="top: 50%; left: 1rem; transform: translateY(-50%); z-index: 1;"></i>
-                        <InputText v-model="filters['global'].value" placeholder="Buscar usuario..." class="w-full border-gray-300" style="padding-left: 2.5rem;" /> 
-                    </div>
-                    <Button icon="pi pi-times" label="Limpiar" severity="secondary" outlined class="w-auto px-3 flex-shrink-0" @click="clearFilter" />
+            <div class="filters-toolbar">
+                <div class="relative w-full filters-toolbar__search">
+                    <i class="pi pi-search absolute text-gray-500" style="top: 50%; left: 1rem; transform: translateY(-50%); z-index: 1;"></i>
+                    <InputText v-model="filters['global'].value" placeholder="Buscar usuario..." class="w-full border-gray-300" style="padding-left: 2.5rem;" />
                 </div>
-                <div class="flex w-full md:w-auto justify-content-end">
-                    <Button label="Nuevo Usuario" icon="pi pi-user-plus" class="w-auto px-4 font-bold border-none" style="background-color: #1560bd;" @click="openCreateModal" />
+                <div class="filters-toolbar__actions">
+                    <Button icon="pi pi-times" label="Limpiar" severity="secondary" outlined class="w-auto px-3 flex-shrink-0 filters-toolbar__clear" @click="clearFilter" />
+                    <Button label="Nuevo Usuario" icon="pi pi-user-plus" class="w-auto px-4 font-bold border-none filters-toolbar__primary" style="background-color: #1560bd;" @click="openCreateModal" />
                 </div>
             </div>
         </div>
@@ -271,7 +294,13 @@ const clearFilter = () => {
                 <Column header="Unidad / Rol" style="width: 25%" headerClass="bg-primary-custom text-white font-semibold">
                     <template #body="slotProps">
                         <div class="flex flex-column gap-1">
-                            <span class="text-sm font-bold text-gray-700">{{ slotProps.data.unit ? slotProps.data.unit.name : 'Sin Unidad' }}</span>
+                            <span class="text-sm font-bold text-gray-700">
+                                {{
+                                    slotProps.data.units?.length
+                                        ? slotProps.data.units.map(unit => unit.name).join(', ')
+                                        : 'Sin Unidad'
+                                }}
+                            </span>
                             <span class="bg-blue-50 text-blue-600 px-2 py-1 border-round text-xs font-bold w-max">
                                 {{ slotProps.data.role }}
                             </span>
@@ -372,8 +401,46 @@ const clearFilter = () => {
                 </div>
 
                 <div class="col-12 md:col-6 field mb-3">
-                    <label class="font-medium" style="color: #1560bd;">Unidad *</label>
-                    <Dropdown v-model="form.unit_id" :options="unitsList" optionLabel="label" optionValue="value" filter placeholder="Seleccione Unidad" class="w-full bg-gray-50" />
+                    <label class="font-medium" style="color: #1560bd;">Unidades *</label>
+                    <div class="flex gap-2 mt-1 user-units-selector-row">
+                        <Dropdown
+                            v-model="selectedUnitId"
+                            :options="unitsList"
+                            optionLabel="label"
+                            optionValue="value"
+                            filter
+                            placeholder="Seleccione una o más unidades"
+                            class="w-full bg-gray-50 user-units-selector-dropdown"
+                        />
+                        <Button
+                            icon="pi pi-plus"
+                            class="w-3rem flex-shrink-0 border-none user-units-selector-button"
+                            style="background-color: #1560bd;"
+                            @click="addUnitToForm"
+                        />
+                    </div>
+                    <small class="text-gray-500 text-xs block mt-1">
+                        La primera unidad seleccionada se usará como unidad principal del usuario.
+                    </small>
+                    <div v-if="selectedUnits.length > 0" class="flex flex-column gap-2 mt-3">
+                        <div
+                            v-for="(unit, index) in selectedUnits"
+                            :key="unit.value"
+                            class="flex align-items-center justify-content-between p-3 border-1 border-gray-200 border-round bg-white"
+                        >
+                            <div class="flex flex-column">
+                                <span class="text-gray-800 text-sm font-medium">{{ unit.label }}</span>
+                                <small v-if="index === 0" class="text-blue-600 font-semibold">Unidad principal</small>
+                            </div>
+                            <i
+                                class="pi pi-trash text-red-500 cursor-pointer hover:text-red-700"
+                                @click="removeUnitFromForm(unit.value)"
+                            ></i>
+                        </div>
+                    </div>
+                    <div v-else class="text-gray-500 text-sm font-italic p-2 mt-2">
+                        No hay unidades agregadas
+                    </div>
                 </div>
                 <div class="col-12 md:col-6 field mb-3">
                     <label class="font-medium" style="color: #1560bd;">Rol de Usuario *</label>
@@ -432,5 +499,74 @@ const clearFilter = () => {
 /* Estilos solo para la tabla o botones internos */
 :deep(.bg-primary-custom) {
     background-color: #1560bd !important; border: none;
+}
+
+.user-units-selector-row {
+    align-items: flex-start;
+}
+
+:deep(.user-units-selector-dropdown) {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.user-units-selector-button {
+    height: 3rem;
+}
+
+.filters-toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.filters-toolbar__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.filters-toolbar__primary {
+    margin-left: auto;
+}
+
+@media (max-width: 991px) {
+    .filters-toolbar__actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+        width: 100%;
+    }
+
+    .filters-toolbar__clear,
+    .filters-toolbar__primary {
+        width: 100%;
+        margin-left: 0;
+        justify-content: center;
+    }
+
+    .user-units-selector-button {
+        width: 3rem;
+        min-width: 3rem;
+    }
+}
+
+@media (min-width: 992px) {
+    .filters-toolbar {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .filters-toolbar__actions {
+        display: contents;
+    }
+
+    .filters-toolbar__primary {
+        margin-left: 0;
+    }
 }
 </style>
