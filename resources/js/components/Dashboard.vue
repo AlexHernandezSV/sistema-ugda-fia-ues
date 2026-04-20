@@ -32,7 +32,7 @@ const transfers = ref([
         <div class="grid p-fluid animation-duration-500 fadein">
             
             <div class="col-12 mb-2">
-                <h1 class="text-2xl font-bold text-gray-800 m-0">Dashboard</h1>
+                <h1 class="text-2xl font-bold text-gray-800 m-0 mobile-page-title">Dashboard</h1>
                 <span class="text-gray-500 text-sm">Sistema de Gestión Documental - Facultad de Ingeniería y Arquitectura</span>
             </div>
 

@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -18,19 +17,9 @@ class User extends Authenticatable
      * @var list<string>
      */
     protected $fillable = [
-        // Campos de identificación personal
-        'first_name',
-        'second_name',
-        'first_last_name',
-        'second_last_name',
-        'carnet',
-        
-        // Campos de sistema y organización
         'email',
         'password',
-        'role',
-        'unit_id',   // Llave foránea para la unidad
-        'is_active', // Estado del usuario
+        'is_active',
     ];
 
     /**
@@ -53,17 +42,26 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
-            'is_active' => 'boolean', // Convierte 1/0 a true/false automáticamente
+            'is_active' => 'boolean',
         ];
     }
 
-    /**
-     * RELACIONES
-     */
-
-    // Un usuario pertenece a una Unidad
-    public function unit()
+    public function units()
     {
-        return $this->belongsTo(Unit::class);
+        return $this->belongsToMany(Unit::class, 'user_unit')
+            ->wherePivotNull('deleted_at')
+            ->withPivot(['is_active', 'created_at', 'updated_at', 'deleted_at']);
+    }
+
+    public function person()
+    {
+        return $this->hasOne(Person::class);
+    }
+
+    public function profiles()
+    {
+        return $this->belongsToMany(Profile::class, 'user_profile')
+            ->wherePivotNull('deleted_at')
+            ->withPivot(['is_active', 'created_at', 'updated_at', 'deleted_at']);
     }
 }

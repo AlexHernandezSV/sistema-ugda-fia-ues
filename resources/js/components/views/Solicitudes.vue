@@ -93,7 +93,7 @@ const clearFilters = () => {
 
 <template>
     <div class="mb-4">
-        <h1 class="text-2xl font-bold" style="color: #1560bd;">Solicitudes de Transferencia</h1>
+        <h1 class="text-2xl font-bold mobile-page-title" style="color: #1560bd;">Solicitudes de Transferencia</h1>
     </div>
 
     <div class="surface-card p-4 border-round-xl shadow-1 mb-4">

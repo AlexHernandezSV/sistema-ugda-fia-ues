@@ -1,28 +1,31 @@
 <script setup>
-import { ref, reactive, nextTick } from 'vue';
+import { ref, nextTick } from 'vue';
 import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Toast from 'primevue/toast';
 import { useToast } from 'primevue/usetoast';
 import axios from 'axios';
 
 const toast = useToast();
 
-// Estados
-const step = ref(1); // 1: Credenciales, 2: Código 2FA
+const step = ref(1);
 const loading = ref(false);
+const showPassword = ref(false);
 
-// Datos
 const email = ref('');
 const password = ref('');
+const digits = ref(['', '', '', '', '', '']);
+const inputs = ref([]);
 
-// --- CAMBIO PARA 6 CAJITAS ---
-const digits = ref(['', '', '', '', '', '']); // Array para los 6 dígitos
-const inputs = ref([]); // Referencia a los elementos input del DOM
+const focusOtpInput = (index) => {
+    inputs.value[index]?.focus?.();
+};
 
-// --- PASO 1: Enviar Credenciales ---
+const togglePasswordVisibility = () => {
+    showPassword.value = !showPassword.value;
+};
+
 const handleLogin = async () => {
     loading.value = true;
+
     try {
         const response = await axios.post('/login-auth', {
             email: email.value,
@@ -31,14 +34,17 @@ const handleLogin = async () => {
 
         if (response.data.require_2fa) {
             step.value = 2;
-            toast.add({ severity: 'success', summary: 'Código Enviado', detail: 'Revisa tu correo electrónico.', life: 4000 });
+            toast.add({
+                severity: 'success',
+                summary: 'Código enviado',
+                detail: 'Revisa tu correo electrónico para continuar.',
+                life: 4000
+            });
 
-            // Enfocar la primera cajita automáticamente al cambiar de pantalla
             nextTick(() => {
-                if (inputs.value[0]) inputs.value[0].$el.focus();
+                focusOtpInput(0);
             });
         }
-
     } catch (error) {
         handleErrors(error);
     } finally {
@@ -46,35 +52,47 @@ const handleLogin = async () => {
     }
 };
 
-// --- PASO 2: Verificar Código ---
 const handleVerifyCode = async () => {
-    // Unimos los 6 dígitos en un solo string
     const code = digits.value.join('');
 
     if (code.length < 6) {
-        toast.add({ severity: 'warn', summary: 'Incompleto', detail: 'Ingresa los 6 dígitos del código.', life: 3000 });
+        toast.add({
+            severity: 'warn',
+            summary: 'Incompleto',
+            detail: 'Ingresa los 6 dígitos del código.',
+            life: 3000
+        });
         return;
     }
 
     loading.value = true;
+
     try {
         const response = await axios.post('/login-verify', {
             email: email.value,
-            code: code // Enviamos el código unido
+            code
         });
 
-        toast.add({ severity: 'success', summary: 'Acceso Correcto', detail: 'Ingresando al sistema...', life: 2000 });
+        toast.add({
+            severity: 'success',
+            summary: 'Acceso correcto',
+            detail: 'Ingresando al sistema...',
+            life: 2000
+        });
 
         setTimeout(() => {
             window.location.href = response.data.redirect;
         }, 1000);
-
     } catch (error) {
         if (error.response && error.response.status === 401) {
-            toast.add({ severity: 'error', summary: 'Código Inválido', detail: 'El código es incorrecto o expiró.', life: 4000 });
-            // Limpiar código si falla
+            toast.add({
+                severity: 'error',
+                summary: 'Código inválido',
+                detail: 'El código es incorrecto o expiró.',
+                life: 4000
+            });
             digits.value = ['', '', '', '', '', ''];
-            inputs.value[0].$el.focus();
+            focusOtpInput(0);
         } else {
             handleErrors(error);
         }
@@ -83,53 +101,77 @@ const handleVerifyCode = async () => {
     }
 };
 
-// --- LÓGICA DE AUTO-FOCUS (AVANZAR Y RETROCEDER) ---
 const handleInput = (event, index) => {
-    const value = event.target.value;
+    const value = event.target.value.replace(/\D/g, '').slice(0, 1);
+    digits.value[index] = value;
 
-    // Si escribió un número y no es la última casilla, avanza
     if (value && index < 5) {
-        inputs.value[index + 1].$el.focus();
+        focusOtpInput(index + 1);
     }
-    // Si ya completó los 6, intentamos enviar automáticamente (opcional)
+
     if (index === 5 && value) {
         handleVerifyCode();
     }
 };
 
 const handleKeyDown = (event, index) => {
-    // Si presiona Backspace y la casilla está vacía, retrocede
     if (event.key === 'Backspace' && !digits.value[index] && index > 0) {
-        inputs.value[index - 1].$el.focus();
+        focusOtpInput(index - 1);
     }
 };
 
 const handlePaste = (event) => {
     const pasteData = event.clipboardData.getData('text');
-    // Si pegan un código de 6 números (ej: 123456)
+
     if (/^\d{6}$/.test(pasteData)) {
-        digits.value = pasteData.split(''); // Llenar array
+        digits.value = pasteData.split('');
         nextTick(() => {
-            handleVerifyCode(); // Enviar directo
+            handleVerifyCode();
         });
-        event.preventDefault(); // Evitar comportamiento default
+        event.preventDefault();
     }
 };
 
-// Manejo genérico de errores
 const handleErrors = (error) => {
     if (error.response) {
         if (error.response.status === 422) {
             const errors = error.response.data.errors;
-            Object.keys(errors).forEach(key => {
-                toast.add({ severity: 'warn', summary: 'Atención', detail: errors[key][0], life: 4000 });
+            Object.keys(errors).forEach((key) => {
+                toast.add({
+                    severity: 'warn',
+                    summary: 'Atencion',
+                    detail: errors[key][0],
+                    life: 4000
+                });
             });
-        } else if (error.response.status === 401) {
-            toast.add({ severity: 'error', summary: 'Error de Acceso', detail: error.response.data.message, life: 4000 });
-        } else {
-            toast.add({ severity: 'error', summary: 'Error', detail: 'Ocurrió un error inesperado.', life: 4000 });
+            return;
         }
+
+        if (error.response.status === 401) {
+            toast.add({
+                severity: 'error',
+                summary: 'Error de acceso',
+                detail: error.response.data.message,
+                life: 4000
+            });
+            return;
+        }
+
+        toast.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: error.response.data.message || 'Ocurrio un error inesperado.',
+            life: 4000
+        });
+        return;
     }
+
+    toast.add({
+        severity: 'error',
+        summary: 'Error',
+        detail: 'No fue posible completar la solicitud.',
+        life: 4000
+    });
 };
 
 const goBack = () => {
@@ -139,206 +181,203 @@ const goBack = () => {
 </script>
 
 <template>
+    <div class="login-shell font-custom">
+        <div class="login-shell__orb login-shell__orb--top"></div>
+        <div class="login-shell__orb login-shell__orb--bottom"></div>
 
-    <div class="min-h-screen md:h-screen w-screen flex flex-column font-custom overflow-y-auto md:overflow-hidden relative"
-        style="background-color: #f0f6ff;">
+        <header class="login-header">
+            <div class="login-header__content">
+                <div class="login-brand">
+                    <div class="login-brand__icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M5 21h14" />
+                            <path d="M7 21V6l5-3 5 3v15" />
+                            <path d="M9.5 9.5h1" />
+                            <path d="M9.5 13h1" />
+                            <path d="M9.5 16.5h1" />
+                            <path d="M13.5 9.5h1" />
+                            <path d="M13.5 13h1" />
+                            <path d="M13.5 16.5h1" />
+                        </svg>
+                    </div>
 
-        <div class="fixed top-0 right-0 border-circle opacity-60 z-0"
-            style="width: 40vw; height: 40vw; background: #dbeafe; transform: translate(20%, -30%); pointer-events: none;">
-        </div>
-        <div class="fixed bottom-0 left-0 border-circle opacity-60 z-0"
-            style="width: 35vw; height: 35vw; background: #dbeafe; transform: translate(-20%, 30%); pointer-events: none;">
-        </div>
-
-        <div class="bg-blue-800 text-white px-4 py-3 flex align-items-center justify-content-between shadow-2 relative z-5 flex-shrink-0"
-            style="height: 70px;">
-            <div class="flex align-items-center gap-2">
-                <div
-                    class="bg-white text-blue-800 border-circle w-2rem h-2rem flex align-items-center justify-content-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M3 21h18" />
-                        <path d="M5 21V7l8-4 8 4v14" />
-                        <path d="M8 9v2" />
-                        <path d="M8 13v2" />
-                        <path d="M8 17v2" />
-                        <path d="M16 9v2" />
-                        <path d="M16 13v2" />
-                        <path d="M16 17v2" />
-                    </svg>
-                </div>
-                <div class="line-height-1">
-                    <div class="text-sm font-bold">Sistema de Gestión Documental</div>
-                    <div class="text-xs opacity-90">Universidad de El Salvador</div>
-                </div>
-            </div>
-            <Button label="Ayuda"
-                class="p-button-text text-white p-button-sm hover:surface-white hover:text-blue-800 font-bold" />
-        </div>
-
-        <div
-            class="flex flex-column md:flex-row flex-grow-1 relative z-1 align-items-center justify-content-center w-full">
-            <div class="grid w-full max-w-7xl mx-auto flex flex-column md:flex-row align-items-center m-0 h-full">
-
-                <div class="col-12 md:col-7 flex flex-column justify-content-center p-4">
-                    <div class="flex flex-column w-full mx-auto" style="max-width: 40rem;">
-                        <div class="mb-3">
-                            <div
-                                class="inline-block bg-blue-700 text-white border-round-3xl px-3 py-1 font-bold mb-3 text-sm shadow-2">
-                                UGDA - Unidad de Gestión Documental y Archivos</div>
-                            <h1 class="text-blue-900 text-4xl md:text-5xl font-bold mb-2 mt-0 line-height-2">Centro de
-                                Gestión de <br> Transferencias Documentales</h1>
-                            <p class="text-700 text-base line-height-3 m-0 text-justify font-medium">Gestiona y
-                                resguarda la documentación institucional, garantizando acceso oportuno, control
-                                archivístico y preservación de la memoria histórica de la Facultad de Ingeniería y
-                                Arquitectura.</p>
-                        </div>
-                        <div class="mb-4 shadow-4 border-round-2xl overflow-hidden bg-white w-full h-14rem md:h-18rem">
-                            <img src="/images/gestion-documental.jpg" alt="Portada UGDA" class="block w-full h-full"
-                                style="object-fit: cover; object-position: center;"
-                                onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-                            <div
-                                class="w-full h-full bg-gray-200 flex align-items-center justify-content-center text-gray-600 font-bold hidden">
-                                Imagen no encontrada</div>
-                        </div>
-                        <div class="grid w-full m-0 align-items-stretch">
-                            <div class="col-12 md:col-4 pl-0 pr-1 pb-2 md:pb-0">
-                                <div
-                                    class="bg-white p-2 shadow-2 border-round-xl h-full flex flex-column align-items-start">
-                                    <div
-                                        class="bg-blue-50 text-blue-600 border-circle w-2rem h-2rem flex align-items-center justify-content-center mb-2">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"
-                                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                            stroke-linecap="round" stroke-linejoin="round">
-                                            <circle cx="12" cy="12" r="10" />
-                                            <polyline points="12 6 12 12 16 14" />
-                                        </svg></div>
-                                    <div class="font-bold text-blue-900 mb-1 text-sm">Ahorro de Tiempo</div>
-                                    <p class="text-600 text-xs m-0 line-height-3">Localiza, comparte y almacena
-                                        documentos de forma ágil y eficiente.</p>
-                                </div>
-                            </div>
-                            <div class="col-12 md:col-4 px-1 pb-2 md:pb-0">
-                                <div
-                                    class="bg-white p-2 shadow-2 border-round-xl h-full flex flex-column align-items-start">
-                                    <div
-                                        class="bg-orange-50 text-orange-600 border-circle w-2rem h-2rem flex align-items-center justify-content-center mb-2">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"
-                                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                            stroke-linecap="round" stroke-linejoin="round">
-                                            <path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z" />
-                                            <path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" />
-                                            <path d="M12 2v2" />
-                                            <path d="M12 22v-2" />
-                                            <path d="m17 20.66-1-1.73" />
-                                            <path d="M11 10.27 7 3.34" />
-                                        </svg></div>
-                                    <div class="font-bold text-blue-900 mb-1 text-sm">Eficiencia</div>
-                                    <p class="text-600 text-xs m-0 line-height-3">Facilita el acceso a información y
-                                        estandariza procedimientos institucionales.</p>
-                                </div>
-                            </div>
-                            <div class="col-12 md:col-4 px-1 pb-2 md:pb-0">
-                                <div
-                                    class="bg-white p-2 shadow-2 border-round-xl h-full flex flex-column align-items-start">
-                                    <div
-                                        class="bg-green-50 text-green-600 border-circle w-2rem h-2rem flex align-items-center justify-content-center mb-2">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"
-                                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                            stroke-linecap="round" stroke-linejoin="round">
-                                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                                        </svg></div>
-                                    <div class="font-bold text-blue-900 mb-1 text-sm">Seguridad</div>
-                                    <p class="text-600 text-xs m-0 line-height-3">Control y resguardo total,
-                                        garantizando el control archivístico y estandarización de procesos.</p>
-                                </div>
-                            </div>
-                        </div>
+                    <div class="login-brand__text">
+                        <span class="login-brand__title">Sistema de Gestión Documental</span>
+                        <span class="login-brand__subtitle">Universidad de El Salvador</span>
                     </div>
                 </div>
 
-                <div class="col-12 md:col-5 flex flex-column justify-content-center align-items-center p-4">
-                    <div class="bg-white shadow-6 border-round-2xl p-5 w-full max-w-26rem relative overflow-hidden">
+                <button type="button" class="login-help-button">Ayuda</button>
+            </div>
+        </header>
 
-                        <div v-if="step === 1" class="fadein animation-duration-500">
-                            <div class="text-center mb-4">
-                                <div class="mb-3 flex justify-content-center">
-                                    <img src="/images/Logo-UES-Blue.png" alt="Icono Login" class="w-6rem h-6rem block"
-                                        onerror="this.style.display='none'" />
-                                </div>
-                                <h2 class="text-blue-800 font-bold mb-2 text-2xl">Iniciar Sesión</h2>
-                                <p class="text-500 text-sm m-0">Ingresa tus credenciales para acceder</p>
-                            </div>
+        <main class="login-main">
+            <section class="login-hero">
+                <div class="login-pill">UGDA - Unidad de Gestión Documental y Archivos</div>
 
-                            <div class="mb-3">
-                                <label class="block text-900 font-bold mb-2 text-sm">Correo Electrónico</label>
-                                <InputText v-model="email" placeholder="usuario@ues.edu.sv"
-                                    class="w-full bg-gray-50 border-gray-300 text-900" />
-                            </div>
+                <h1 class="login-hero__title">
+                    Centro de Gestión de
+                    <br />
+                    Transferencias Documentales
+                </h1>
 
-                            <div class="mb-4">
-                                <label class="block text-900 font-bold mb-2 text-sm">Contraseña</label>
-                                <InputText v-model="password" type="password" placeholder="••••••••"
-                                    class="w-full bg-gray-50 border-gray-300 text-900" @keyup.enter="handleLogin" />
-                            </div>
+                <p class="login-hero__description">
+                    Gestiona y resguarda la documentación institucional, garantizando acceso oportuno,
+                    control archivístico y preservación de la memoria histórica de la Facultad de
+                    Ingeniería y Arquitectura.
+                </p>
 
-                            <Button label="Continuar"
-                                class="w-full border-round-md bg-blue-700 border-blue-700 hover:bg-blue-800 font-bold shadow-3 mb-4 py-3"
-                                :loading="loading" @click="handleLogin"></Button>
+                <div class="login-hero__image-card">
+                    <img src="/images/gestion-documental.jpg" alt="Gestión documental" class="login-hero__image"
+                        onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+                    <div class="login-hero__image-fallback">Imagen no encontrada</div>
+                </div>
 
-                            <div class="text-center">
-                                <a href="#" class="text-blue-600 text-sm no-underline hover:underline font-bold">Olvidé
-                                    mi contraseña</a>
+                <div class="login-feature-grid">
+                    <article class="login-feature-card">
+                        <div class="login-feature-card__icon login-feature-card__icon--blue">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="21" height="21" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10" />
+                                <polyline points="12 6 12 12 16 14" />
+                            </svg>
+                        </div>
+                        <h3 class="login-feature-card__title">Reducción de costos y tiempo</h3>
+                        <p class="login-feature-card__description">
+                            Localiza, comparte y almacena documentos de forma ágil y eficiente.
+                        </p>
+                    </article>
+
+                    <article class="login-feature-card">
+                        <div class="login-feature-card__icon login-feature-card__icon--orange">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="21" height="21" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="3" />
+                                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.08a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.08a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.08a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                            </svg>
+                        </div>
+                        <h3 class="login-feature-card__title">Mejora en los procesos</h3>
+                        <p class="login-feature-card__description">
+                            Facilita el acceso a información y estandariza procedimientos institucionales.
+                        </p>
+                    </article>
+
+                    <article class="login-feature-card">
+                        <div class="login-feature-card__icon login-feature-card__icon--green">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="21" height="21" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                <path d="m9 12 2 2 4-4" />
+                            </svg>
+                        </div>
+                        <h3 class="login-feature-card__title">Reducción del riesgo profesional</h3>
+                        <p class="login-feature-card__description">
+                            Garantiza control archivístico y estandarización de procesos.
+                        </p>
+                    </article>
+                </div>
+            </section>
+
+            <section class="login-auth">
+                <div class="login-auth__card">
+                    <div v-if="step === 1" class="login-step">
+                        <div class="login-step__brand">
+                            <img src="/images/Logo-UES-Blue.png" alt="Universidad de El Salvador"
+                                class="login-step__logo" onerror="this.style.display='none'" />
+                            <h2 class="login-step__title">Iniciar Sesión</h2>
+                            <p class="login-step__subtitle">Ingresa tus credenciales para acceder</p>
+                        </div>
+
+                        <div class="login-field">
+                            <label class="login-field__label">Correo Electrónico</label>
+                            <div class="login-field__shell">
+                                <i class="pi pi-envelope login-field__icon"></i>
+                                <input v-model="email" type="email" autocomplete="email"
+                                    placeholder="usuario@ues.edu.sv" class="login-field__input"
+                                    @keyup.enter="handleLogin" />
                             </div>
                         </div>
 
-                        <div v-if="step === 2" class="fadein animation-duration-500">
-                            <div class="text-center mb-4">
-                                <div class="mb-3 flex justify-content-center">
-                                    <div
-                                        class="w-6rem h-6rem bg-blue-50 border-circle flex align-items-center justify-content-center text-blue-600">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"
-                                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                            stroke-linecap="round" stroke-linejoin="round">
-                                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                                            <path d="m9 12 2 2 4-4" />
-                                        </svg>
-                                    </div>
-                                </div>
-                                <h2 class="text-blue-800 font-bold mb-2 text-2xl">Verificación</h2>
-                                <p class="text-500 text-sm m-0">Ingresa el código enviado a:</p>
-                                <p class="text-blue-700 font-bold text-sm mt-1">{{ email }}</p>
-                            </div>
-
-                            <div class="flex gap-2 justify-content-center mb-5">
-                                <InputText v-for="(digit, index) in 6" :key="index" :ref="el => inputs[index] = el"
-                                    v-model="digits[index]" maxlength="1"
-                                    class="w-3rem h-3rem text-center text-2xl font-bold p-0 border-round-md border-gray-300 focus:border-blue-600 focus:text-blue-700"
-                                    @input="handleInput($event, index)" @keydown="handleKeyDown($event, index)"
-                                    @paste="handlePaste" />
-                            </div>
-
-                            <Button label="Verificar Acceso"
-                                class="w-full border-round-md bg-green-600 border-green-600 hover:bg-green-700 font-bold shadow-3 mb-3 py-3"
-                                :loading="loading" @click="handleVerifyCode"></Button>
-
-                            <div class="text-center">
-                                <Button label="Volver / Cambiar correo"
-                                    class="p-button-text p-button-sm text-gray-500 text-xs" @click="goBack" />
+                        <div class="login-field">
+                            <label class="login-field__label">Contraseña</label>
+                            <div class="login-field__shell">
+                                <i class="pi pi-lock login-field__icon"></i>
+                                <input v-model="password"
+                                    :type="showPassword && password.length > 0 ? 'text' : 'password'"
+                                    autocomplete="current-password"
+                                    placeholder="*******" class="login-field__input login-password-input"
+                                    @keyup.enter="handleLogin" />
+                                <button v-if="password.length > 0" type="button" class="login-password-toggle"
+                                    :aria-label="showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+                                    @mousedown.prevent="togglePasswordVisibility">
+                                    <i :class="showPassword ? 'pi pi-eye-slash' : 'pi pi-eye'"></i>
+                                </button>
                             </div>
                         </div>
-                        <div class="mt-4 text-center text-xs text-500 line-height-3 mb-4 md:mb-0">
-                            © 2025 Universidad de El Salvador<br>Facultad de Ingeniería y Arquitectura
+
+                        <Button label="Iniciar Sesión" icon="pi pi-sign-in"
+                            class="login-primary-button w-full justify-content-center"
+                            :loading="loading" @click="handleLogin" />
+
+                        <div class="login-step__footer">
+                            © 2025 Universidad de El Salvador
+                            <br />
+                            Facultad de Ingeniería y Arquitectura - Todos los derechos reservados
+                        </div>
+                    </div>
+
+                    <div v-else class="login-step">
+                        <div class="login-step__brand">
+                            <img src="/images/Logo-UES-Blue.png" alt="Universidad de El Salvador"
+                                class="login-step__logo" onerror="this.style.display='none'" />
+                            <h2 class="login-step__title">Verificación de acceso</h2>
+                            <p class="login-step__subtitle">
+                                Ingresa el código enviado a
+                                <br />
+                                <strong>{{ email }}</strong>
+                            </p>
+                        </div>
+
+                        <div class="login-code-grid">
+                            <input v-for="(_, index) in 6" :key="index" :ref="(el) => inputs[index] = el"
+                                v-model="digits[index]" maxlength="1" inputmode="numeric" class="login-code-input"
+                                @input="handleInput($event, index)" @keydown="handleKeyDown($event, index)"
+                                @paste="handlePaste" />
+                        </div>
+
+                        <Button class="login-primary-button w-full justify-content-center"
+                            :loading="loading" @click="handleVerifyCode">
+                            <span class="login-primary-button__content">
+                                <svg class="login-primary-button__icon-svg" xmlns="http://www.w3.org/2000/svg"
+                                    width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"
+                                    aria-hidden="true">
+                                    <path d="M20 6 9 17l-5-5" />
+                                </svg>
+                                <span>Verificar acceso</span>
+                            </span>
+                        </Button>
+
+                        <Button label="Volver" class="login-secondary-button w-full justify-content-center"
+                            severity="secondary" outlined @click="goBack" />
+
+                        <div class="login-step__footer">
+                            © 2025 Universidad de El Salvador
+                            <br />
+                            Facultad de Ingeniería y Arquitectura - Todos los derechos reservados
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
+            </section>
+        </main>
     </div>
 </template>
 
-<style>
-/* SOLO ESTILOS LOCALES */
+<style scoped>
 .font-custom,
 .font-custom * {
     font-family: 'Instrument Sans', sans-serif !important;
@@ -346,19 +385,572 @@ const goBack = () => {
     -moz-osx-font-smoothing: grayscale;
 }
 
-.p-inputtext {
-    border-radius: 6px !important;
+.font-custom .pi,
+.font-custom i.pi,
+.font-custom span.pi {
+    font-family: 'primeicons' !important;
+    font-style: normal;
+    font-weight: normal;
+    font-variant: normal;
+    text-transform: none;
+    line-height: 1;
+    display: inline-block;
+    -webkit-font-smoothing: antialiased;
 }
 
-.grid {
-    margin-right: -0.5rem;
-    margin-left: -0.5rem;
-    margin-top: -0.5rem;
-    margin-bottom: -0.5rem;
+.login-shell {
+    position: relative;
+    min-height: 100vh;
+    overflow: hidden;
+    background: linear-gradient(180deg, #f5f9ff 0%, #edf5ff 100%);
 }
 
-/* Estilo específico para las cajitas de otp */
-.p-inputtext.text-center {
-    padding: 0 !important;
+.login-shell__orb {
+    position: fixed;
+    border-radius: 999px;
+    pointer-events: none;
+    opacity: 0.8;
+    z-index: 0;
+}
+
+.login-shell__orb--top {
+    top: 76px;
+    right: -140px;
+    width: 560px;
+    height: 560px;
+    background: radial-gradient(circle, rgba(204, 226, 255, 0.9) 0%, rgba(204, 226, 255, 0.25) 60%, rgba(204, 226, 255, 0) 100%);
+}
+
+.login-shell__orb--bottom {
+    left: -220px;
+    bottom: -220px;
+    width: 620px;
+    height: 620px;
+    background: radial-gradient(circle, rgba(214, 229, 251, 0.7) 0%, rgba(214, 229, 251, 0.2) 60%, rgba(214, 229, 251, 0) 100%);
+}
+
+.login-header {
+    position: relative;
+    z-index: 2;
+    background: #296cba;
+    box-shadow: 0 2px 16px rgba(17, 59, 115, 0.18);
+}
+
+.login-header__content {
+    max-width: 1320px;
+    margin: 0 auto;
+    min-height: 78px;
+    padding: 0 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.login-brand {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.login-brand__icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 999px;
+    background: #ffffff;
+    color: #296cba;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 6px 12px rgba(18, 54, 104, 0.18);
+}
+
+.login-brand__text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.login-brand__title {
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 800;
+    line-height: 1.2;
+}
+
+.login-brand__subtitle {
+    color: rgba(255, 255, 255, 0.95);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.2;
+}
+
+.login-help-button {
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 9px 18px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.login-help-button:hover {
+    background: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.32);
+}
+
+.login-main {
+    position: relative;
+    z-index: 1;
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 58px 24px 34px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 416px;
+    gap: 72px;
+    align-items: start;
+}
+
+.login-hero {
+    max-width: 700px;
+}
+
+.login-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    padding: 8px 16px;
+    border-radius: 999px;
+    background: #276cbc;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 600;
+    box-shadow: 0 8px 16px rgba(39, 108, 188, 0.22);
+}
+
+.login-hero__title {
+    margin: 30px 0 18px;
+    color: #2f6fae;
+    font-size: clamp(28px, 4.5vw, 48px);
+    font-weight: 800;
+    line-height: 1.16;
+    letter-spacing: -0.03em;
+}
+
+.login-hero__description {
+    max-width: 760px;
+    margin: 0 0 30px;
+    color: #516f95;
+    font-size: 17px;
+    font-weight: 400;
+    line-height: 1.75;
+}
+
+.login-hero__image-card {
+    width: 100%;
+    max-width: 610px;
+    min-height: 256px;
+    margin-bottom: 32px;
+    border-radius: 20px;
+    overflow: hidden;
+    background: #ffffff;
+    box-shadow: 0 18px 40px rgba(61, 96, 145, 0.18);
+}
+
+.login-hero__image {
+    width: 100%;
+    height: 100%;
+    min-height: 256px;
+    object-fit: cover;
+    display: block;
+}
+
+.login-hero__image-fallback {
+    display: none;
+    min-height: 256px;
+    align-items: center;
+    justify-content: center;
+    background: #dfe8f6;
+    color: #52719a;
+    font-weight: 700;
+}
+
+.login-feature-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    max-width: 610px;
+}
+
+.login-feature-card {
+    min-height: 190px;
+    padding: 16px 16px 18px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(170, 197, 232, 0.52);
+    box-shadow: 0 14px 30px rgba(66, 93, 137, 0.12);
+}
+
+.login-feature-card__icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 14px;
+}
+
+.login-feature-card__icon--blue {
+    background: #eaf3ff;
+    color: #2a6db8;
+}
+
+.login-feature-card__icon--orange {
+    background: #fff4e7;
+    color: #e39a2d;
+}
+
+.login-feature-card__icon--green {
+    background: #edf9ef;
+    color: #5aa86c;
+}
+
+.login-feature-card__title {
+    margin: 0 0 8px;
+    color: #2e6fad;
+    font-size: 15px;
+    font-weight: 800;
+    line-height: 1.45;
+}
+
+.login-feature-card__description {
+    margin: 0;
+    color: #607a9c;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.55;
+}
+
+.login-auth {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 42px;
+}
+
+.login-auth__card {
+    width: 100%;
+    max-width: 416px;
+    padding: 34px 32px 28px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.97);
+    border: 1px solid rgba(204, 220, 239, 0.65);
+    box-shadow: 0 20px 40px rgba(48, 74, 111, 0.16);
+}
+
+.login-step {
+    display: flex;
+    flex-direction: column;
+}
+
+.login-step__brand {
+    text-align: center;
+    margin-bottom: 28px;
+}
+
+.login-step__logo {
+    width: 104px;
+    height: 136px;
+    object-fit: contain;
+    display: block;
+    margin: 0 auto 12px;
+}
+
+.login-step__title {
+    margin: 0 0 8px;
+    color: #2d6fb0;
+    font-size: 24px;
+    font-weight: 800;
+    line-height: 1.2;
+}
+
+.login-step__subtitle {
+    margin: 0;
+    color: #647fa0;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.5;
+}
+
+.login-field {
+    margin-bottom: 22px;
+}
+
+.login-field__label {
+    display: block;
+    margin-bottom: 10px;
+    color: #2e6fad;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.login-field__shell {
+    display: flex;
+    align-items: center;
+    min-height: 52px;
+    border: 1px solid #cfd8e6;
+    border-radius: 12px;
+    background: #ffffff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.login-field__shell:focus-within {
+    border-color: #2c6fbf;
+    box-shadow: 0 0 0 3px rgba(44, 111, 191, 0.12);
+}
+
+.login-field__icon,
+.login-field__trail {
+    color: #7a8fa9;
+    font-size: 18px;
+}
+
+.login-field__icon {
+    margin-left: 16px;
+    margin-right: 12px;
+}
+
+.login-field__trail {
+    margin-right: 16px;
+    margin-left: 12px;
+}
+
+.login-field__input {
+    width: 100%;
+    min-width: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: #506b8c;
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.login-field__input::placeholder {
+    color: #9aaabc;
+}
+
+.login-password-input {
+    padding-right: 8px;
+}
+
+.login-password-input::-ms-reveal {
+    display: none;
+}
+
+.login-password-input::-ms-clear {
+    display: none;
+}
+
+.login-password-toggle {
+    margin-left: 10px;
+    margin-right: 22px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: #202b37;
+    font-size: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: color 0.2s ease;
+}
+
+.login-password-toggle:hover {
+    color: #2c6fbf;
+}
+
+.login-primary-button {
+    min-height: 52px;
+    margin-top: 4px;
+    border: none !important;
+    border-radius: 12px !important;
+    background: linear-gradient(180deg, #3879b6 0%, #2f6fad 100%) !important;
+    box-shadow: 0 10px 20px rgba(35, 94, 150, 0.25) !important;
+    font-size: 15px !important;
+    font-weight: 800 !important;
+}
+
+.login-primary-button:hover {
+    background: linear-gradient(180deg, #2f6fad 0%, #285f98 100%) !important;
+}
+
+.login-primary-button__content {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.login-primary-button__icon-svg {
+    flex-shrink: 0;
+}
+
+:deep(.login-primary-button .p-button-icon) {
+    font-size: 1rem;
+}
+
+:deep(.login-primary-button .p-button-icon.pi-sign-in) {
+    font-family: 'primeicons' !important;
+}
+
+:deep(.login-primary-button .p-button-icon.pi-sign-in)::before {
+    font-family: 'primeicons' !important;
+    content: "\e91b";
+}
+
+.login-secondary-button {
+    min-height: 50px;
+    margin-top: 12px;
+    border-radius: 12px !important;
+    border-color: #cfd8e6 !important;
+    color: #57759a !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+}
+
+.login-code-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.login-code-input {
+    width: 100%;
+    height: 56px;
+    border: 1px solid #cfd8e6;
+    border-radius: 12px;
+    background: #ffffff;
+    color: #2d6fb0;
+    font-size: 24px;
+    font-weight: 800;
+    text-align: center;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.login-code-input:focus {
+    border-color: #2c6fbf;
+    box-shadow: 0 0 0 3px rgba(44, 111, 191, 0.12);
+}
+
+.login-step__footer {
+    margin-top: 24px;
+    color: #6b819f;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.7;
+    text-align: center;
+}
+
+@media (max-width: 1200px) {
+    .login-main {
+        gap: 40px;
+        grid-template-columns: minmax(0, 1fr) 392px;
+    }
+
+    .login-hero__title {
+        font-size: 32px;
+    }
+}
+
+@media (max-width: 991px) {
+    .login-main {
+        padding-top: 38px;
+        grid-template-columns: 1fr;
+        gap: 28px;
+        justify-items: center;
+    }
+
+    .login-auth {
+        justify-content: center;
+        padding-top: 0;
+    }
+
+    .login-hero {
+        max-width: 610px;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        text-align: left;
+    }
+
+    .login-feature-grid {
+        max-width: 610px;
+        width: 100%;
+    }
+
+    .login-hero__description {
+        max-width: 610px;
+    }
+}
+
+@media (max-width: 767px) {
+    .login-header__content {
+        min-height: 74px;
+        padding: 0 16px;
+    }
+
+    .login-brand__title {
+        font-size: 13px;
+    }
+
+    .login-brand__subtitle {
+        font-size: 10px;
+    }
+
+    .login-help-button {
+        padding: 8px 14px;
+        font-size: 13px;
+    }
+
+    .login-main {
+        padding: 24px 16px 28px;
+    }
+
+    .login-hero__title {
+        margin-top: 24px;
+        font-size: 28px;
+    }
+
+    .login-hero__description {
+        font-size: 15px;
+        line-height: 1.65;
+    }
+
+    .login-feature-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .login-auth__card {
+        max-width: 100%;
+        padding: 28px 20px 24px;
+    }
+
+    .login-code-grid {
+        gap: 8px;
+    }
+
+    .login-code-input {
+        height: 50px;
+        font-size: 21px;
+    }
 }
 </style>

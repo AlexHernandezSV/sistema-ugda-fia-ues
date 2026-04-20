@@ -176,34 +176,31 @@ const clearFilter = () => {
         <Toast />
 
         <div class="mb-4">
-            <h1 class="text-2xl font-bold" style="color: #1560bd;">Listado de unidades académicas y administrativas</h1>
+            <h1 class="text-2xl font-bold mobile-page-title" style="color: #1560bd;">Listado de unidades académicas y administrativas</h1>
         </div>
 
         <div class="surface-card p-4 border-round-xl shadow-1 mb-4">
-            <div class="flex flex-column md:flex-row justify-content-between gap-3 align-items-center">
-                
-                <div class="flex w-full md:w-8 gap-2">
-                    <div class="relative w-full">
-                        <i class="pi pi-search absolute text-gray-500" 
-                           style="top: 50%; left: 1rem; transform: translateY(-50%); z-index: 1;"></i>
-                        
-                        <InputText v-model="filters['global'].value" 
-                                   placeholder="Buscar..." 
-                                   class="w-full border-gray-300"
-                                   style="padding-left: 2.5rem;" /> 
-                    </div>
+            <div class="filters-toolbar">
+                <div class="relative w-full filters-toolbar__search">
+                    <i class="pi pi-search absolute text-gray-500" 
+                       style="top: 50%; left: 1rem; transform: translateY(-50%); z-index: 1;"></i>
+                    
+                    <InputText v-model="filters['global'].value" 
+                               placeholder="Buscar..." 
+                               class="w-full border-gray-300"
+                               style="padding-left: 2.5rem;" /> 
+                </div>
 
+                <div class="filters-toolbar__actions">
                     <Button icon="pi pi-times" 
                             label="Limpiar"
                             severity="secondary" 
                             outlined 
-                            class="w-auto px-3 flex-shrink-0" 
+                            class="w-auto px-3 flex-shrink-0 filters-toolbar__clear" 
                             @click="clearFilter" />
-                </div>
 
-                <div class="flex w-full md:w-auto justify-content-end">
                     <Button label="Agregar" icon="pi pi-plus" 
-                            class="w-auto px-4 font-bold border-none"
+                            class="w-auto px-4 font-bold border-none filters-toolbar__primary"
                             style="background-color: #1560bd;" 
                             @click="openCreateModal" />
                 </div>
@@ -372,5 +369,56 @@ const clearFilter = () => {
 .p-error {
     color: #e24c4c;
     font-size: 0.875rem;
+}
+
+.filters-toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.filters-toolbar__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.filters-toolbar__primary {
+    margin-left: auto;
+}
+
+@media (max-width: 991px) {
+    .filters-toolbar__actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+        width: 100%;
+    }
+
+    .filters-toolbar__clear,
+    .filters-toolbar__primary {
+        width: 100%;
+        margin-left: 0;
+        justify-content: center;
+    }
+}
+
+@media (min-width: 992px) {
+    .filters-toolbar {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .filters-toolbar__actions {
+        display: contents;
+    }
+
+    .filters-toolbar__primary {
+        margin-left: 0;
+    }
 }
 </style>

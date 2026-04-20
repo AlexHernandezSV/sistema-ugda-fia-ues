@@ -27,6 +27,7 @@ const routes = [
     { 
         path: '/dashboard', 
         name: 'dashboard',
+        meta: { title: 'Dashboard' },
         component: Dashboard 
     },
 
@@ -34,6 +35,7 @@ const routes = [
     { 
         path: '/unidades', 
         name: 'unidades', 
+        meta: { title: 'Listado de Unidades' },
         component: Unidades 
     },
 
@@ -41,6 +43,7 @@ const routes = [
     { 
         path: '/usuarios', 
         name: 'usuarios', 
+        meta: { title: 'Gestion de Usuarios' },
         component: Usuarios 
     },
 
@@ -50,11 +53,15 @@ const routes = [
         redirect: '/login' 
     },
     // ... dentro del array de routes ...
-    { path: '/solicitudes', 
+    { path: '/solicitudes',
+        name: 'solicitudes',
+        meta: { title: 'Solicitudes de Transferencia' },
         component: Solicitudes 
     },
 
-    { path: '/solicitudes/crear', 
+    { path: '/solicitudes/crear',
+        name: 'solicitudes-crear',
+        meta: { title: 'Nueva Transferencia Documental' },
         component: NuevaSolicitud 
     },
 
