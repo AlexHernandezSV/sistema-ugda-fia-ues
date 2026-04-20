@@ -37,6 +37,8 @@ class NormalizedAuthAndUserManagementTest extends TestCase
         $this->assertSame('Administrador', $admin->person?->first_name);
         $this->assertSame('UGDA', $admin->person?->first_last_name);
         $this->assertSame('Administrador', $admin->profiles->first()?->name);
+        $this->assertDatabaseHas('users', ['email' => 'unidad.solicitante@yopmail.com']);
+        $this->assertDatabaseHas('users', ['email' => 'director.unidad@yopmail.com']);
     }
 
     public function test_login_auth_sends_two_factor_code_for_normalized_user(): void
@@ -104,6 +106,9 @@ class NormalizedAuthAndUserManagementTest extends TestCase
                     'name' => 'Decanato FIA',
                 ],
             ]);
+
+        $this->assertContains('endpoint.api.user.read', $response->json('permissions', []));
+        $this->assertContains('endpoint.api.users.read', $response->json('permissions', []));
     }
 
     public function test_store_user_creates_person_and_profile_without_breaking_payload_shape(): void
@@ -125,7 +130,7 @@ class NormalizedAuthAndUserManagementTest extends TestCase
             'carnet' => 'AR2026',
             'email' => 'bryan.aguilar@ues.edu.sv',
             'unit_ids' => [$unit->id],
-            'role' => 'Docente',
+            'role' => 'Unidad Solicitante',
         ]);
 
         $response->assertOk()
@@ -134,7 +139,7 @@ class NormalizedAuthAndUserManagementTest extends TestCase
                 'email' => 'bryan.aguilar@ues.edu.sv',
                 'first_name' => 'Bryan',
                 'first_last_name' => 'Aguilar',
-                'role' => 'Docente',
+                'role' => 'Unidad Solicitante',
             ]);
 
         $user = User::where('email', 'bryan.aguilar@ues.edu.sv')->firstOrFail();
@@ -153,7 +158,7 @@ class NormalizedAuthAndUserManagementTest extends TestCase
             'deleted_at' => null,
         ]);
 
-        $profileId = Profile::where('name', 'Docente')->value('id');
+        $profileId = Profile::where('name', 'Unidad Solicitante')->value('id');
 
         $this->assertDatabaseHas('user_profile', [
             'user_id' => $user->id,
@@ -184,7 +189,7 @@ class NormalizedAuthAndUserManagementTest extends TestCase
             'first_name' => 'María',
             'first_last_name' => 'López',
             'carnet' => 'ML1001',
-        ], 'Estudiante');
+        ], 'Unidad Solicitante');
         $this->syncUnits($user, [$unitA->id]);
 
         $response = $this->actingAs($admin)->putJson("/api/users/{$user->id}", [
@@ -195,7 +200,7 @@ class NormalizedAuthAndUserManagementTest extends TestCase
             'carnet' => 'ML2026',
             'email' => 'persona.demo@ues.edu.sv',
             'unit_ids' => [$unitB->id, $unitA->id],
-            'role' => 'Jefe de Unidad',
+            'role' => 'Director/Jefe de Unidad',
             'is_active' => false,
         ]);
 
@@ -229,7 +234,7 @@ class NormalizedAuthAndUserManagementTest extends TestCase
             'carnet' => 'ML2026',
         ]);
 
-        $newProfileId = Profile::where('name', 'Jefe de Unidad')->value('id');
+        $newProfileId = Profile::where('name', 'Director/Jefe de Unidad')->value('id');
 
         $this->assertDatabaseHas('user_profile', [
             'user_id' => $user->id,
@@ -256,6 +261,76 @@ class NormalizedAuthAndUserManagementTest extends TestCase
         $this->actingAs($admin)->getJson('/api/units')
             ->assertOk()
             ->assertJsonMissing(['id' => $unit->id]);
+    }
+
+    public function test_profiles_endpoint_returns_available_profiles_for_admin(): void
+    {
+        $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
+
+        $this->actingAs($admin)->getJson('/api/profiles')
+            ->assertOk()
+            ->assertJsonFragment(['name' => 'Administrador'])
+            ->assertJsonFragment(['name' => 'Unidad Solicitante'])
+            ->assertJsonFragment(['name' => 'Director/Jefe de Unidad']);
+    }
+
+    public function test_documentary_series_endpoint_returns_series_ordered_by_code(): void
+    {
+        $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
+
+        $response = $this->actingAs($admin)->getJson('/api/documentary-series');
+
+        $response->assertOk();
+
+        $codes = collect($response->json())->pluck('code')->values()->all();
+        $sorted = $codes;
+        sort($sorted);
+
+        $this->assertSame($sorted, $codes);
+
+        $firstSeries = collect($response->json())->firstWhere('code', '010');
+
+        $this->assertNotNull($firstSeries);
+        $this->assertArrayNotHasKey('description', $firstSeries);
+        $this->assertSame('ACTAS', $firstSeries['name']);
+        $this->assertNotEmpty($firstSeries['subseries']);
+
+        $subseriesCodes = collect($firstSeries['subseries'])->pluck('code')->values()->all();
+        $sortedSubseriesCodes = $subseriesCodes;
+        sort($sortedSubseriesCodes);
+
+        $this->assertSame($sortedSubseriesCodes, $subseriesCodes);
+    }
+
+    public function test_admin_can_create_documentary_subseries(): void
+    {
+        $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
+        $seriesId = DB::table('documentary_series')->where('code', '010')->value('id');
+
+        $response = $this->actingAs($admin)->postJson("/api/documentary-series/{$seriesId}/subseries", [
+            'code' => '99',
+            'name' => 'Actas Especiales',
+            'is_active' => true,
+        ]);
+
+        $response->assertOk()
+            ->assertJson(['message' => 'Subserie documental creada con éxito']);
+
+        $this->assertDatabaseHas('documentary_subseries', [
+            'documentary_series_id' => $seriesId,
+            'code' => '99',
+            'name' => 'Actas Especiales',
+            'is_active' => 1,
+        ]);
+    }
+
+    public function test_unidad_solicitante_cannot_access_users_endpoint(): void
+    {
+        $solicitante = User::where('email', 'unidad.solicitante@yopmail.com')->firstOrFail();
+
+        $this->actingAs($solicitante)
+            ->getJson('/api/users')
+            ->assertForbidden();
     }
 
     private function createNormalizedUser(array $userAttributes, array $personAttributes, string $profileName): User

@@ -1,9 +1,10 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 
 const router = useRouter();
+const currentProfile = ref(null);
 
 // DATOS SIMULADOS
 const transfers = ref([
@@ -59,6 +60,7 @@ const filters = ref({
 });
 
 const rowsPerPageOptions = ref([5, 10, 25, 50]);
+const canCreateTransfer = computed(() => ['Administrador', 'Unidad Solicitante'].includes(currentProfile.value));
 
 // COLORES DE ESTADO
 const getStatusBadge = (status) => {
@@ -75,8 +77,12 @@ const getStatusBadge = (status) => {
 
 onMounted(async () => {
     try {
-        const response = await axios.get('/api/units');
-        unitsList.value = response.data.map(u => ({ label: u.name, value: u.id }));
+        const [userRes, unitsRes] = await Promise.all([
+            axios.get('/api/user'),
+            axios.get('/api/units'),
+        ]);
+        currentProfile.value = userRes.data.role ?? null;
+        unitsList.value = unitsRes.data.map(u => ({ label: u.name, value: u.id }));
     } catch (error) {
         console.error("Error cargando unidades:", error);
     }
@@ -126,7 +132,7 @@ const clearFilters = () => {
                  <Button icon="pi pi-filter-slash" label="Limpiar" severity="secondary" outlined @click="clearFilters" />
             </div>
 
-            <div class="ml-auto">
+            <div v-if="canCreateTransfer" class="ml-auto">
                 <Button label="Nueva Transferencia" icon="pi pi-plus" class="border-none px-4" style="background-color: #1560bd;" @click="goToCreate" />
             </div>
 

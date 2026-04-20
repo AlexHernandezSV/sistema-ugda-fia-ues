@@ -6,17 +6,10 @@ import { useToast } from 'primevue/usetoast';
 // --- VARIABLES ---
 const toast = useToast();
 const users = ref([]);
-const unitsList = ref([]); 
+const unitsList = ref([]);
+const profilesList = ref([]);
 const loading = ref(true);
 const isSaving = ref(false);
-
-const rolesList = ref([
-    { label: 'Administrador', value: 'Administrador' },
-    { label: 'Docente', value: 'Docente' },
-    { label: 'Estudiante', value: 'Estudiante' },
-    { label: 'Jefe de Unidad', value: 'Jefe de Unidad' },
-    { label: 'Secretaria', value: 'Secretaria' }
-]);
 
 const rowsPerPageOptions = ref([5, 10, 25, 50]);
 const filters = ref({
@@ -58,12 +51,14 @@ const selectedUnits = computed(() =>
 const fetchData = async () => {
     loading.value = true;
     try {
-        const [usersRes, unitsRes] = await Promise.all([
+        const [usersRes, unitsRes, profilesRes] = await Promise.all([
             axios.get('/api/users'),
-            axios.get('/api/units')
+            axios.get('/api/units'),
+            axios.get('/api/profiles')
         ]);
         users.value = usersRes.data;
         unitsList.value = unitsRes.data.map(u => ({ label: u.name, value: u.id }));
+        profilesList.value = profilesRes.data.map(profile => ({ label: profile.name, value: profile.name }));
     } catch (error) {
         toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar los datos', life: 3000 });
     } finally {
@@ -444,7 +439,7 @@ const clearFilter = () => {
                 </div>
                 <div class="col-12 md:col-6 field mb-3">
                     <label class="font-medium" style="color: #1560bd;">Rol de Usuario *</label>
-                    <Dropdown v-model="form.role" :options="rolesList" optionLabel="label" optionValue="value" placeholder="Seleccione Rol" class="w-full bg-gray-50" />
+                    <Dropdown v-model="form.role" :options="profilesList" optionLabel="label" optionValue="value" placeholder="Seleccione Rol" class="w-full bg-gray-50" />
                 </div>
 
                 <div class="col-12 field mb-3" v-if="isEditing">

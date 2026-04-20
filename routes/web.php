@@ -3,6 +3,8 @@
 use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request; // <--- IMPORTANTE: Necesario para obtener el usuario actual
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\DocumentarySeriesController;
+use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\UnitController;
 use App\Http\Controllers\UserController;
 
@@ -36,14 +38,17 @@ Route::middleware('auth')->group(function () {
                 $query->whereNull('user_profile.deleted_at')
                     ->where('profiles.is_active', true);
             },
+            'profiles.roles' => function ($query) {
+                $query->whereNull('profile_role.deleted_at')
+                    ->where('roles.is_active', true);
+            },
         ]);
 
-        $activeProfile = $user->profiles
-            ->first(fn ($profile) => (bool) ($profile->pivot->is_active ?? false))
-            ?? $user->profiles->first();
+        $activeProfile = $user->activeProfile();
         $activeUnit = $user->units
             ->first(fn ($unit) => (bool) ($unit->pivot->is_active ?? false))
             ?? $user->units->first();
+        $permissions = $user->permissionNames();
 
         return response()->json([
             'id' => $user->id,
@@ -56,21 +61,57 @@ Route::middleware('auth')->group(function () {
             'unit_id' => $activeUnit?->id,
             'unit_ids' => $user->units->pluck('id')->values()->all(),
             'role' => $activeProfile?->name,
+            'profile' => $activeProfile ? [
+                'id' => $activeProfile->id,
+                'name' => $activeProfile->name,
+            ] : null,
+            'profiles' => $user->profiles->map(fn ($profile) => [
+                'id' => $profile->id,
+                'name' => $profile->name,
+                'is_active' => (bool) ($profile->pivot->is_active ?? false),
+            ])->values(),
+            'permissions' => $permissions,
             'is_active' => (bool) $user->is_active,
             'unit' => $activeUnit,
             'units' => $user->units->values(),
         ]);
-    });
+    })->middleware('permission:endpoint.api.user.read');
 
-    Route::get('/api/units', [UnitController::class, 'index']);
-    Route::post('/api/units', [UnitController::class, 'store']);
-    Route::put('/api/units/{id}', [UnitController::class, 'update']);
-    Route::delete('/api/units/{id}', [UnitController::class, 'destroy']);
+    Route::get('/api/profiles', [ProfileController::class, 'index'])
+        ->middleware('permission:endpoint.api.profiles.read');
 
-    Route::get('/api/users', [UserController::class, 'index']);
-    Route::post('/api/users', [UserController::class, 'store']);
-    Route::put('/api/users/{id}', [UserController::class, 'update']);
-    Route::delete('/api/users/{id}', [UserController::class, 'destroy']);
+    Route::get('/api/units', [UnitController::class, 'index'])
+        ->middleware('permission:endpoint.api.units.read');
+    Route::post('/api/units', [UnitController::class, 'store'])
+        ->middleware('permission:endpoint.api.units.create');
+    Route::put('/api/units/{id}', [UnitController::class, 'update'])
+        ->middleware('permission:endpoint.api.units.update');
+    Route::delete('/api/units/{id}', [UnitController::class, 'destroy'])
+        ->middleware('permission:endpoint.api.units.delete');
+
+    Route::get('/api/users', [UserController::class, 'index'])
+        ->middleware('permission:endpoint.api.users.read');
+    Route::post('/api/users', [UserController::class, 'store'])
+        ->middleware('permission:endpoint.api.users.create');
+    Route::put('/api/users/{id}', [UserController::class, 'update'])
+        ->middleware('permission:endpoint.api.users.update');
+    Route::delete('/api/users/{id}', [UserController::class, 'destroy'])
+        ->middleware('permission:endpoint.api.users.delete');
+
+    Route::get('/api/documentary-series', [DocumentarySeriesController::class, 'index'])
+        ->middleware('permission:endpoint.api.documentary-series.read');
+    Route::post('/api/documentary-series', [DocumentarySeriesController::class, 'store'])
+        ->middleware('permission:endpoint.api.documentary-series.create');
+    Route::put('/api/documentary-series/{id}', [DocumentarySeriesController::class, 'update'])
+        ->middleware('permission:endpoint.api.documentary-series.update');
+    Route::delete('/api/documentary-series/{id}', [DocumentarySeriesController::class, 'destroy'])
+        ->middleware('permission:endpoint.api.documentary-series.delete');
+    Route::post('/api/documentary-series/{seriesId}/subseries', [DocumentarySeriesController::class, 'storeSubseries'])
+        ->middleware('permission:endpoint.api.documentary-series.create');
+    Route::put('/api/documentary-subseries/{id}', [DocumentarySeriesController::class, 'updateSubseries'])
+        ->middleware('permission:endpoint.api.documentary-series.update');
+    Route::delete('/api/documentary-subseries/{id}', [DocumentarySeriesController::class, 'destroySubseries'])
+        ->middleware('permission:endpoint.api.documentary-series.delete');
 });
 
 // ------------------------------------------------------------------------

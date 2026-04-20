@@ -18,6 +18,7 @@ class EndpointRoleSeeder extends Seeder
 
         $endpointRoles = [
             'endpoint.api.user.read' => 'Permite consultar el usuario autenticado',
+            'endpoint.api.profiles.read' => 'Permite listar perfiles disponibles',
             'endpoint.api.users.read' => 'Permite listar usuarios',
             'endpoint.api.users.create' => 'Permite crear usuarios',
             'endpoint.api.users.update' => 'Permite actualizar usuarios',
@@ -26,6 +27,10 @@ class EndpointRoleSeeder extends Seeder
             'endpoint.api.units.create' => 'Permite crear unidades',
             'endpoint.api.units.update' => 'Permite actualizar unidades',
             'endpoint.api.units.delete' => 'Permite eliminar unidades',
+            'endpoint.api.documentary-series.read' => 'Permite listar series y subseries documentales',
+            'endpoint.api.documentary-series.create' => 'Permite crear series y subseries documentales',
+            'endpoint.api.documentary-series.update' => 'Permite actualizar series y subseries documentales',
+            'endpoint.api.documentary-series.delete' => 'Permite eliminar series y subseries documentales',
         ];
 
         foreach ($endpointRoles as $name => $description) {
@@ -41,29 +46,44 @@ class EndpointRoleSeeder extends Seeder
             );
         }
 
-        $adminProfileId = DB::table('profiles')->where('name', 'Administrador')->value('id');
+        $permissionsByProfile = [
+            'Administrador' => array_keys($endpointRoles),
+            'Unidad Solicitante' => [
+                'endpoint.api.user.read',
+                'endpoint.api.units.read',
+                'endpoint.api.documentary-series.read',
+            ],
+            'Director/Jefe de Unidad' => [
+                'endpoint.api.user.read',
+                'endpoint.api.units.read',
+            ],
+        ];
 
-        if ($adminProfileId === null) {
-            return;
-        }
+        foreach ($permissionsByProfile as $profileName => $permissions) {
+            $profileId = DB::table('profiles')->where('name', $profileName)->value('id');
 
-        $endpointRoleIds = DB::table('roles')
-            ->whereIn('name', array_keys($endpointRoles))
-            ->pluck('id');
+            if ($profileId === null) {
+                continue;
+            }
 
-        foreach ($endpointRoleIds as $roleId) {
-            DB::table('profile_role')->updateOrInsert(
-                [
-                    'profile_id' => $adminProfileId,
-                    'role_id' => $roleId,
-                ],
-                [
-                    'is_active' => true,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                    'deleted_at' => null,
-                ]
-            );
+            $roleIds = DB::table('roles')
+                ->whereIn('name', $permissions)
+                ->pluck('id');
+
+            foreach ($roleIds as $roleId) {
+                DB::table('profile_role')->updateOrInsert(
+                    [
+                        'profile_id' => $profileId,
+                        'role_id' => $roleId,
+                    ],
+                    [
+                        'is_active' => true,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                        'deleted_at' => null,
+                    ]
+                );
+            }
         }
     }
 }
