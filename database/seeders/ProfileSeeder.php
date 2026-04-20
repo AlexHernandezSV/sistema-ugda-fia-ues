@@ -17,10 +17,8 @@ class ProfileSeeder extends Seeder
         $now = now();
         $profiles = [
             ['name' => 'Administrador', 'description' => 'Acceso administrativo completo'],
-            ['name' => 'Docente', 'description' => 'Perfil para personal docente'],
-            ['name' => 'Estudiante', 'description' => 'Perfil para usuarios estudiantes'],
-            ['name' => 'Jefe de Unidad', 'description' => 'Perfil para jefaturas de unidad'],
-            ['name' => 'Secretaria', 'description' => 'Perfil para personal de secretaria'],
+            ['name' => 'Unidad Solicitante', 'description' => 'Perfil para crear y dar seguimiento a solicitudes de transferencia'],
+            ['name' => 'Director/Jefe de Unidad', 'description' => 'Perfil para revisión y autorización de solicitudes de su unidad'],
         ];
 
         foreach ($profiles as $profile) {

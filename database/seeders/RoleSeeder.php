@@ -17,10 +17,8 @@ class RoleSeeder extends Seeder
         $now = now();
         $baseRoles = [
             'Administrador',
-            'Docente',
-            'Estudiante',
-            'Jefe de Unidad',
-            'Secretaria',
+            'Unidad Solicitante',
+            'Director/Jefe de Unidad',
         ];
 
         foreach ($baseRoles as $roleName) {

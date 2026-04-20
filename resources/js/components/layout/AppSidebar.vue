@@ -15,23 +15,34 @@ const expandedMenus = ref({});
 const userData = ref({
     fullName: '',
     unitName: '',
-    role: ''
+    role: '',
+    permissions: []
 });
 
-const menuItems = ref([
-    { label: 'Inicio', icon: 'pi pi-home', to: '/dashboard' },
-    { label: 'Todas las Solicitudes', icon: 'pi pi-file', to: '/solicitudes' },
-    { label: 'Archivo General', icon: 'pi pi-box', to: '/archivo' },
-    {
-        label: 'Configuracion',
-        icon: 'pi pi-cog',
-        children: [
-            { label: 'Unidades', to: '/unidades' },
-            { label: 'Usuarios', to: '/usuarios' },
-            { label: 'Sistema', to: '/sistema' }
-        ]
+const hasPermission = (permission) => userData.value.permissions.includes(permission);
+
+const menuItems = computed(() => {
+    const items = [
+        { label: 'Inicio', icon: 'pi pi-home', to: '/dashboard' },
+        { label: 'Todas las Solicitudes', icon: 'pi pi-file', to: '/solicitudes' },
+    ];
+
+    const configurationChildren = [
+        hasPermission('endpoint.api.units.create') ? { label: 'Unidades', to: '/unidades' } : null,
+        hasPermission('endpoint.api.users.create') ? { label: 'Usuarios', to: '/usuarios' } : null,
+        hasPermission('endpoint.api.documentary-series.create') ? { label: 'Series Documentales', to: '/series-documentales' } : null,
+    ].filter(Boolean);
+
+    if (configurationChildren.length > 0) {
+        items.push({
+            label: 'Configuracion',
+            icon: 'pi pi-cog',
+            children: configurationChildren,
+        });
     }
-]);
+
+    return items;
+});
 
 const sidebarIsExpanded = computed(() => isMobile.value ? true : isExpanded.value);
 const sidebarVisible = computed(() => !isMobile.value || isMobileMenuOpen.value);
@@ -110,7 +121,8 @@ const fetchUserProfile = async () => {
         const freshData = {
             fullName: `${user.first_name} ${user.first_last_name}`,
             unitName: unitNames,
-            role: user.role
+            role: user.role,
+            permissions: Array.isArray(user.permissions) ? user.permissions : []
         };
 
         userData.value = freshData;

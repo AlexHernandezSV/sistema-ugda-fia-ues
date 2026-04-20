@@ -64,4 +64,43 @@ class User extends Authenticatable
             ->wherePivotNull('deleted_at')
             ->withPivot(['is_active', 'created_at', 'updated_at', 'deleted_at']);
     }
+
+    public function activeProfile(): ?Profile
+    {
+        if ($this->relationLoaded('profiles')) {
+            return $this->profiles
+                ->first(fn ($profile) => (bool) ($profile->pivot->is_active ?? false))
+                ?? $this->profiles->first();
+        }
+
+        return $this->profiles()
+            ->wherePivot('is_active', true)
+            ->wherePivotNull('deleted_at')
+            ->first()
+            ?? $this->profiles()->wherePivotNull('deleted_at')->first();
+    }
+
+    public function permissionNames(): array
+    {
+        $profile = $this->activeProfile();
+
+        if ($profile === null) {
+            return [];
+        }
+
+        if (!$profile->relationLoaded('roles')) {
+            $profile->load('roles');
+        }
+
+        return $profile->roles
+            ->pluck('name')
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    public function hasPermission(string $permission): bool
+    {
+        return in_array($permission, $this->permissionNames(), true);
+    }
 }

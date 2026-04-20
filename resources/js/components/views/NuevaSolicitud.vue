@@ -19,16 +19,15 @@ const batchForm = ref({ series: null, year_start: '', year_end: '', quantity: 1 
 const boxesList = ref([]); 
 
 // --- CATALOGOS ---
-const seriesOptions = ref([
-    { name: 'Correspondencia Interna', code: 'CI' },
-    { name: 'Actas de Notas', code: 'AN' },
-    { name: 'Expedientes de Personal', code: 'EP' },
-    { name: 'Planes de Estudio', code: 'PE' },
-    { name: 'Informes de Gestión', code: 'IG' },
-    { name: 'Resoluciones de Junta Directiva', code: 'RJD' },
-    { name: 'Auditorías Académicas', code: 'AA' },
-    { name: 'Proyectos de Investigación', code: 'PI' }
-]); 
+const fallbackSeriesOptions = [
+    { label: '010 - ACTAS / 01 - Actas Asamblea General Universitaria', code: '010-01', series_name: 'ACTAS', subseries_name: 'Actas Asamblea General Universitaria' },
+    { label: '010 - ACTAS / 02 - Actas Consejo Superior Universitario', code: '010-02', series_name: 'ACTAS', subseries_name: 'Actas Consejo Superior Universitario' },
+    { label: '020 - CORRESPONDENCIA / 01 - Correspondencia Interna', code: '020-01', series_name: 'CORRESPONDENCIA', subseries_name: 'Correspondencia Interna' },
+    { label: '020 - CORRESPONDENCIA / 02 - Correspondencia Externa', code: '020-02', series_name: 'CORRESPONDENCIA', subseries_name: 'Correspondencia Externa' },
+    { label: '030 - INFORMES / 01 - Informes Anuales', code: '030-01', series_name: 'INFORMES', subseries_name: 'Informes Anuales' },
+    { label: '040 - EXPEDIENTES / 01 - Expedientes de Personal', code: '040-01', series_name: 'EXPEDIENTES', subseries_name: 'Expedientes de Personal' }
+];
+const seriesOptions = ref([...fallbackSeriesOptions]);
 const unitsList = ref([]);
 const supportOptions = ref(['Físico', 'Digital', 'Mixto']);
 
@@ -50,12 +49,44 @@ const docForm = ref({
 // --- CARGA INICIAL ---
 onMounted(async () => {
     try {
-        const userRes = await axios.get('/api/user');
+        const [userRes, seriesRes] = await Promise.all([
+            axios.get('/api/user'),
+            axios.get('/api/documentary-series'),
+        ]);
         headerForm.value.user_name = `${userRes.data.first_name} ${userRes.data.first_last_name}`;
         headerForm.value.unit_id = userRes.data.unit_id ?? userRes.data.unit?.id ?? null; 
-        const unitsRes = await axios.get('/api/units');
-        unitsList.value = unitsRes.data.map(u => ({ label: u.name, value: u.id }));
-    } catch (e) { console.error(e); }
+        unitsList.value = Array.isArray(userRes.data.units)
+            ? userRes.data.units.map(u => ({ label: u.name, value: u.id }))
+            : [];
+        seriesOptions.value = Array.isArray(seriesRes.data) && seriesRes.data.length > 0
+            ? seriesRes.data.flatMap(series => {
+                if (Array.isArray(series.subseries) && series.subseries.length > 0) {
+                    return series.subseries.map(subseries => ({
+                        id: `subseries-${subseries.id}`,
+                        series_id: series.id,
+                        subseries_id: subseries.id,
+                        label: `${series.code} - ${series.name} / ${subseries.code} - ${subseries.name}`,
+                        code: `${series.code}-${subseries.code}`,
+                        series_name: series.name,
+                        subseries_name: subseries.name,
+                    }));
+                }
+
+                return [{
+                    id: `series-${series.id}`,
+                    series_id: series.id,
+                    subseries_id: null,
+                    label: `${series.code} - ${series.name}`,
+                    code: series.code,
+                    series_name: series.name,
+                    subseries_name: null,
+                }];
+            })
+            : [...fallbackSeriesOptions];
+    } catch (e) {
+        console.error(e);
+        seriesOptions.value = [...fallbackSeriesOptions];
+    }
 });
 
 const totalBoxes = computed(() => boxesList.value.length);
@@ -77,8 +108,8 @@ const addBatch = () => {
     }
 
     const qty = parseInt(batchForm.value.quantity);
-    const selectedSeriesName = batchForm.value.series.name;
-    const existingBoxesOfSeries = boxesList.value.filter(box => box.series === selectedSeriesName);
+    const selectedSeriesLabel = batchForm.value.series.label;
+    const existingBoxesOfSeries = boxesList.value.filter(box => box.series === selectedSeriesLabel);
     
     let startNumber = 1;
     if (existingBoxesOfSeries.length > 0) {
@@ -89,7 +120,7 @@ const addBatch = () => {
     for (let i = 0; i < qty; i++) {
         boxesList.value.push({
             id_temp: Date.now() + i, 
-            series: selectedSeriesName,
+            series: selectedSeriesLabel,
             year_start: batchForm.value.year_start,
             year_end: batchForm.value.year_end,
             box_number: startNumber + i,
@@ -225,7 +256,7 @@ const goBack = () => router.back();
                     <div class="col-12 md:col-3 mb-2">
                         <div class="flex flex-column gap-2">
                             <label class="font-bold text-sm text-gray-700">Serie / Subserie *</label>
-                            <Dropdown v-model="batchForm.series" :options="seriesOptions" optionLabel="name" placeholder="Seleccione" />
+                            <Dropdown v-model="batchForm.series" :options="seriesOptions" optionLabel="label" placeholder="Seleccione" />
                         </div>
                     </div>
                     <div class="col-6 md:col-2 mb-2">

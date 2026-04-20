@@ -21,6 +21,14 @@ class Profile extends Model
     public function users()
     {
         return $this->belongsToMany(User::class, 'user_profile')
+            ->wherePivotNull('deleted_at')
+            ->withPivot(['is_active', 'created_at', 'updated_at', 'deleted_at']);
+    }
+
+    public function roles()
+    {
+        return $this->belongsToMany(Role::class, 'profile_role')
+            ->wherePivotNull('deleted_at')
             ->withPivot(['is_active', 'created_at', 'updated_at', 'deleted_at']);
     }
 }
