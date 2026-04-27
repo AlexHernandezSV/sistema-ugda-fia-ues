@@ -3,13 +3,14 @@ import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import axios from 'axios';
+import { getCurrentUser } from '../../services/authSession';
 
 const router = useRouter();
 const toast = useToast();
 
 // --- DATOS PRINCIPALES ---
 const headerForm = ref({
-    code: 'TR-2026-0001', 
+    code: '',
     request_date: new Date(),
     unit_id: null,
     user_name: '',
@@ -19,15 +20,7 @@ const batchForm = ref({ series: null, year_start: '', year_end: '', quantity: 1 
 const boxesList = ref([]); 
 
 // --- CATALOGOS ---
-const fallbackSeriesOptions = [
-    { label: '010 - ACTAS / 01 - Actas Asamblea General Universitaria', code: '010-01', series_name: 'ACTAS', subseries_name: 'Actas Asamblea General Universitaria' },
-    { label: '010 - ACTAS / 02 - Actas Consejo Superior Universitario', code: '010-02', series_name: 'ACTAS', subseries_name: 'Actas Consejo Superior Universitario' },
-    { label: '020 - CORRESPONDENCIA / 01 - Correspondencia Interna', code: '020-01', series_name: 'CORRESPONDENCIA', subseries_name: 'Correspondencia Interna' },
-    { label: '020 - CORRESPONDENCIA / 02 - Correspondencia Externa', code: '020-02', series_name: 'CORRESPONDENCIA', subseries_name: 'Correspondencia Externa' },
-    { label: '030 - INFORMES / 01 - Informes Anuales', code: '030-01', series_name: 'INFORMES', subseries_name: 'Informes Anuales' },
-    { label: '040 - EXPEDIENTES / 01 - Expedientes de Personal', code: '040-01', series_name: 'EXPEDIENTES', subseries_name: 'Expedientes de Personal' }
-];
-const seriesOptions = ref([...fallbackSeriesOptions]);
+const seriesOptions = ref([]);
 const unitsList = ref([]);
 const supportOptions = ref(['Físico', 'Digital', 'Mixto']);
 
@@ -49,14 +42,16 @@ const docForm = ref({
 // --- CARGA INICIAL ---
 onMounted(async () => {
     try {
-        const [userRes, seriesRes] = await Promise.all([
-            axios.get('/api/user'),
+        const [userRes, seriesRes, codeRes] = await Promise.all([
+            getCurrentUser(),
             axios.get('/api/documentary-series'),
+            axios.get('/api/transfers/next-code'),
         ]);
-        headerForm.value.user_name = `${userRes.data.first_name} ${userRes.data.first_last_name}`;
-        headerForm.value.unit_id = userRes.data.unit_id ?? userRes.data.unit?.id ?? null; 
-        unitsList.value = Array.isArray(userRes.data.units)
-            ? userRes.data.units.map(u => ({ label: u.name, value: u.id }))
+        headerForm.value.user_name = `${userRes.first_name ?? ''} ${userRes.first_last_name ?? ''}`.trim();
+        headerForm.value.unit_id = userRes.unit_id ?? userRes.unit?.id ?? null; 
+        headerForm.value.code = codeRes.data.code ?? '';
+        unitsList.value = Array.isArray(userRes.units)
+            ? userRes.units.map(u => ({ label: u.name, value: u.id }))
             : [];
         seriesOptions.value = Array.isArray(seriesRes.data) && seriesRes.data.length > 0
             ? seriesRes.data.flatMap(series => {
@@ -82,10 +77,11 @@ onMounted(async () => {
                     subseries_name: null,
                 }];
             })
-            : [...fallbackSeriesOptions];
+            : [];
     } catch (e) {
         console.error(e);
-        seriesOptions.value = [...fallbackSeriesOptions];
+        seriesOptions.value = [];
+        toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo cargar la informacion base de la transferencia.', life: 4000 });
     }
 });
 
@@ -204,9 +200,24 @@ const submitTransfer = () => {
         toast.add({ severity: 'error', summary: 'Error', detail: `Hay ${emptyBoxes.length} cajas vacías.`, life: 5000 });
         return;
     }
-    console.log("Enviando...", boxesList.value);
-    toast.add({ severity: 'success', summary: 'Éxito', detail: 'Solicitud enviada', life: 3000 });
-    setTimeout(() => { router.push('/solicitudes'); }, 1500);
+
+    axios.post('/api/transfers', {
+        code: headerForm.value.code,
+        request_date: headerForm.value.request_date,
+        unit_id: headerForm.value.unit_id,
+        boxes: boxesList.value,
+    }).then((response) => {
+        toast.add({ severity: 'success', summary: 'Exito', detail: response.data.message, life: 3000 });
+        setTimeout(() => {
+            router.push({
+                path: `/solicitudes/transferencias/${response.data.number}`,
+                query: { tab: 'transferencias' },
+            });
+        }, 1200);
+    }).catch((error) => {
+        const message = error.response?.data?.message || 'No se pudo registrar la transferencia.';
+        toast.add({ severity: 'error', summary: 'Error', detail: message, life: 4000 });
+    });
 };
 
 const goBack = () => router.back();

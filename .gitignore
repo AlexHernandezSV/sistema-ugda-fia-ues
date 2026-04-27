@@ -13,11 +13,14 @@
 /.zed
 /auth.json
 /node_modules
+/playwright-report
 /public/build
 /public/hot
 /public/storage
 /storage/*.key
 /storage/pail
+test-results
+/.codex-artifacts
 /vendor
 Homestead.json
 Homestead.yaml

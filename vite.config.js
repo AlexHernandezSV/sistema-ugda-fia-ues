@@ -26,6 +26,13 @@ export default defineConfig({
         host: '0.0.0.0',
         port: 5173,
         strictPort: true,
+        cors: {
+            origin: [
+                'http://127.0.0.1:8000',
+                'http://localhost:8000',
+                'http://host.docker.internal:8000',
+            ],
+        },
         hmr: {
             host: 'localhost',
             port: 5173,

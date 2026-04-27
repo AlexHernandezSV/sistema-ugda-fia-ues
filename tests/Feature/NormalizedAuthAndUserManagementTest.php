@@ -52,7 +52,7 @@ class NormalizedAuthAndUserManagementTest extends TestCase
 
         $response->assertOk()
             ->assertJson([
-                'message' => 'Código enviado',
+                'message' => 'CÃƒÂ³digo enviado',
                 'require_2fa' => true,
                 'email' => 'admin-ugda@yopmail.com',
             ]);
@@ -117,7 +117,7 @@ class NormalizedAuthAndUserManagementTest extends TestCase
 
         $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
         $unit = Unit::create([
-            'name' => 'Unidad de Tecnología',
+            'name' => 'Unidad de TecnologÃƒÂ­a',
             'code' => 'UTI',
             'is_active' => true,
         ]);
@@ -186,16 +186,16 @@ class NormalizedAuthAndUserManagementTest extends TestCase
         $user = $this->createNormalizedUser([
             'email' => 'persona.demo@ues.edu.sv',
         ], [
-            'first_name' => 'María',
-            'first_last_name' => 'López',
+            'first_name' => 'MarÃƒÂ­a',
+            'first_last_name' => 'LÃƒÂ³pez',
             'carnet' => 'ML1001',
         ], 'Unidad Solicitante');
         $this->syncUnits($user, [$unitA->id]);
 
         $response = $this->actingAs($admin)->putJson("/api/users/{$user->id}", [
-            'first_name' => 'María Fernanda',
+            'first_name' => 'MarÃƒÂ­a Fernanda',
             'second_name' => 'del Carmen',
-            'first_last_name' => 'López',
+            'first_last_name' => 'LÃƒÂ³pez',
             'second_last_name' => 'Pineda',
             'carnet' => 'ML2026',
             'email' => 'persona.demo@ues.edu.sv',
@@ -228,7 +228,7 @@ class NormalizedAuthAndUserManagementTest extends TestCase
 
         $this->assertDatabaseHas('person', [
             'user_id' => $user->id,
-            'first_name' => 'María Fernanda',
+            'first_name' => 'MarÃƒÂ­a Fernanda',
             'second_name' => 'del Carmen',
             'second_last_name' => 'Pineda',
             'carnet' => 'ML2026',
@@ -314,12 +314,54 @@ class NormalizedAuthAndUserManagementTest extends TestCase
         ]);
 
         $response->assertOk()
-            ->assertJson(['message' => 'Subserie documental creada con éxito']);
+            ->assertJson(['message' => 'Subserie documental creada con exito']);
 
         $this->assertDatabaseHas('documentary_subseries', [
             'documentary_series_id' => $seriesId,
             'code' => '99',
             'name' => 'Actas Especiales',
+            'is_active' => 1,
+        ]);
+    }
+
+    public function test_admin_can_create_documentary_series_with_variable_length_numeric_code(): void
+    {
+        $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
+
+        $response = $this->actingAs($admin)->postJson('/api/documentary-series', [
+            'code' => '05',
+            'name' => 'PRUEBAS',
+            'is_active' => true,
+        ]);
+
+        $response->assertOk()
+            ->assertJson(['message' => 'Serie documental creada con exito']);
+
+        $this->assertDatabaseHas('documentary_series', [
+            'code' => '05',
+            'name' => 'PRUEBAS',
+            'is_active' => 1,
+        ]);
+    }
+
+    public function test_admin_can_create_documentary_subseries_with_variable_length_numeric_code(): void
+    {
+        $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
+        $seriesId = DB::table('documentary_series')->where('code', '010')->value('id');
+
+        $response = $this->actingAs($admin)->postJson("/api/documentary-series/{$seriesId}/subseries", [
+            'code' => '7',
+            'name' => 'Actas Varias',
+            'is_active' => true,
+        ]);
+
+        $response->assertOk()
+            ->assertJson(['message' => 'Subserie documental creada con exito']);
+
+        $this->assertDatabaseHas('documentary_subseries', [
+            'documentary_series_id' => $seriesId,
+            'code' => '7',
+            'name' => 'Actas Varias',
             'is_active' => 1,
         ]);
     }
@@ -385,3 +427,4 @@ class NormalizedAuthAndUserManagementTest extends TestCase
         }
     }
 }
+

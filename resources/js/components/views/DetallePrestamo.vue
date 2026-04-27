@@ -1,0 +1,1999 @@
+<script setup>
+import { computed, onMounted, reactive, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import axios from 'axios';
+import { useToast } from 'primevue/usetoast';
+
+const route = useRoute();
+const router = useRouter();
+const toast = useToast();
+
+const loan = ref(null);
+const loading = ref(true);
+const loanModalVisible = ref(false);
+const returnModalVisible = ref(false);
+const decisionModalVisible = ref(false);
+const decisionSubmitting = ref(false);
+const currentDecisionAction = ref(null);
+
+const loanForm = reactive({
+    selectedIds: [],
+    loanDate: null,
+    dueDate: null,
+    receivedBy: '',
+    observations: '',
+});
+
+const returnForm = reactive({
+    selectedIds: [],
+    returnDate: null,
+    condition: '',
+    observations: '',
+});
+
+const decisionForm = reactive({
+    comments: '',
+});
+
+const goBack = () => {
+    router.push({
+        path: '/solicitudes',
+        query: { tab: 'prestamos' },
+    });
+};
+
+const resetLoanForm = () => {
+    loanForm.selectedIds = [];
+    loanForm.loanDate = null;
+    loanForm.dueDate = null;
+    loanForm.receivedBy = '';
+    loanForm.observations = '';
+};
+
+const resetReturnForm = () => {
+    returnForm.selectedIds = [];
+    returnForm.returnDate = null;
+    returnForm.condition = loan.value?.returnRegistration?.defaultCondition ?? '';
+    returnForm.observations = '';
+};
+
+const resetDecisionForm = () => {
+    decisionForm.comments = '';
+    currentDecisionAction.value = null;
+};
+
+const toneClass = (tone) => {
+    switch (tone) {
+        case 'success':
+            return 'detalle-chip detalle-chip--success';
+        case 'danger':
+            return 'detalle-chip detalle-chip--danger';
+        case 'warning':
+            return 'detalle-chip detalle-chip--warning';
+        case 'info':
+            return 'detalle-chip detalle-chip--info';
+        default:
+            return 'detalle-chip detalle-chip--neutral';
+    }
+};
+
+const documentTypeClass = (color) => {
+    switch (color) {
+        case 'warning':
+            return 'detalle-document-type detalle-document-type--warning';
+        case 'success':
+            return 'detalle-document-type detalle-document-type--success';
+        default:
+            return 'detalle-document-type detalle-document-type--info';
+    }
+};
+
+const actionClass = (variant) => {
+    switch (variant) {
+        case 'success':
+            return 'detalle-action detalle-action--success';
+        case 'warning':
+            return 'detalle-action detalle-action--warning';
+        case 'danger':
+            return 'detalle-action detalle-action--danger';
+        case 'muted':
+            return 'detalle-action detalle-action--muted';
+        case 'secondary':
+            return 'detalle-action detalle-action--secondary';
+        default:
+            return 'detalle-action detalle-action--primary';
+    }
+};
+
+const formatSelectionSummary = (template, count, total) => template
+    .replace('{count}', String(count))
+    .replace('{total}', String(total));
+
+const showError = (message) => {
+    toast.add({
+        severity: 'error',
+        summary: 'Error',
+        detail: message,
+        life: 3600,
+    });
+};
+
+const formatDateForRequest = (value) => {
+    if (!value) {
+        return '';
+    }
+
+    if (typeof value === 'string') {
+        return value;
+    }
+
+    if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+        return '';
+    }
+
+    const day = String(value.getDate()).padStart(2, '0');
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const year = value.getFullYear();
+
+    return `${day}/${month}/${year}`;
+};
+
+const postAction = async (url, payload, successMessage) => {
+    try {
+        const { data } = await axios.post(url, payload);
+        toast.add({
+            severity: 'success',
+            summary: 'Actualizado',
+            detail: data.message || successMessage,
+            life: 2800,
+        });
+        await fetchDetail();
+    } catch (error) {
+        showError(error.response?.data?.message || successMessage || 'No se pudo completar la accion.');
+    }
+};
+
+const openDecisionModal = (actionKey) => {
+    currentDecisionAction.value = actionKey;
+    decisionForm.comments = '';
+    decisionModalVisible.value = true;
+};
+
+const handleAction = async (action) => {
+    switch (action.key) {
+        case 'back':
+            goBack();
+            break;
+        case 'authorize':
+            openDecisionModal('authorize');
+            break;
+        case 'startSearch':
+            await postAction(`/api/loans/${loan.value.number}/search/start`, {}, 'Busqueda iniciada.');
+            break;
+        case 'finishSearch': {
+            const comments = window.prompt('Ingrese un comentario de la busqueda finalizada:', loan.value?.searchCompleted?.comments ?? '') ?? '';
+            const documentIds = (loan.value?.documentGroups ?? [])
+                .flatMap((group) => group.items ?? [])
+                .map((item) => item.id);
+            await postAction(`/api/loans/${loan.value.number}/search/finish`, {
+                comments,
+                document_ids: documentIds,
+            }, 'Busqueda finalizada.');
+            break;
+        }
+        case 'observe':
+            openDecisionModal('observe');
+            break;
+        case 'deny':
+            openDecisionModal('deny');
+            break;
+        case 'registerLoan':
+            resetLoanForm();
+            loanModalVisible.value = true;
+            break;
+        case 'registerReturn':
+            resetReturnForm();
+            returnModalVisible.value = true;
+            break;
+    }
+};
+
+const decisionModalConfig = computed(() => {
+    switch (currentDecisionAction.value) {
+        case 'authorize':
+            return {
+                icon: 'pi pi-check-circle',
+                title: 'Autorizar Prestamo',
+                subtitle: 'Se iniciara el proceso de busqueda de documentos',
+                label: 'Comentarios (opcional)',
+                placeholder: 'Agregue comentarios sobre la autorizacion...',
+                confirmLabel: 'Autorizar',
+                cancelLabel: 'Cancelar',
+                tone: 'success',
+                required: false,
+            };
+        case 'observe':
+            return {
+                icon: 'pi pi-eye',
+                title: 'Observar Solicitud',
+                subtitle: 'La solicitud regresara al solicitante para correcciones',
+                label: 'Observacion',
+                placeholder: 'Describa que correcciones se requieren...',
+                confirmLabel: 'Observar',
+                cancelLabel: 'Cancelar',
+                tone: 'warning',
+                required: true,
+            };
+        case 'deny':
+            return {
+                icon: 'pi pi-times-circle',
+                title: 'Denegar Prestamo',
+                subtitle: 'Debe proporcionar un motivo para denegar esta solicitud',
+                label: 'Motivo de denegacion',
+                placeholder: 'Describa el motivo por el cual se deniega este prestamo...',
+                confirmLabel: 'Denegar',
+                cancelLabel: 'Cancelar',
+                tone: 'danger',
+                required: true,
+            };
+        default:
+            return null;
+    }
+});
+
+const submitDecisionAction = async () => {
+    const config = decisionModalConfig.value;
+
+    if (!config || !loan.value) {
+        return;
+    }
+
+    const comments = decisionForm.comments.trim();
+
+    if (config.required && comments === '') {
+        showError(currentDecisionAction.value === 'observe'
+            ? 'Debe ingresar la observacion de la solicitud.'
+            : 'Debe ingresar el motivo de rechazo.');
+        return;
+    }
+
+    let endpoint = '';
+    let payload = {};
+    let successMessage = '';
+
+    switch (currentDecisionAction.value) {
+        case 'authorize':
+            endpoint = `/api/loans/${loan.value.number}/authorize`;
+            payload = { comments };
+            successMessage = 'Prestamo autorizado.';
+            break;
+        case 'observe':
+            endpoint = `/api/loans/${loan.value.number}/observe`;
+            payload = { message: comments };
+            successMessage = 'Solicitud observada.';
+            break;
+        case 'deny':
+            endpoint = `/api/loans/${loan.value.number}/deny`;
+            payload = { reason: comments };
+            successMessage = 'Prestamo denegado.';
+            break;
+        default:
+            return;
+    }
+
+    decisionSubmitting.value = true;
+
+    try {
+        const { data } = await axios.post(endpoint, payload);
+        toast.add({
+            severity: 'success',
+            summary: 'Actualizado',
+            detail: data.message || successMessage,
+            life: 2800,
+        });
+        decisionModalVisible.value = false;
+        resetDecisionForm();
+        await fetchDetail();
+    } catch (error) {
+        showError(error.response?.data?.message || 'No se pudo completar la accion.');
+    } finally {
+        decisionSubmitting.value = false;
+    }
+};
+
+const toggleLoanDocument = (id) => {
+    if (loanForm.selectedIds.includes(id)) {
+        loanForm.selectedIds = loanForm.selectedIds.filter((item) => item !== id);
+        return;
+    }
+
+    loanForm.selectedIds = [...loanForm.selectedIds, id];
+};
+
+const toggleLoanDocuments = () => {
+    const ids = loanRegistrationDocuments.value.map((document) => document.id);
+    loanForm.selectedIds = loanForm.selectedIds.length === ids.length ? [] : ids;
+};
+
+const toggleReturnDocument = (id) => {
+    if (returnForm.selectedIds.includes(id)) {
+        returnForm.selectedIds = returnForm.selectedIds.filter((item) => item !== id);
+        return;
+    }
+
+    returnForm.selectedIds = [...returnForm.selectedIds, id];
+};
+
+const toggleReturnDocuments = () => {
+    const ids = returnRegistrationDocuments.value.map((document) => document.id);
+    returnForm.selectedIds = returnForm.selectedIds.length === ids.length ? [] : ids;
+};
+
+const submitLoanRegistration = async () => {
+    try {
+        const { data } = await axios.post(`/api/loans/${loan.value.number}/register`, {
+            selected_ids: loanForm.selectedIds,
+            loan_date: formatDateForRequest(loanForm.loanDate),
+            due_date: formatDateForRequest(loanForm.dueDate),
+            received_by: loanForm.receivedBy,
+            observations: loanForm.observations,
+        });
+
+        toast.add({
+            severity: 'success',
+            summary: 'Prestamo registrado',
+            detail: data.message,
+            life: 3000,
+        });
+        loanModalVisible.value = false;
+        await fetchDetail();
+    } catch (error) {
+        showError(error.response?.data?.message || 'No se pudo registrar el prestamo.');
+    }
+};
+
+const submitReturnRegistration = async () => {
+    try {
+        const { data } = await axios.post(`/api/loans/${loan.value.number}/return`, {
+            selected_ids: returnForm.selectedIds,
+            return_date: formatDateForRequest(returnForm.returnDate),
+            condition: returnForm.condition,
+            observations: returnForm.observations,
+        });
+
+        toast.add({
+            severity: 'success',
+            summary: 'Devolucion registrada',
+            detail: data.message,
+            life: 3000,
+        });
+        returnModalVisible.value = false;
+        await fetchDetail();
+    } catch (error) {
+        showError(error.response?.data?.message || 'No se pudo registrar la devolucion.');
+    }
+};
+
+const fetchDetail = async () => {
+    try {
+        const { data } = await axios.get(`/api/loans/${route.params.number}`);
+        loan.value = data;
+        resetReturnForm();
+    } catch (error) {
+        console.error('Error cargando detalle de prestamo:', error);
+        goBack();
+    } finally {
+        loading.value = false;
+    }
+};
+
+const isManageMode = computed(() => loan.value?.mode === 'manage');
+const pageTitle = computed(() => loan.value?.pageTitle ?? (loan.value ? `Prestamo #${loan.value.number}` : 'Prestamo'));
+const pageSubtitle = computed(() => loan.value?.pageSubtitle ?? 'Detalle de la solicitud');
+const loanRegistrationDocuments = computed(() => loan.value?.loanRegistration?.documents ?? []);
+const returnRegistrationDocuments = computed(() => loan.value?.returnRegistration?.documents ?? []);
+
+onMounted(fetchDetail);
+</script>
+
+<template>
+    <div v-if="loading" class="surface-card border-round-xl shadow-1 p-4 text-center text-gray-500">
+        Cargando detalle de prestamo...
+    </div>
+
+    <div v-else-if="loan" class="flex flex-column gap-4">
+        <div class="mobile-page-title mb-1">
+            <div class="flex align-items-center gap-3 mb-2">
+                <button type="button" class="detalle-back-button" @click="goBack">
+                    <i class="pi pi-arrow-left"></i>
+                </button>
+                <div>
+                    <h1 class="detalle-title m-0">{{ pageTitle }}</h1>
+                    <span class="detalle-subtitle">{{ pageSubtitle }}</span>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="loan.observationsRegistered" class="detalle-banner detalle-banner--warning">
+            <div class="detalle-banner__head">
+                <div class="detalle-banner__icon detalle-banner__icon--warning">
+                    <i class="pi pi-eye"></i>
+                </div>
+                <div>
+                    <h2 class="detalle-banner__title m-0">{{ loan.observationsRegistered.title }}</h2>
+                    <p class="detalle-banner__text m-0">{{ loan.observationsRegistered.description }}</p>
+                </div>
+            </div>
+
+            <div class="flex flex-column gap-3">
+                <div v-for="item in loan.observationsRegistered.items" :key="`${item.actor}-${item.dateTime}`" class="detalle-observation-card">
+                    <div class="detalle-observation-card__meta">
+                        <i class="pi pi-user"></i>
+                        <span class="font-semibold">{{ item.actor }}</span>
+                        <span>{{ item.dateTime }}</span>
+                    </div>
+                    <p class="detalle-observation-card__message m-0">{{ item.message }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="loan.workflowNotice" class="detalle-notice">
+            <div class="detalle-notice__icon">
+                <i class="pi pi-exclamation-triangle"></i>
+            </div>
+            <div>
+                <div class="detalle-notice__title">{{ loan.workflowNotice.title }}</div>
+                <p class="detalle-notice__text m-0">{{ loan.workflowNotice.description }}</p>
+            </div>
+        </div>
+
+        <div v-if="loan.searchProgress" class="detalle-banner detalle-banner--warning">
+            <div class="detalle-banner__head">
+                <div class="detalle-banner__icon detalle-banner__icon--warning">
+                    <i class="pi pi-search"></i>
+                </div>
+                <div>
+                    <h2 class="detalle-banner__title m-0">{{ loan.searchProgress.title }}</h2>
+                    <p class="detalle-banner__text m-0">{{ loan.searchProgress.description }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="loan.searchCompleted" class="detalle-banner detalle-banner--warning">
+            <div class="detalle-banner__head">
+                <div class="detalle-banner__icon detalle-banner__icon--warning">
+                    <i class="pi pi-search"></i>
+                </div>
+                <div>
+                    <h2 class="detalle-banner__title m-0">{{ loan.searchCompleted.title }}</h2>
+                    <p class="detalle-banner__text m-0">{{ loan.searchCompleted.description }}</p>
+                </div>
+            </div>
+
+            <div class="detalle-banner__panel">
+                <div class="grid">
+                    <div class="col-12 md:col-6">
+                        <div class="detalle-small-label">Completado por:</div>
+                        <div class="detalle-small-value">{{ loan.searchCompleted.completedBy }}</div>
+                    </div>
+                    <div class="col-12 md:col-6">
+                        <div class="detalle-small-label">Fecha:</div>
+                        <div class="detalle-small-value">{{ loan.searchCompleted.completedAt }}</div>
+                    </div>
+                </div>
+
+                <div class="detalle-divider"></div>
+
+                <div class="detalle-small-label mb-2">Comentarios:</div>
+                <p class="m-0 detalle-note-text">{{ loan.searchCompleted.comments }}</p>
+
+                <div class="detalle-divider"></div>
+
+                <div class="font-semibold text-900 mb-3">Documentos encontrados:</div>
+                <div class="flex flex-column gap-3">
+                    <div v-for="group in loan.searchCompleted.groups" :key="group.title" class="detalle-summary-findings">
+                        <div class="detalle-summary-findings__title">
+                            <i class="pi pi-file"></i>
+                            <span>{{ group.title }}</span>
+                        </div>
+                        <div v-for="item in group.items" :key="`${group.title}-${item.title}`" class="detalle-summary-findings__item">
+                            <i class="pi pi-check-circle"></i>
+                            <span class="font-semibold">{{ item.title }}</span>
+                            <span>{{ item.meta }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="loan.loanSummary" class="detalle-banner detalle-banner--success">
+            <div class="detalle-banner__head">
+                <div class="detalle-banner__icon detalle-banner__icon--success">
+                    <i class="pi pi-box"></i>
+                </div>
+                <div>
+                    <h2 class="detalle-banner__title m-0">{{ loan.loanSummary.title }}</h2>
+                    <p class="detalle-banner__text m-0">{{ loan.loanSummary.description }}</p>
+                </div>
+            </div>
+
+            <div class="detalle-banner__panel">
+                <div class="grid">
+                    <div class="col-12 md:col-6">
+                        <div class="detalle-small-label"><i class="pi pi-calendar mr-2"></i>Fecha de prestamo</div>
+                        <div class="detalle-small-value">{{ loan.loanSummary.loanDate }}</div>
+                    </div>
+                    <div class="col-12 md:col-6">
+                        <div class="detalle-small-label"><i class="pi pi-calendar mr-2"></i>Fecha de devolucion programada</div>
+                        <div class="detalle-small-value">{{ loan.loanSummary.dueDate }}</div>
+                    </div>
+                    <div class="col-12 md:col-6">
+                        <div class="detalle-small-label"><i class="pi pi-user mr-2"></i>Persona responsable</div>
+                        <div class="detalle-small-value">{{ loan.loanSummary.responsible }}</div>
+                    </div>
+                    <div class="col-12 md:col-6">
+                        <div class="detalle-small-label"><i class="pi pi-user mr-2"></i>Recibido por</div>
+                        <div class="detalle-small-value">{{ loan.loanSummary.receivedBy }}</div>
+                    </div>
+                    <div class="col-12 md:col-6">
+                        <div class="detalle-small-label"><i class="pi pi-user mr-2"></i>Entregado por</div>
+                        <div class="detalle-small-value">{{ loan.loanSummary.deliveredBy }}</div>
+                    </div>
+                </div>
+
+                <div class="detalle-divider"></div>
+                <div class="font-semibold text-900 mb-3">Documentos prestados:</div>
+
+                <div class="flex flex-column gap-3">
+                    <div v-for="group in loan.loanSummary.groups" :key="group.title" class="detalle-loan-summary-group">
+                        <div class="detalle-loan-summary-group__title">
+                            <i class="pi pi-file"></i>
+                            <span>{{ group.title }}</span>
+                        </div>
+                        <div v-for="item in group.items" :key="`${group.title}-${item.title}`" class="detalle-loan-summary-group__item">
+                            <i class="pi pi-check-circle"></i>
+                            <span class="font-semibold">{{ item.title }}</span>
+                            <span>{{ item.meta }}</span>
+                            <span :class="documentTypeClass(item.documentTypeColor)">{{ item.documentType }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="detalle-divider"></div>
+                <div class="detalle-small-label mb-2">Observaciones</div>
+                <p class="m-0 detalle-note-text">{{ loan.loanSummary.observations }}</p>
+            </div>
+        </div>
+
+        <div v-if="loan.returnSummary" class="detalle-banner detalle-banner--success">
+            <div class="detalle-banner__head">
+                <div class="detalle-banner__icon detalle-banner__icon--success">
+                    <i class="pi pi-check-circle"></i>
+                </div>
+                <div>
+                    <h2 class="detalle-banner__title m-0">{{ loan.returnSummary.title }}</h2>
+                    <p class="detalle-banner__text m-0">{{ loan.returnSummary.description }}</p>
+                </div>
+            </div>
+
+            <div class="detalle-banner__panel">
+                <div class="grid">
+                    <div class="col-12 md:col-6">
+                        <div class="detalle-small-label">Fecha de devolucion</div>
+                        <div class="detalle-small-value">{{ loan.returnSummary.returnDate }} • {{ loan.returnSummary.returnTime }}</div>
+                    </div>
+                    <div class="col-12 md:col-6">
+                        <div class="detalle-small-label">Recibido por</div>
+                        <div class="detalle-small-value">{{ loan.returnSummary.receivedBy }}</div>
+                    </div>
+                    <div class="col-12">
+                        <div class="detalle-small-label">Condicion de los documentos</div>
+                        <div class="detalle-small-value">{{ loan.returnSummary.condition }}</div>
+                    </div>
+                </div>
+
+                <div class="detalle-divider"></div>
+                <div class="detalle-small-label mb-2">Observaciones</div>
+                <p class="m-0 detalle-note-text">{{ loan.returnSummary.observations }}</p>
+            </div>
+        </div>
+
+        <div v-if="loan.decisionCard" class="detalle-banner detalle-banner--danger">
+            <div class="detalle-banner__head">
+                <div class="detalle-banner__icon detalle-banner__icon--danger">
+                    <i :class="loan.decisionCard.icon"></i>
+                </div>
+                <div>
+                    <h2 class="detalle-banner__title m-0">{{ loan.decisionCard.title }}</h2>
+                    <p class="detalle-banner__text m-0">{{ loan.decisionCard.subtitle }}</p>
+                </div>
+            </div>
+
+            <div class="detalle-banner__panel detalle-banner__panel--danger">
+                <div class="detalle-observation-card__meta detalle-observation-card__meta--danger">
+                    <i class="pi pi-user"></i>
+                    <span class="font-semibold">{{ loan.decisionCard.actor }}</span>
+                    <span>{{ loan.decisionCard.dateTime }}</span>
+                </div>
+                <div class="detalle-banner__reason">
+                    <div class="font-semibold mb-2">{{ loan.decisionCard.reasonLabel }}</div>
+                    <p class="m-0">{{ loan.decisionCard.reason }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="isManageMode" class="detalle-panel">
+            <div class="detalle-panel__header">{{ loan.generalSectionTitle }}</div>
+            <div class="detalle-panel__body">
+                <div class="flex flex-column md:flex-row md:justify-content-end gap-2 mb-4">
+                    <span v-for="chip in loan.chips" :key="chip.label" :class="toneClass(chip.tone)">{{ chip.label }}</span>
+                </div>
+
+                <div class="grid">
+                    <div class="col-12 md:col-6">
+                        <div class="flex flex-column gap-4">
+                            <div>
+                                <span class="detalle-label">N° de solicitud</span>
+                                <div class="detalle-value">{{ loan.number }}</div>
+                            </div>
+                            <div>
+                                <span class="detalle-label">Unidad solicitante</span>
+                                <div class="detalle-value">{{ loan.unit }}</div>
+                            </div>
+                            <div v-if="loan.authorizedBy">
+                                <span class="detalle-label">Autorizado por</span>
+                                <div class="detalle-value">{{ loan.authorizedBy }}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-12 md:col-6">
+                        <div class="flex flex-column gap-4">
+                            <div>
+                                <span class="detalle-label">Fecha de solicitud</span>
+                                <div class="detalle-value">{{ loan.requestedAt }}</div>
+                            </div>
+                            <div>
+                                <span class="detalle-label">Solicitante</span>
+                                <div class="detalle-value">{{ loan.requestedBy ?? loan.applicant }}</div>
+                            </div>
+                            <div v-if="loan.authorizedAt">
+                                <span class="detalle-label">Fecha de autorizacion</span>
+                                <div class="detalle-value">{{ loan.authorizedAt }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div v-else class="surface-card shadow-1 border-round-xl p-4">
+            <div class="flex flex-column md:flex-row md:justify-content-between md:align-items-start gap-3 mb-4">
+                <h3 class="m-0 text-900 text-2xl font-bold">{{ loan.generalSectionTitle }}</h3>
+                <div class="flex gap-2 flex-wrap">
+                    <span v-for="chip in loan.chips" :key="chip.label" :class="toneClass(chip.tone)">{{ chip.label }}</span>
+                </div>
+            </div>
+
+            <div class="grid">
+                <div class="col-12 md:col-6">
+                    <div class="flex flex-column gap-4">
+                        <div>
+                            <span class="detalle-label">N° de prestamo documental</span>
+                            <div class="detalle-value">{{ loan.number }}</div>
+                        </div>
+                        <div>
+                            <span class="detalle-label">Unidad solicitante</span>
+                            <div class="detalle-value">{{ loan.unit }}</div>
+                        </div>
+                        <div v-if="loan.authorizedBy">
+                            <span class="detalle-label">Autorizado por</span>
+                            <div class="detalle-value">{{ loan.authorizedBy }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-12 md:col-6">
+                    <div class="flex flex-column gap-4">
+                        <div>
+                            <span class="detalle-label">Fecha de solicitud</span>
+                            <div class="detalle-value">{{ loan.requestedAt }}</div>
+                        </div>
+                        <div>
+                            <span class="detalle-label">Solicitante</span>
+                            <div class="detalle-value">{{ loan.requestedBy ?? loan.applicant }}</div>
+                        </div>
+                        <div v-if="loan.authorizedAt">
+                            <span class="detalle-label">Fecha de autorizacion</span>
+                            <div class="detalle-value">{{ loan.authorizedAt }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div :class="isManageMode ? 'detalle-panel' : 'surface-card shadow-1 border-round-xl p-4'">
+            <template v-if="isManageMode">
+                <div class="detalle-panel__header">{{ loan.documentsSectionTitle }}</div>
+                <div class="detalle-panel__body">
+                    <div class="flex flex-column gap-4">
+                        <div v-for="group in loan.documentGroups" :key="group.title">
+                            <h4 class="detalle-group-title">{{ group.title }}</h4>
+                            <div class="flex flex-column gap-3">
+                                <div
+                                    v-for="item in group.items"
+                                    :key="`${group.title}-${item.title}`"
+                                    :class="group.kind === 'additional' ? 'detalle-document-card detalle-document-card--additional' : 'detalle-document-card'"
+                                >
+                                    <div :class="group.kind === 'additional' ? 'detalle-document-card__icon detalle-document-card__icon--box' : 'detalle-document-card__icon'">
+                                        <i :class="group.kind === 'additional' ? 'pi pi-box' : 'pi pi-file'"></i>
+                                    </div>
+
+                                    <div class="grid flex-1">
+                                        <div class="col-12 lg:col-6">
+                                            <div class="detalle-document-card__title">{{ item.title }}</div>
+                                            <template v-if="group.kind === 'system'">
+                                                <div class="detalle-document-card__meta">Serie: {{ item.series }}</div>
+                                                <div class="detalle-document-card__meta">Caja: {{ item.box }}</div>
+                                            </template>
+                                            <template v-else>
+                                                <div class="detalle-document-card__meta">Año: {{ item.year }}</div>
+                                                <div class="detalle-document-card__meta">Unidad Productora: {{ item.producerUnit }}</div>
+                                            </template>
+                                        </div>
+
+                                        <div class="col-12 lg:col-6">
+                                            <template v-if="group.kind === 'system'">
+                                                <div class="detalle-document-card__meta">Año: {{ item.year }}</div>
+                                            </template>
+                                            <template v-else>
+                                                <div class="detalle-document-card__meta">Cantidad: {{ item.quantity }}</div>
+                                            </template>
+
+                                            <div class="detalle-document-card__meta">
+                                                Tipo:
+                                                <span :class="documentTypeClass(item.documentTypeColor)">{{ item.documentType }}</span>
+                                            </div>
+
+                                            <div v-if="group.kind === 'additional' && item.note" class="detalle-document-card__note">{{ item.note }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <template v-else>
+                <h3 class="m-0 text-900 text-2xl font-bold mb-4">{{ loan.documentsSectionTitle }}</h3>
+
+                <div class="flex flex-column gap-4">
+                    <div v-for="group in loan.documentGroups" :key="group.title">
+                        <h4 class="detalle-group-title">{{ group.title }}</h4>
+                        <div class="flex flex-column gap-3">
+                            <div
+                                v-for="item in group.items"
+                                :key="`${group.title}-${item.title}`"
+                                :class="group.kind === 'additional' ? 'detalle-document-card detalle-document-card--additional' : 'detalle-document-card'"
+                            >
+                                <div :class="group.kind === 'additional' ? 'detalle-document-card__icon detalle-document-card__icon--box' : 'detalle-document-card__icon'">
+                                    <i :class="group.kind === 'additional' ? 'pi pi-box' : 'pi pi-file'"></i>
+                                </div>
+
+                                <div class="grid flex-1">
+                                    <div class="col-12 lg:col-6">
+                                        <div class="detalle-document-card__title">{{ item.title }}</div>
+                                        <template v-if="group.kind === 'system'">
+                                            <div class="detalle-document-card__meta">Serie: {{ item.series }}</div>
+                                            <div class="detalle-document-card__meta">Año: {{ item.year }}</div>
+                                        </template>
+                                        <template v-else>
+                                            <div class="detalle-document-card__meta">Año: {{ item.year }}</div>
+                                            <div class="detalle-document-card__meta">Unidad Productora: {{ item.producerUnit }}</div>
+                                        </template>
+                                    </div>
+
+                                    <div class="col-12 lg:col-6">
+                                        <template v-if="group.kind === 'system'">
+                                            <div class="detalle-document-card__meta">Caja: {{ item.box }}</div>
+                                        </template>
+                                        <template v-else>
+                                            <div class="detalle-document-card__meta">Cantidad: {{ item.quantity }}</div>
+                                        </template>
+
+                                        <div class="detalle-document-card__meta">
+                                            Tipo:
+                                            <span :class="documentTypeClass(item.documentTypeColor)">{{ item.documentType }}</span>
+                                        </div>
+
+                                        <div v-if="group.kind === 'additional' && item.note" class="detalle-document-card__note"><span class="font-semibold">Observacion:</span> {{ item.note }}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <div v-if="isManageMode && (loan.actions?.length ?? 0) > 0" class="detalle-actions">
+            <button
+                v-for="action in loan.actions"
+                :key="action.key"
+                type="button"
+                :class="actionClass(action.variant)"
+                @click="handleAction(action)"
+            >
+                <i v-if="action.icon" :class="action.icon"></i>
+                <span>{{ action.label }}</span>
+            </button>
+        </div>
+
+        <div v-if="!isManageMode && (loan.history?.length ?? 0) > 0" class="surface-card shadow-1 border-round-xl p-4">
+            <h3 class="m-0 text-900 text-2xl font-bold mb-4">Historial de Estados</h3>
+
+            <div class="detalle-history">
+                <div v-for="(item, index) in loan.history" :key="`${item.status}-${item.dateTime}`" class="detalle-history__item">
+                    <div class="detalle-history__icon">
+                        <i :class="item.icon"></i>
+                    </div>
+                    <div class="detalle-history__content">
+                        <div class="flex flex-wrap align-items-center gap-3 mb-2">
+                            <span class="detalle-history__status">{{ item.status }}</span>
+                            <span class="detalle-history__date">{{ item.dateTime }}</span>
+                        </div>
+                        <p class="m-0 detalle-history__description">{{ item.description }}</p>
+                    </div>
+                    <div v-if="index !== loan.history.length - 1" class="detalle-history__line"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <Dialog
+        v-model:visible="decisionModalVisible"
+        modal
+        :draggable="false"
+        :closable="false"
+        :showHeader="false"
+        :style="{ width: 'min(560px, 94vw)' }"
+        :contentStyle="{ padding: '0', overflow: 'hidden' }"
+    >
+        <div v-if="decisionModalConfig" class="detalle-decision-modal">
+            <div class="detalle-decision-modal__body">
+                <div
+                    class="detalle-decision-modal__icon"
+                    :class="`detalle-decision-modal__icon--${decisionModalConfig.tone}`"
+                >
+                    <i :class="decisionModalConfig.icon"></i>
+                </div>
+
+                <h2
+                    class="detalle-decision-modal__title m-0"
+                    :class="`detalle-decision-modal__title--${decisionModalConfig.tone}`"
+                >
+                    {{ decisionModalConfig.title }}
+                </h2>
+
+                <p class="detalle-decision-modal__subtitle m-0">
+                    {{ decisionModalConfig.subtitle }}
+                </p>
+
+                <div class="detalle-decision-modal__field">
+                    <label class="detalle-decision-modal__label">
+                        {{ decisionModalConfig.label }}
+                        <span v-if="decisionModalConfig.required">*</span>
+                    </label>
+                    <textarea
+                        v-model="decisionForm.comments"
+                        rows="5"
+                        class="detalle-decision-modal__textarea"
+                        :placeholder="decisionModalConfig.placeholder"
+                    ></textarea>
+                </div>
+
+                <div class="detalle-decision-modal__actions">
+                    <button
+                        type="button"
+                        class="detalle-decision-modal__button detalle-decision-modal__button--cancel"
+                        :class="`detalle-decision-modal__button--cancel-${decisionModalConfig.tone}`"
+                        :disabled="decisionSubmitting"
+                        @click="decisionModalVisible = false; resetDecisionForm()"
+                    >
+                        {{ decisionModalConfig.cancelLabel }}
+                    </button>
+                    <button
+                        type="button"
+                        class="detalle-decision-modal__button"
+                        :class="`detalle-decision-modal__button--${decisionModalConfig.tone}`"
+                        :disabled="decisionSubmitting"
+                        @click="submitDecisionAction"
+                    >
+                        {{ decisionSubmitting ? 'Procesando...' : decisionModalConfig.confirmLabel }}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </Dialog>
+
+    <Dialog
+        v-model:visible="loanModalVisible"
+        modal
+        :draggable="false"
+        :closable="false"
+        :showHeader="false"
+        :style="{ width: 'min(920px, 94vw)' }"
+        :contentStyle="{ padding: '0', overflow: 'hidden' }"
+    >
+        <div class="detalle-form-modal">
+            <div class="detalle-form-modal__header detalle-form-modal__header--success">
+                <div class="detalle-form-modal__icon">
+                    <i class="pi pi-box"></i>
+                </div>
+                <div>
+                    <h2 class="m-0">{{ loan.loanRegistration?.title }}</h2>
+                    <p class="m-0 mt-2">{{ loan.loanRegistration?.subtitle }}</p>
+                </div>
+            </div>
+
+            <div class="detalle-form-modal__body">
+                <div class="detalle-form-section detalle-form-section--success">
+                    <div class="flex flex-column md:flex-row md:justify-content-between gap-3 mb-4">
+                        <div class="flex align-items-center gap-3">
+                            <div class="detalle-form-section__icon detalle-form-section__icon--success">
+                                <i class="pi pi-file"></i>
+                            </div>
+                            <div>
+                                <div class="detalle-form-section__title">{{ loan.loanRegistration?.helperTitle }}</div>
+                                <div class="detalle-form-section__text">{{ loan.loanRegistration?.helperText }}</div>
+                            </div>
+                        </div>
+                        <button type="button" class="detalle-mini-action detalle-mini-action--success" @click="toggleLoanDocuments">
+                            {{ loan.loanRegistration?.selectAllLabel }}
+                        </button>
+                    </div>
+
+                    <div class="font-semibold text-900 mb-3">{{ loan.loanRegistration?.documentsTitle }}</div>
+
+                    <div class="flex flex-column gap-3">
+                        <label
+                            v-for="document in loanRegistrationDocuments"
+                            :key="document.id"
+                            class="detalle-select-card"
+                        >
+                            <input
+                                :checked="loanForm.selectedIds.includes(document.id)"
+                                type="checkbox"
+                                class="detalle-select-card__checkbox"
+                                @change="toggleLoanDocument(document.id)"
+                            />
+                            <div class="detalle-select-card__content">
+                                <div class="detalle-document-card__title mb-2">{{ document.title }}</div>
+                                <div class="detalle-select-card__meta">
+                                    <span><strong>Serie:</strong> {{ document.series }}</span>
+                                    <span><strong>Caja:</strong> {{ document.box }}</span>
+                                    <span><strong>Año:</strong> {{ document.year }}</span>
+                                    <span :class="documentTypeClass(document.documentTypeColor)">{{ document.documentType }}</span>
+                                </div>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div class="detalle-select-summary mt-3">
+                        {{
+                            formatSelectionSummary(
+                                loan.loanRegistration?.selectionSummary ?? '',
+                                loanForm.selectedIds.length,
+                                loanRegistrationDocuments.length,
+                            )
+                        }}
+                    </div>
+                </div>
+
+                <div class="grid mt-4">
+                    <div class="col-12 md:col-6">
+                        <label class="detalle-form-label">Fecha de prestamo <span>*</span></label>
+                        <DatePicker
+                            v-model="loanForm.loanDate"
+                            showIcon
+                            iconDisplay="input"
+                            dateFormat="dd/mm/yy"
+                            placeholder="dd/mm/aaaa"
+                            class="detalle-datepicker"
+                        />
+                    </div>
+                    <div class="col-12 md:col-6">
+                        <label class="detalle-form-label">Fecha de devolucion programada <span>*</span></label>
+                        <DatePicker
+                            v-model="loanForm.dueDate"
+                            showIcon
+                            iconDisplay="input"
+                            dateFormat="dd/mm/yy"
+                            placeholder="dd/mm/aaaa"
+                            class="detalle-datepicker"
+                        />
+                    </div>
+                    <div class="col-12">
+                        <label class="detalle-form-label">Nombre de quien recibe <span>*</span></label>
+                        <input v-model="loanForm.receivedBy" type="text" class="detalle-input" placeholder="Nombre completo de la persona que recibe el prestamo" />
+                    </div>
+                    <div class="col-12">
+                        <label class="detalle-form-label">Observaciones (opcional)</label>
+                        <textarea v-model="loanForm.observations" rows="4" class="detalle-textarea" placeholder="Agregue observaciones sobre el prestamo..."></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <div class="detalle-form-modal__footer">
+                <button type="button" class="detalle-action detalle-action--secondary" @click="loanModalVisible = false">Cancelar</button>
+                <button type="button" class="detalle-action detalle-action--success" @click="submitLoanRegistration">
+                    <i class="pi pi-box"></i>
+                    <span>Registrar Prestamo</span>
+                </button>
+            </div>
+        </div>
+    </Dialog>
+
+    <Dialog
+        v-model:visible="returnModalVisible"
+        modal
+        :draggable="false"
+        :closable="false"
+        :showHeader="false"
+        :style="{ width: 'min(920px, 94vw)' }"
+        :contentStyle="{ padding: '0', overflow: 'hidden' }"
+    >
+        <div class="detalle-form-modal">
+            <div class="detalle-form-modal__header detalle-form-modal__header--muted">
+                <div class="detalle-form-modal__icon detalle-form-modal__icon--muted">
+                    <i class="pi pi-check-circle"></i>
+                </div>
+                <div>
+                    <h2 class="m-0">{{ loan.returnRegistration?.title }}</h2>
+                    <p class="m-0 mt-2">{{ loan.returnRegistration?.subtitle }}</p>
+                </div>
+            </div>
+
+            <div class="detalle-form-modal__body">
+                <div class="detalle-form-section detalle-form-section--muted">
+                    <div class="flex flex-column md:flex-row md:justify-content-between gap-3 mb-4">
+                        <div class="flex align-items-center gap-3">
+                            <div class="detalle-form-section__icon detalle-form-section__icon--muted">
+                                <i class="pi pi-file"></i>
+                            </div>
+                            <div>
+                                <div class="detalle-form-section__title">{{ loan.returnRegistration?.helperTitle }}</div>
+                                <div class="detalle-form-section__text">{{ loan.returnRegistration?.helperText }}</div>
+                            </div>
+                        </div>
+                        <button type="button" class="detalle-mini-action detalle-mini-action--muted" @click="toggleReturnDocuments">
+                            {{ loan.returnRegistration?.selectAllLabel }}
+                        </button>
+                    </div>
+
+                    <div class="font-semibold text-900 mb-3">{{ loan.returnRegistration?.documentsTitle }}</div>
+
+                    <div class="flex flex-column gap-3">
+                        <label
+                            v-for="document in returnRegistrationDocuments"
+                            :key="document.id"
+                            class="detalle-select-card"
+                        >
+                            <input
+                                :checked="returnForm.selectedIds.includes(document.id)"
+                                type="checkbox"
+                                class="detalle-select-card__checkbox"
+                                @change="toggleReturnDocument(document.id)"
+                            />
+                            <div class="detalle-select-card__content">
+                                <div class="detalle-document-card__title mb-2">{{ document.title }}</div>
+                                <div class="detalle-select-card__meta">
+                                    <span><strong>Serie:</strong> {{ document.series }}</span>
+                                    <span><strong>Caja:</strong> {{ document.box }}</span>
+                                    <span><strong>Año:</strong> {{ document.year }}</span>
+                                    <span :class="documentTypeClass(document.documentTypeColor)">{{ document.documentType }}</span>
+                                </div>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div class="detalle-select-summary mt-3">
+                        {{
+                            formatSelectionSummary(
+                                loan.returnRegistration?.selectionSummary ?? '',
+                                returnForm.selectedIds.length,
+                                returnRegistrationDocuments.length,
+                            )
+                        }}
+                    </div>
+                </div>
+
+                <div class="grid mt-4">
+                    <div class="col-12">
+                        <label class="detalle-form-label">Fecha de devolucion <span>*</span></label>
+                        <DatePicker
+                            v-model="returnForm.returnDate"
+                            showIcon
+                            iconDisplay="input"
+                            dateFormat="dd/mm/yy"
+                            placeholder="dd/mm/aaaa"
+                            class="detalle-datepicker"
+                        />
+                    </div>
+                    <div class="col-12">
+                        <label class="detalle-form-label">Condicion de los documentos <span>*</span></label>
+                        <input v-model="returnForm.condition" type="text" class="detalle-input" placeholder="Condicion de los documentos" />
+                    </div>
+                    <div class="col-12">
+                        <label class="detalle-form-label">Observaciones (opcional)</label>
+                        <textarea v-model="returnForm.observations" rows="4" class="detalle-textarea" placeholder="Agregue observaciones sobre la devolucion..."></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <div class="detalle-form-modal__footer">
+                <button type="button" class="detalle-action detalle-action--secondary" @click="returnModalVisible = false">Cancelar</button>
+                <button type="button" class="detalle-action detalle-action--muted" @click="submitReturnRegistration">
+                    <i class="pi pi-check-circle"></i>
+                    <span>Registrar Devolucion</span>
+                </button>
+            </div>
+        </div>
+    </Dialog>
+</template>
+
+<style scoped>
+.detalle-back-button {
+    width: 2.75rem;
+    height: 2.75rem;
+    border: none;
+    background: transparent;
+    color: #2f6f9f;
+    border-radius: 0.85rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.detalle-title {
+    color: #2f6f9f;
+    font-size: 2.3rem;
+    line-height: 1.1;
+    font-weight: 700;
+}
+
+.detalle-subtitle {
+    color: #64748b;
+    font-size: 1rem;
+}
+
+.detalle-decision-modal {
+    background: #ffffff;
+}
+
+.detalle-decision-modal__body {
+    padding: 2.25rem 2rem 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.detalle-decision-modal__icon {
+    width: 3.9rem;
+    height: 3.9rem;
+    border-radius: 9999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.65rem;
+    margin-bottom: 1.5rem;
+}
+
+.detalle-decision-modal__icon--success {
+    background: #ebf8ee;
+    color: #56b657;
+}
+
+.detalle-decision-modal__icon--warning {
+    background: #fff3e3;
+    color: #f0a53a;
+}
+
+.detalle-decision-modal__icon--danger {
+    background: #fde8e8;
+    color: #e6554f;
+}
+
+.detalle-decision-modal__title {
+    font-size: 1.15rem;
+    font-weight: 700;
+}
+
+.detalle-decision-modal__title--success {
+    color: #56b657;
+}
+
+.detalle-decision-modal__title--warning {
+    color: #f0a53a;
+}
+
+.detalle-decision-modal__title--danger {
+    color: #e6554f;
+}
+
+.detalle-decision-modal__subtitle {
+    margin-top: 1rem;
+    color: #64748b;
+    font-size: 0.95rem;
+    line-height: 1.45;
+    max-width: 24rem;
+}
+
+.detalle-decision-modal__field {
+    width: 100%;
+    margin-top: 1.5rem;
+    text-align: left;
+}
+
+.detalle-decision-modal__label {
+    display: block;
+    color: #1f2937;
+    font-size: 0.95rem;
+    margin-bottom: 0.7rem;
+}
+
+.detalle-decision-modal__label span {
+    color: #ef4444;
+    margin-left: 0.2rem;
+}
+
+.detalle-decision-modal__textarea {
+    width: 100%;
+    min-height: 7rem;
+    border: 1px solid #d7dee8;
+    border-radius: 0.65rem;
+    padding: 1rem;
+    resize: none;
+    font: inherit;
+    color: #0f172a;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.detalle-decision-modal__textarea:focus {
+    border-color: #94a3b8;
+    box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.18);
+}
+
+.detalle-decision-modal__actions {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    gap: 0.85rem;
+    margin-top: 1.55rem;
+}
+
+.detalle-decision-modal__button {
+    min-width: 10rem;
+    border-radius: 0.75rem;
+    padding: 0.95rem 1.35rem;
+    font-weight: 700;
+    font-size: 0.98rem;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: opacity 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.detalle-decision-modal__button:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+}
+
+.detalle-decision-modal__button:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.detalle-decision-modal__button--success {
+    background: #56b657;
+    color: #ffffff;
+}
+
+.detalle-decision-modal__button--warning {
+    background: #f7d18a;
+    color: #ffffff;
+}
+
+.detalle-decision-modal__button--danger {
+    background: #eda3a0;
+    color: #ffffff;
+}
+
+.detalle-decision-modal__button--cancel {
+    background: #ffffff;
+}
+
+.detalle-decision-modal__button--cancel-success {
+    border-color: #7a8ea5;
+    color: #64748b;
+}
+
+.detalle-decision-modal__button--cancel-warning {
+    border-color: #f0a53a;
+    color: #f0a53a;
+}
+
+.detalle-decision-modal__button--cancel-danger {
+    border-color: #fb5a55;
+    color: #fb5a55;
+}
+
+.detalle-banner {
+    border-radius: 1rem;
+    padding: 1.5rem;
+}
+
+.detalle-banner--success {
+    background: #d7f8e8;
+    border-left: 4px solid #28b04b;
+}
+
+.detalle-banner--warning {
+    background: #fff3c4;
+    border-left: 4px solid #f6ad3c;
+}
+
+.detalle-banner--danger {
+    background: #fee2e2;
+    border-left: 4px solid #ef4444;
+}
+
+.detalle-banner__head {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.detalle-banner__icon {
+    width: 2.8rem;
+    height: 2.8rem;
+    border-radius: 0.9rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    flex-shrink: 0;
+    font-size: 1.15rem;
+}
+
+.detalle-banner__icon--success {
+    background: #28b04b;
+}
+
+.detalle-banner__icon--warning {
+    background: #f6ad3c;
+}
+
+.detalle-banner__icon--danger {
+    background: #ef4444;
+}
+
+.detalle-banner__title {
+    color: #0f172a;
+    font-size: 1.2rem;
+    font-weight: 700;
+}
+
+.detalle-banner__text {
+    color: #5b6576;
+    margin-top: 0.35rem;
+}
+
+.detalle-banner__panel {
+    background: #ffffff;
+    border-radius: 1rem;
+    padding: 1rem 1.15rem;
+}
+
+.detalle-banner__panel--danger {
+    border: 1px solid #f7b5b5;
+}
+
+.detalle-banner__reason {
+    border-top: 1px solid #f7b5b5;
+    padding-top: 1rem;
+    margin-top: 1rem;
+    color: #991b1b;
+}
+
+.detalle-small-label {
+    color: #0f6848;
+    font-size: 0.92rem;
+    margin-bottom: 0.35rem;
+}
+
+.detalle-small-value {
+    color: #0f6848;
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.detalle-divider {
+    margin: 1rem 0;
+    border-top: 1px solid #dbe7df;
+}
+
+.detalle-note-text {
+    color: #7c5d15;
+    line-height: 1.6;
+}
+
+.detalle-summary-findings {
+    border: 1px solid #f3d68a;
+    background: #fffdf3;
+    border-radius: 0.9rem;
+    padding: 0.9rem 1rem;
+}
+
+.detalle-summary-findings__title,
+.detalle-loan-summary-group__title {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    color: #9a6700;
+    font-weight: 700;
+}
+
+.detalle-summary-findings__item,
+.detalle-loan-summary-group__item {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+    margin-top: 0.75rem;
+    color: #475569;
+}
+
+.detalle-summary-findings__item .pi,
+.detalle-loan-summary-group__item .pi {
+    color: #16a34a;
+}
+
+.detalle-loan-summary-group {
+    border: 1px solid #bfe8cc;
+    background: #ffffff;
+    border-radius: 0.9rem;
+    padding: 0.9rem 1rem;
+}
+
+.detalle-observation-card {
+    background: #ffffff;
+    border-radius: 0.95rem;
+    padding: 1rem 1.1rem;
+}
+
+.detalle-observation-card__meta {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: #9a6700;
+    font-size: 0.92rem;
+    flex-wrap: wrap;
+}
+
+.detalle-observation-card__meta--danger {
+    color: #b91c1c;
+}
+
+.detalle-observation-card__message {
+    color: #6b4b0f;
+    margin-top: 0.85rem;
+    line-height: 1.6;
+}
+
+.detalle-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.9rem;
+    background: #fff3c4;
+    border-left: 4px solid #f6ad3c;
+    border-radius: 1rem;
+    padding: 1rem 1.15rem;
+}
+
+.detalle-notice__icon {
+    color: #f59e0b;
+    font-size: 1.1rem;
+    line-height: 1;
+    margin-top: 0.1rem;
+}
+
+.detalle-notice__title {
+    color: #9a6700;
+    font-weight: 700;
+    margin-bottom: 0.35rem;
+}
+
+.detalle-notice__text {
+    color: #7c5d15;
+}
+
+.detalle-panel {
+    overflow: hidden;
+    border-radius: 1rem;
+    background: #ffffff;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+}
+
+.detalle-panel__header {
+    background: #2f6f9f;
+    color: #ffffff;
+    font-size: 1.15rem;
+    font-weight: 700;
+    padding: 1rem 1.3rem;
+}
+
+.detalle-panel__body {
+    padding: 1.4rem 1.5rem 1.5rem;
+}
+
+.detalle-label {
+    display: block;
+    color: #64748b;
+    font-size: 0.96rem;
+    margin-bottom: 0.6rem;
+}
+
+.detalle-value {
+    color: #0f172a;
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.5;
+}
+
+.detalle-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 1.9rem;
+    min-width: 6rem;
+    padding: 0.28rem 0.9rem;
+    border-radius: 9999px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.detalle-chip--success {
+    background: #c9f2e8;
+    color: #0c8a66;
+}
+
+.detalle-chip--danger {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.detalle-chip--warning {
+    background: #fde9a9;
+    color: #b45309;
+}
+
+.detalle-chip--neutral {
+    background: #d9dee7;
+    color: #64748b;
+}
+
+.detalle-chip--info {
+    background: #dbeafe;
+    color: #2563eb;
+}
+
+.detalle-group-title {
+    color: #64748b;
+    font-size: 1.35rem;
+    font-weight: 600;
+    margin: 0 0 1rem;
+}
+
+.detalle-document-card {
+    border: 1px solid #d7dde6;
+    border-radius: 1rem;
+    background: #ffffff;
+    padding: 1.25rem 1.35rem;
+    display: flex;
+    gap: 1rem;
+}
+
+.detalle-document-card--additional {
+    background: #fffdf3;
+}
+
+.detalle-document-card__icon {
+    width: 2.35rem;
+    height: 2.35rem;
+    border-radius: 0.8rem;
+    background: #eff6ff;
+    color: #2f6f9f;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.detalle-document-card__icon--box {
+    background: #eef5ff;
+}
+
+.detalle-document-card__title {
+    color: #0f172a;
+    font-size: 1.15rem;
+    font-weight: 700;
+}
+
+.detalle-document-card__meta {
+    color: #475569;
+    font-size: 0.98rem;
+    margin-bottom: 0.45rem;
+}
+
+.detalle-document-card__note {
+    color: #64748b;
+    font-size: 0.92rem;
+    font-style: italic;
+    margin-top: 0.4rem;
+}
+
+.detalle-document-type {
+    font-weight: 600;
+    margin-left: 0.35rem;
+}
+
+.detalle-document-type--info {
+    color: #2563eb;
+}
+
+.detalle-document-type--warning {
+    color: #ea580c;
+}
+
+.detalle-document-type--success {
+    color: #0c8a66;
+}
+
+.detalle-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.detalle-action {
+    border: none;
+    border-radius: 0.9rem;
+    padding: 0.95rem 1.35rem;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+.detalle-action--primary {
+    background: #0ea5c6;
+    color: #ffffff;
+}
+
+.detalle-action--success {
+    background: #28b04b;
+    color: #ffffff;
+}
+
+.detalle-action--warning {
+    background: #f6ad3c;
+    color: #ffffff;
+}
+
+.detalle-action--danger {
+    background: #e35151;
+    color: #ffffff;
+}
+
+.detalle-action--muted {
+    background: #6b7280;
+    color: #ffffff;
+}
+
+.detalle-action--secondary {
+    background: #ffffff;
+    color: #2f6f9f;
+    border: 1px solid #2f6f9f;
+}
+
+.detalle-history {
+    position: relative;
+}
+
+.detalle-history__item {
+    position: relative;
+    display: flex;
+    gap: 1rem;
+    padding: 0.35rem 0 1.4rem;
+}
+
+.detalle-history__icon {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 9999px;
+    background: #2f6f9f;
+    color: #ffffff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    z-index: 1;
+}
+
+.detalle-history__content {
+    flex: 1;
+}
+
+.detalle-history__status {
+    color: #0f172a;
+    font-size: 1.15rem;
+    font-weight: 700;
+}
+
+.detalle-history__date {
+    color: #64748b;
+    font-size: 0.92rem;
+}
+
+.detalle-history__description {
+    color: #475569;
+    font-size: 1rem;
+    line-height: 1.6;
+}
+
+.detalle-history__line {
+    position: absolute;
+    top: 2.7rem;
+    left: 1.15rem;
+    width: 2px;
+    height: calc(100% - 1rem);
+    background: #d7dde6;
+}
+
+.detalle-form-modal__header {
+    padding: 1.3rem 1.5rem;
+    color: #ffffff;
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+.detalle-form-modal__header--success {
+    background: #28b04b;
+}
+
+.detalle-form-modal__header--muted {
+    background: #6b7280;
+}
+
+.detalle-form-modal__icon {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.22);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+    flex-shrink: 0;
+}
+
+.detalle-form-modal__body {
+    padding: 1.4rem 1.5rem;
+}
+
+.detalle-form-modal__footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.85rem;
+    padding: 1rem 1.5rem 1.3rem;
+    border-top: 1px solid #e2e8f0;
+}
+
+.detalle-form-section {
+    border-radius: 1rem;
+    padding: 1rem;
+    border: 1px solid #d7dde6;
+}
+
+.detalle-form-section--success {
+    border-color: #7ad49f;
+    background: #f6fffa;
+}
+
+.detalle-form-section--muted {
+    border-color: #94a3b8;
+    background: #ffffff;
+}
+
+.detalle-form-section__icon {
+    width: 2.35rem;
+    height: 2.35rem;
+    border-radius: 9999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    flex-shrink: 0;
+}
+
+.detalle-form-section__icon--success {
+    background: #28b04b;
+}
+
+.detalle-form-section__icon--muted {
+    background: #6b7280;
+}
+
+.detalle-form-section__title {
+    color: #0f172a;
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.detalle-form-section__text {
+    color: #475569;
+    margin-top: 0.3rem;
+}
+
+.detalle-mini-action {
+    border: none;
+    border-radius: 0.85rem;
+    padding: 0.75rem 1rem;
+    color: #ffffff;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.detalle-mini-action--success {
+    background: #28b04b;
+}
+
+.detalle-mini-action--muted {
+    background: #6b7280;
+}
+
+.detalle-select-card {
+    border: 1px solid #d7dde6;
+    border-radius: 0.95rem;
+    padding: 0.95rem 1rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.9rem;
+    cursor: pointer;
+}
+
+.detalle-select-card__checkbox {
+    width: 1.3rem;
+    height: 1.3rem;
+    margin-top: 0.15rem;
+}
+
+.detalle-select-card__content {
+    flex: 1;
+}
+
+.detalle-select-card__meta {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    color: #64748b;
+}
+
+.detalle-select-summary {
+    border: 1px solid #94a3b8;
+    border-radius: 0.9rem;
+    padding: 0.9rem 1rem;
+    color: #334155;
+}
+
+.detalle-form-label {
+    display: inline-block;
+    color: #0f172a;
+    font-weight: 600;
+    margin-bottom: 0.55rem;
+}
+
+.detalle-form-label span {
+    color: #ef4444;
+}
+
+.detalle-input,
+.detalle-textarea {
+    width: 100%;
+    border: 1px solid #d7dde6;
+    border-radius: 0.85rem;
+    padding: 0.95rem 1rem;
+    color: #334155;
+    font: inherit;
+}
+
+.detalle-textarea {
+    resize: vertical;
+}
+
+:deep(.detalle-datepicker),
+:deep(.detalle-datepicker .p-datepicker),
+:deep(.detalle-datepicker .p-inputtext) {
+    width: 100%;
+}
+
+@media (max-width: 991px) {
+    .detalle-title {
+        font-size: 1.8rem;
+    }
+
+    .detalle-panel__body,
+    .detalle-banner,
+    .detalle-form-modal__body,
+    .detalle-form-modal__footer,
+    .detalle-form-modal__header {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    .detalle-action {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .detalle-form-modal__footer {
+        flex-direction: column-reverse;
+    }
+}
+
+@media (max-width: 640px) {
+    .detalle-back-button {
+        width: 2.35rem;
+        height: 2.35rem;
+    }
+
+    .detalle-title {
+        font-size: 1.45rem;
+    }
+
+    .detalle-subtitle {
+        display: inline-block;
+        margin-top: 0.2rem;
+    }
+
+    .detalle-chip {
+        min-width: auto;
+    }
+
+    .detalle-document-card,
+    .detalle-banner__head,
+    .detalle-form-modal__header,
+    .detalle-select-card {
+        flex-direction: column;
+    }
+
+    .detalle-select-card__checkbox {
+        margin-top: 0;
+    }
+
+    .detalle-select-card__meta {
+        gap: 0.55rem;
+        flex-direction: column;
+    }
+}
+</style>

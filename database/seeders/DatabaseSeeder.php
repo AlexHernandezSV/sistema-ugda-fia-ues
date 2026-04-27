@@ -8,7 +8,6 @@ use App\Models\Unit;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
@@ -20,6 +19,7 @@ class DatabaseSeeder extends Seeder
             ProfileRoleSeeder::class,
             EndpointRoleSeeder::class,
             DocumentarySeriesSeeder::class,
+            RequestStatusCatalogSeeder::class,
         ]);
 
         $now = now();
@@ -55,6 +55,21 @@ class DatabaseSeeder extends Seeder
         );
 
         $this->seedUserWithProfileAndUnits(
+            email: 'usuario.ugda@yopmail.com',
+            password: 'password',
+            personData: [
+                'first_name' => 'Carlos',
+                'second_name' => null,
+                'first_last_name' => 'Rodriguez',
+                'second_last_name' => null,
+                'carnet' => 'UGDA2026',
+            ],
+            profileName: 'Usuario UGDA',
+            unitIds: [$ugdaUnit->id],
+            now: $now,
+        );
+
+        $this->seedUserWithProfileAndUnits(
             email: 'unidad.solicitante@yopmail.com',
             password: 'password',
             personData: [
@@ -83,6 +98,10 @@ class DatabaseSeeder extends Seeder
             unitIds: [$decanatoUnit->id],
             now: $now,
         );
+
+        $this->call([
+            RequestWorkflowDemoSeeder::class,
+        ]);
     }
 
     private function seedUserWithProfileAndUnits(
@@ -96,7 +115,7 @@ class DatabaseSeeder extends Seeder
         $user = User::updateOrCreate(
             ['email' => $email],
             [
-                'password' => Hash::make($password),
+                'password' => $password,
                 'is_active' => true,
             ]
         );

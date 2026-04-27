@@ -26,20 +26,25 @@ class DocumentarySeriesController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'code' => ['required', 'string', 'size:3', 'regex:/^\d{3}$/', 'unique:documentary_series,code'],
+            'code' => ['required', 'string', 'max:20', 'regex:/^\d+$/', 'unique:documentary_series,code'],
             'name' => ['required', 'string', 'max:150'],
             'is_active' => ['sometimes', 'boolean'],
         ], [
-            'code.regex' => 'El código de la serie debe contener exactamente 3 dígitos.',
+            'code.required' => 'El codigo de la serie es obligatorio.',
+            'code.max' => 'El codigo de la serie no puede exceder los 20 digitos.',
+            'code.regex' => 'El codigo de la serie solo puede contener digitos.',
+            'code.unique' => 'Ya existe una serie documental registrada con este codigo.',
+            'name.required' => 'El nombre de la serie es obligatorio.',
+            'name.max' => 'El nombre de la serie no puede exceder los 150 caracteres.',
         ]);
 
         DocumentarySeries::create([
-            'code' => $validated['code'],
+            'code' => trim($validated['code']),
             'name' => trim($validated['name']),
             'is_active' => $validated['is_active'] ?? true,
         ]);
 
-        return response()->json(['message' => 'Serie documental creada con éxito']);
+        return response()->json(['message' => 'Serie documental creada con exito']);
     }
 
     public function update(Request $request, $id)
@@ -50,18 +55,23 @@ class DocumentarySeriesController extends Controller
             'code' => [
                 'required',
                 'string',
-                'size:3',
-                'regex:/^\d{3}$/',
+                'max:20',
+                'regex:/^\d+$/',
                 Rule::unique('documentary_series', 'code')->ignore($series->id),
             ],
             'name' => ['required', 'string', 'max:150'],
             'is_active' => ['required', 'boolean'],
         ], [
-            'code.regex' => 'El código de la serie debe contener exactamente 3 dígitos.',
+            'code.required' => 'El codigo de la serie es obligatorio.',
+            'code.max' => 'El codigo de la serie no puede exceder los 20 digitos.',
+            'code.regex' => 'El codigo de la serie solo puede contener digitos.',
+            'code.unique' => 'Ya existe una serie documental registrada con este codigo.',
+            'name.required' => 'El nombre de la serie es obligatorio.',
+            'name.max' => 'El nombre de la serie no puede exceder los 150 caracteres.',
         ]);
 
         $series->update([
-            'code' => $validated['code'],
+            'code' => trim($validated['code']),
             'name' => trim($validated['name']),
             'is_active' => $validated['is_active'],
         ]);
@@ -90,25 +100,30 @@ class DocumentarySeriesController extends Controller
             'code' => [
                 'required',
                 'string',
-                'size:2',
-                'regex:/^\d{2}$/',
+                'max:20',
+                'regex:/^\d+$/',
                 Rule::unique('documentary_subseries', 'code')
                     ->where(fn ($query) => $query->where('documentary_series_id', $series->id)->whereNull('deleted_at')),
             ],
             'name' => ['required', 'string', 'max:150'],
             'is_active' => ['sometimes', 'boolean'],
         ], [
-            'code.regex' => 'El código de la subserie debe contener exactamente 2 dígitos.',
+            'code.required' => 'El codigo de la subserie es obligatorio.',
+            'code.max' => 'El codigo de la subserie no puede exceder los 20 digitos.',
+            'code.regex' => 'El codigo de la subserie solo puede contener digitos.',
+            'code.unique' => 'Ya existe una subserie registrada con este codigo dentro de la serie seleccionada.',
+            'name.required' => 'El nombre de la subserie es obligatorio.',
+            'name.max' => 'El nombre de la subserie no puede exceder los 150 caracteres.',
         ]);
 
         DocumentarySubseries::create([
             'documentary_series_id' => $series->id,
-            'code' => $validated['code'],
+            'code' => trim($validated['code']),
             'name' => trim($validated['name']),
             'is_active' => $validated['is_active'] ?? true,
         ]);
 
-        return response()->json(['message' => 'Subserie documental creada con éxito']);
+        return response()->json(['message' => 'Subserie documental creada con exito']);
     }
 
     public function updateSubseries(Request $request, $id)
@@ -119,8 +134,8 @@ class DocumentarySeriesController extends Controller
             'code' => [
                 'required',
                 'string',
-                'size:2',
-                'regex:/^\d{2}$/',
+                'max:20',
+                'regex:/^\d+$/',
                 Rule::unique('documentary_subseries', 'code')
                     ->where(fn ($query) => $query->where('documentary_series_id', $subseries->documentary_series_id)->whereNull('deleted_at'))
                     ->ignore($subseries->id),
@@ -128,11 +143,16 @@ class DocumentarySeriesController extends Controller
             'name' => ['required', 'string', 'max:150'],
             'is_active' => ['required', 'boolean'],
         ], [
-            'code.regex' => 'El código de la subserie debe contener exactamente 2 dígitos.',
+            'code.required' => 'El codigo de la subserie es obligatorio.',
+            'code.max' => 'El codigo de la subserie no puede exceder los 20 digitos.',
+            'code.regex' => 'El codigo de la subserie solo puede contener digitos.',
+            'code.unique' => 'Ya existe una subserie registrada con este codigo dentro de la serie seleccionada.',
+            'name.required' => 'El nombre de la subserie es obligatorio.',
+            'name.max' => 'El nombre de la subserie no puede exceder los 150 caracteres.',
         ]);
 
         $subseries->update([
-            'code' => $validated['code'],
+            'code' => trim($validated['code']),
             'name' => trim($validated['name']),
             'is_active' => $validated['is_active'],
         ]);

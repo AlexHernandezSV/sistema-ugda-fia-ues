@@ -22,11 +22,11 @@ const toggleMobileSidebar = () => {
         
         <AppSidebar v-if="!isLoginPage" />
 
-        <div class="flex flex-column transition-all transition-duration-200" 
+        <div class="flex flex-column transition-all transition-duration-200 app-shell" 
              :class="[isLoginPage ? 'w-full' : 'flex-grow-1']"
              style="max-width: 100%; overflow-x: hidden;">
             
-            <div class="h-full flex flex-column" :class="[isLoginPage ? 'p-0' : 'p-4']">
+            <div class="h-full flex flex-column" :class="[isLoginPage ? 'p-0' : 'app-shell__content']">
                 <div v-if="!isLoginPage" class="mobile-page-header">
                     <button type="button" class="mobile-page-header__toggle" @click="toggleMobileSidebar">
                         <i class="pi pi-bars"></i>
@@ -54,6 +54,10 @@ body {
     background-color: #f9fafb;
     font-family: var(--font-family); /* Usa la variable definida arriba */
     -webkit-font-smoothing: antialiased;
+}
+
+#app {
+    width: 100%;
 }
 
 /* 3. FORZAR EN COMPONENTES DE PRIMEVUE (Modales, Inputs, Botones) */
@@ -103,12 +107,20 @@ body {
     display: none;
 }
 
+.app-shell__content {
+    padding: 1.5rem;
+}
+
 @media (max-width: 991px) {
+    .app-shell__content {
+        padding: 1rem;
+    }
+
     .mobile-page-header {
         display: flex;
         align-items: center;
         gap: 1rem;
-        margin-bottom: 1.25rem;
+        margin-bottom: 1rem;
         padding: 0.25rem 0 0.5rem;
     }
 
@@ -134,7 +146,7 @@ body {
     .mobile-page-header__title {
         margin: 0;
         color: #1560bd;
-        font-size: 1.95rem;
+        font-size: 1.55rem;
         line-height: 1.05;
         font-weight: 700;
         letter-spacing: -0.02em;
@@ -172,6 +184,26 @@ body {
     .p-dialog .grid {
         margin-left: 0 !important;
         margin-right: 0 !important;
+    }
+}
+
+@media (max-width: 640px) {
+    .app-shell__content {
+        padding: 0.85rem;
+    }
+
+    .mobile-page-header {
+        gap: 0.75rem;
+    }
+
+    .mobile-page-header__toggle {
+        width: 2.65rem;
+        height: 2.65rem;
+        border-radius: 0.85rem;
+    }
+
+    .mobile-page-header__title {
+        font-size: 1.3rem;
     }
 }
 </style>

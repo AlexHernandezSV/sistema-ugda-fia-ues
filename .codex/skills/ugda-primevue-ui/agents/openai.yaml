@@ -1,0 +1,4 @@
+interface:
+  display_name: "UGDA PrimeVue UI"
+  short_description: "Pantallas PrimeVue coherentes con UGDA"
+  default_prompt: "Use $ugda-primevue-ui para construir una pantalla administrativa PrimeVue en español."

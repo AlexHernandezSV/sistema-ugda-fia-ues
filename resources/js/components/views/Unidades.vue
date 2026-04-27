@@ -238,11 +238,13 @@ const clearFilter = () => {
                     </template>
                 </Column>
                 
-                <Column field="is_active" header="Estado" sortable style="width: 10%" headerClass="bg-primary-custom text-white font-semibold">
+                <Column field="is_active" header="Estado" sortable style="width: 10%" headerClass="bg-primary-custom text-white font-semibold ugda-chip-header" bodyClass="ugda-chip-column">
                     <template #body="slotProps">
-                        <span :class="['px-3 py-1 border-round-2xl text-xs font-bold', slotProps.data.is_active ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-600']">
-                            {{ slotProps.data.is_active ? 'Activa' : 'Inactiva' }}
-                        </span>
+                        <div class="ugda-chip-cell">
+                            <span :class="['px-3 py-1 border-round-2xl text-xs font-bold', slotProps.data.is_active ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-600']">
+                                {{ slotProps.data.is_active ? 'Activa' : 'Inactiva' }}
+                            </span>
+                        </div>
                     </template>
                 </Column>
 

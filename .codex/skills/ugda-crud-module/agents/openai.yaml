@@ -1,0 +1,4 @@
+interface:
+  display_name: "UGDA CRUD Module"
+  short_description: "Crear o ampliar CRUDs del sistema UGDA"
+  default_prompt: "Use $ugda-crud-module para crear un nuevo CRUD administrativo en UGDA."
