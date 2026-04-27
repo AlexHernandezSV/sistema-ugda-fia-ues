@@ -2,8 +2,11 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import axios from 'axios';
+import { clearCachedUser, getCachedUser, getCurrentUser } from '../../services/authSession';
 
 const MOBILE_BREAKPOINT = 991;
+const REPORTS_PERMISSION = 'endpoint.ui.reports.read';
+const UGDA_PROFILE = 'usuario ugda';
 
 const route = useRoute();
 const isExpanded = ref(true);
@@ -20,6 +23,8 @@ const userData = ref({
 });
 
 const hasPermission = (permission) => userData.value.permissions.includes(permission);
+const normalizedRole = computed(() => String(userData.value.role ?? '').trim().toLowerCase());
+const canAccessReports = computed(() => hasPermission(REPORTS_PERMISSION) || normalizedRole.value === UGDA_PROFILE);
 
 const menuItems = computed(() => {
     const items = [
@@ -27,10 +32,14 @@ const menuItems = computed(() => {
         { label: 'Todas las Solicitudes', icon: 'pi pi-file', to: '/solicitudes' },
     ];
 
+    if (canAccessReports.value) {
+        items.push({ label: 'Reportes', icon: 'pi pi-chart-bar', to: '/reportes' });
+    }
+
     const configurationChildren = [
-        hasPermission('endpoint.api.units.create') ? { label: 'Unidades', to: '/unidades' } : null,
-        hasPermission('endpoint.api.users.create') ? { label: 'Usuarios', to: '/usuarios' } : null,
-        hasPermission('endpoint.api.documentary-series.create') ? { label: 'Series Documentales', to: '/series-documentales' } : null,
+        hasPermission('endpoint.api.units.create') ? { label: 'Unidades', icon: 'pi pi-building', to: '/unidades' } : null,
+        hasPermission('endpoint.api.users.create') ? { label: 'Usuarios', icon: 'pi pi-users', to: '/usuarios' } : null,
+        hasPermission('endpoint.api.documentary-series.create') ? { label: 'Series Documentales', icon: 'pi pi-clone', to: '/series-documentales' } : null,
     ].filter(Boolean);
 
     if (configurationChildren.length > 0) {
@@ -104,29 +113,36 @@ const handleExternalSidebarToggle = () => {
 };
 
 const fetchUserProfile = async () => {
-    const cachedUser = localStorage.getItem('ugda_user_profile');
+    const cachedUser = getCachedUser();
     if (cachedUser) {
-        userData.value = JSON.parse(cachedUser);
+        const unitNames = Array.isArray(cachedUser.units) && cachedUser.units.length
+            ? cachedUser.units.map(unit => unit.name).join(', ')
+            : (cachedUser.unit ? cachedUser.unit.name : 'Sin Unidad Asignada');
+
+        userData.value = {
+            fullName: `${cachedUser.first_name ?? ''} ${cachedUser.first_last_name ?? ''}`.trim() || 'Usuario',
+            unitName: unitNames,
+            role: cachedUser.role,
+            permissions: Array.isArray(cachedUser.permissions) ? cachedUser.permissions : [],
+        };
     } else {
         userData.value.fullName = 'Cargando...';
     }
 
     try {
-        const response = await axios.get('/api/user');
-        const user = response.data;
+        const user = await getCurrentUser();
         const unitNames = Array.isArray(user.units) && user.units.length
             ? user.units.map(unit => unit.name).join(', ')
             : (user.unit ? user.unit.name : 'Sin Unidad Asignada');
 
         const freshData = {
-            fullName: `${user.first_name} ${user.first_last_name}`,
+            fullName: `${user.first_name ?? ''} ${user.first_last_name ?? ''}`.trim() || 'Usuario',
             unitName: unitNames,
             role: user.role,
             permissions: Array.isArray(user.permissions) ? user.permissions : []
         };
 
         userData.value = freshData;
-        localStorage.setItem('ugda_user_profile', JSON.stringify(freshData));
     } catch (error) {
         console.error('Error al cargar perfil:', error);
         if (!userData.value.fullName) userData.value.fullName = 'Usuario';
@@ -182,7 +198,7 @@ const goToProfile = () => {
 
 const handleLogout = async () => {
     try {
-        localStorage.removeItem('ugda_user_profile');
+        clearCachedUser();
         await axios.get('/logout');
         closeMobileMenu();
         window.location.href = '/login';
@@ -308,7 +324,7 @@ onBeforeUnmount(() => {
                                     :class="{ 'text-white font-bold bg-white-alpha-10': isActive(child.to) }"
                                     @click="handleNavigationSelection"
                                 >
-                                    <i class="pi pi-circle-fill mr-2" style="font-size: 4px;"></i>
+                                    <i :class="[child.icon || 'pi pi-angle-right', 'mr-2 flex-shrink-0']"></i>
                                     {{ child.label }}
                                 </router-link>
                             </div>
@@ -356,7 +372,7 @@ onBeforeUnmount(() => {
                         </div>
                         <div v-if="sidebarIsExpanded" class="flex flex-column fadein white-space-nowrap overflow-hidden">
                             <span class="text-sm font-bold text-white text-overflow-ellipsis overflow-hidden">{{ userData.fullName }}</span>
-                            <span class="text-xs text-white-alpha-70 text-overflow-ellipsis overflow-hidden">{{ userData.unitName }}</span>
+                            <span class="text-xs text-white-alpha-70 text-overflow-ellipsis overflow-hidden">{{ userData.role || userData.unitName }}</span>
                         </div>
                     </div>
 

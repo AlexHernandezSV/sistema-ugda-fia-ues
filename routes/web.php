@@ -4,7 +4,10 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request; // <--- IMPORTANTE: Necesario para obtener el usuario actual
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DocumentarySeriesController;
+use App\Http\Controllers\LoanController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\RequestCatalogController;
+use App\Http\Controllers\TransferController;
 use App\Http\Controllers\UnitController;
 use App\Http\Controllers\UserController;
 
@@ -112,6 +115,24 @@ Route::middleware('auth')->group(function () {
         ->middleware('permission:endpoint.api.documentary-series.update');
     Route::delete('/api/documentary-subseries/{id}', [DocumentarySeriesController::class, 'destroySubseries'])
         ->middleware('permission:endpoint.api.documentary-series.delete');
+
+    Route::get('/api/request-catalog', [RequestCatalogController::class, 'index']);
+    Route::get('/api/dashboard-summary', [RequestCatalogController::class, 'dashboard']);
+    Route::get('/api/transfers/next-code', [TransferController::class, 'nextCode']);
+    Route::post('/api/transfers', [TransferController::class, 'store']);
+    Route::get('/api/transfers/{number}', [RequestCatalogController::class, 'showTransfer']);
+    Route::get('/api/transfers/{number}/documents/{code}/download', [RequestCatalogController::class, 'downloadTransferDocument']);
+    Route::post('/api/transfers/{number}/schedule', [TransferController::class, 'schedule']);
+    Route::post('/api/transfers/{number}/observe', [TransferController::class, 'observe']);
+    Route::post('/api/transfers/{number}/deny', [TransferController::class, 'deny']);
+    Route::get('/api/loans/{number}', [RequestCatalogController::class, 'showLoan']);
+    Route::post('/api/loans/{number}/authorize', [LoanController::class, 'authorizeLoan']);
+    Route::post('/api/loans/{number}/observe', [LoanController::class, 'observe']);
+    Route::post('/api/loans/{number}/deny', [LoanController::class, 'deny']);
+    Route::post('/api/loans/{number}/search/start', [LoanController::class, 'startSearch']);
+    Route::post('/api/loans/{number}/search/finish', [LoanController::class, 'finishSearch']);
+    Route::post('/api/loans/{number}/register', [LoanController::class, 'registerLoan']);
+    Route::post('/api/loans/{number}/return', [LoanController::class, 'registerReturn']);
 });
 
 // ------------------------------------------------------------------------

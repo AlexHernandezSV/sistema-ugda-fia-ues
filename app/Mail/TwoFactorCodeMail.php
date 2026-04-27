@@ -19,7 +19,7 @@ class TwoFactorCodeMail extends Mailable
 
     public function build()
     {
-        return $this->subject('Código de Verificación UGDA')
-                    ->view('emails.two_factor');
+        return $this->subject('Codigo de acceso seguro UGDA')
+            ->view('emails.two_factor');
     }
 }

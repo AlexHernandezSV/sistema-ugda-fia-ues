@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import axios from 'axios';
+import { getCurrentUser } from './services/authSession';
 
 // 1. IMPORTACIÓN DE COMPONENTES
 // Ajusta estas rutas si tus archivos están en carpetas diferentes
@@ -10,6 +10,11 @@ import Usuarios from './components/views/Usuarios.vue'; // <--- NUEVO IMPORT
 import SeriesDocumentales from './components/views/SeriesDocumentales.vue';
 import Solicitudes from './components/views/Solicitudes.vue';
 import NuevaSolicitud from './components/views/NuevaSolicitud.vue';
+import DetalleTransferencia from './components/views/DetalleTransferencia.vue';
+import DetallePrestamo from './components/views/DetallePrestamo.vue';
+import Reportes from './components/views/Reportes.vue';
+
+const normalizeValue = (value) => String(value ?? '').trim().toLowerCase();
 
 const routes = [
     // Redirección inicial
@@ -56,6 +61,17 @@ const routes = [
         component: SeriesDocumentales
     },
 
+    {
+        path: '/reportes',
+        name: 'reportes',
+        meta: {
+            title: 'Reportes Dinamicos',
+            permission: 'endpoint.ui.reports.read',
+            allowedProfiles: ['Usuario UGDA'],
+        },
+        component: Reportes
+    },
+
     // Comodín: Si escriben cualquier cosa rara, redirigir al login
     { 
         path: '/:pathMatch(.*)*', 
@@ -74,6 +90,18 @@ const routes = [
         component: NuevaSolicitud 
     },
 
+    { path: '/solicitudes/transferencias/:number',
+        name: 'solicitudes-transferencia-detalle',
+        meta: { title: 'Detalle de Transferencia' },
+        component: DetalleTransferencia
+    },
+
+    { path: '/solicitudes/prestamos/:number',
+        name: 'solicitudes-prestamo-detalle',
+        meta: { title: 'Detalle de Prestamo' },
+        component: DetallePrestamo
+    },
+
 
 ];
 
@@ -88,10 +116,20 @@ router.beforeEach(async (to) => {
     }
 
     try {
-        const response = await axios.get('/api/user');
-        const permissions = response.data?.permissions ?? [];
+        const user = await getCurrentUser();
+        const permissions = user?.permissions ?? [];
+        const profileName = user?.role ?? user?.profile?.name ?? '';
+        const hasPermission = to.meta?.permission ? permissions.includes(to.meta.permission) : false;
+        const allowedProfiles = Array.isArray(to.meta?.allowedProfiles) ? to.meta.allowedProfiles : [];
+        const matchesAllowedProfile = allowedProfiles
+            .map(normalizeValue)
+            .includes(normalizeValue(profileName));
 
-        if (to.meta?.permission && !permissions.includes(to.meta.permission)) {
+        if (to.meta?.permission && !hasPermission && allowedProfiles.length === 0) {
+            return { path: '/dashboard' };
+        }
+
+        if ((to.meta?.permission || allowedProfiles.length > 0) && !hasPermission && !matchesAllowedProfile) {
             return { path: '/dashboard' };
         }
 

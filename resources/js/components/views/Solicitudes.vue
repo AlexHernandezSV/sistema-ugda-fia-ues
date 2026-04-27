@@ -1,182 +1,324 @@
 <script setup>
-import { computed, ref, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 
+const route = useRoute();
 const router = useRouter();
-const currentProfile = ref(null);
 
-// DATOS SIMULADOS
-const transfers = ref([
-    { 
-        code: 'TR-00964', 
-        responsible: 'Ing. Luis Salvador Barrera', 
-        unit: 'Decanato', 
-        date: '19/04/2025', 
-        auth: 'Autorizado', 
-        status: 'Transferido' 
-    },
-    { 
-        code: 'TR-00965', 
-        responsible: 'Msc. Karla Beatriz Baires', 
-        unit: 'Escuela de Ing. Industrial', 
-        date: 'Pendiente', 
-        auth: 'Autorizado', 
-        status: 'Aprobado' 
-    },
-    { 
-        code: 'TR-00966', 
-        responsible: 'Ing. Luis Salvador Barrera', 
-        unit: 'Decanato', 
-        date: 'Pendiente', 
-        auth: 'Denegado', 
-        status: 'Denegado'
-    },
-    { 
-        code: 'TR-00968', 
-        responsible: 'Lic. Ana Maria', 
-        unit: 'Escuela de Sistemas', 
-        date: '20/04/2025', 
-        auth: 'Pendiente', 
-        status: 'Observado' 
-    },
-    { 
-        code: 'TR-00969', 
-        responsible: 'Arq. Sofia Mendez', 
-        unit: 'Escuela de Arquitectura', 
-        date: 'Pendiente', 
-        auth: 'Autorizado', 
-        status: 'Agendado'
-    },
-]);
-
+const activeTab = ref('transferencias');
+const rowsPerPageOptions = ref([5, 10, 25, 50]);
 const unitsList = ref([]);
+
 const filters = ref({
     number: '',
     auth: null,
     status: null,
-    unit: null
-    // Año eliminado
+    search: null,
+    unit: null,
+    dateRange: '',
 });
 
-const rowsPerPageOptions = ref([5, 10, 25, 50]);
-const canCreateTransfer = computed(() => ['Administrador', 'Unidad Solicitante'].includes(currentProfile.value));
+const transferRequests = ref([]);
 
-// COLORES DE ESTADO
+const loanRequests = ref([]);
+
+const authOptions = ['Autorizado', 'Pendiente', 'Denegado'];
+const transferStatusOptions = ['Transferido', 'Agendado', 'Pendiente', 'Observado', 'Denegado', 'Cancelada'];
+const loanStatusOptions = ['Pendiente', 'Autorizado', 'Observado', 'Cancelada'];
+const loanSearchOptions = ['En proceso', 'Finalizada'];
+
+const pageTitles = {
+    transferencias: 'Listado de solicitudes de transferencia documental',
+    prestamos: 'Listado de solicitudes de préstamo documental',
+};
+
+const pageTitle = computed(() => pageTitles[activeTab.value] ?? pageTitles.transferencias);
+
+const currentStatusOptions = computed(() =>
+    activeTab.value === 'transferencias' ? transferStatusOptions : loanStatusOptions
+);
+
+const transferCount = computed(() => transferRequests.value.length);
+const loanCount = computed(() => loanRequests.value.length);
+
+const filteredTransfers = computed(() => transferRequests.value.filter((item) => {
+    const matchesNumber = !filters.value.number || item.number.toLowerCase().includes(filters.value.number.toLowerCase());
+    const matchesAuth = !filters.value.auth || item.auth === filters.value.auth;
+    const matchesStatus = !filters.value.status || item.status === filters.value.status;
+    const matchesUnit = !filters.value.unit || item.unit === filters.value.unit;
+    const matchesDate = !filters.value.dateRange || item.receivedAt.includes(filters.value.dateRange);
+
+    return matchesNumber && matchesAuth && matchesStatus && matchesUnit && matchesDate;
+}));
+
+const filteredLoans = computed(() => loanRequests.value.filter((item) => {
+    const matchesNumber = !filters.value.number || item.number.toLowerCase().includes(filters.value.number.toLowerCase());
+    const matchesAuth = !filters.value.auth || item.auth === filters.value.auth;
+    const matchesStatus = !filters.value.status || item.status === filters.value.status;
+    const matchesSearch = !filters.value.search || item.search === filters.value.search;
+    const matchesUnit = !filters.value.unit || item.unit === filters.value.unit;
+    const matchesDate = !filters.value.dateRange || item.requestedAt.includes(filters.value.dateRange);
+
+    return matchesNumber && matchesAuth && matchesStatus && matchesSearch && matchesUnit && matchesDate;
+}));
+
+const clearFilters = () => {
+    filters.value = {
+        number: '',
+        auth: null,
+        status: null,
+        search: null,
+        unit: null,
+        dateRange: '',
+    };
+};
+
+const setTab = (tab) => {
+    activeTab.value = tab;
+    clearFilters();
+};
+
+const viewTransferDetail = (number) => {
+    router.push({
+        path: `/solicitudes/transferencias/${number}`,
+        query: { tab: 'transferencias' },
+    });
+};
+
+const viewLoanDetail = (number) => {
+    router.push({
+        path: `/solicitudes/prestamos/${number}`,
+        query: { tab: 'prestamos' },
+    });
+};
+
+const getAuthBadge = (status) => {
+    switch (status) {
+        case 'Autorizado':
+            return 'solicitudes-chip solicitudes-chip--success';
+        case 'Denegado':
+            return 'solicitudes-chip solicitudes-chip--danger';
+        default:
+            return 'solicitudes-chip solicitudes-chip--neutral';
+    }
+};
+
 const getStatusBadge = (status) => {
-    switch(status) {
-        case 'Transferido': return 'bg-green-100 text-green-700';
-        case 'Aprobado': return 'bg-blue-100 text-blue-700';
-        case 'Cancelado': return 'bg-red-100 text-red-700';
-        case 'Denegado': return 'bg-red-100 text-red-700';
-        case 'Observado': return 'bg-orange-100 text-orange-700';
-        case 'Agendado': return 'bg-purple-100 text-purple-700';
-        default: return 'bg-gray-100 text-gray-700';
+    switch (status) {
+        case 'Transferido':
+        case 'Autorizado':
+        case 'Finalizada':
+            return 'solicitudes-chip solicitudes-chip--success';
+        case 'Agendado':
+        case 'En proceso':
+            return 'solicitudes-chip solicitudes-chip--info';
+        case 'Observado':
+        case 'Pendiente':
+            return 'solicitudes-chip solicitudes-chip--warning';
+        case 'Cancelada':
+        case 'Denegado':
+            return 'solicitudes-chip solicitudes-chip--danger';
+        default:
+            return 'solicitudes-chip solicitudes-chip--neutral';
     }
 };
 
 onMounted(async () => {
+    if (route.query.tab === 'prestamos' || route.query.tab === 'transferencias') {
+        activeTab.value = route.query.tab;
+    }
+
     try {
-        const [userRes, unitsRes] = await Promise.all([
-            axios.get('/api/user'),
-            axios.get('/api/units'),
-        ]);
-        currentProfile.value = userRes.data.role ?? null;
-        unitsList.value = unitsRes.data.map(u => ({ label: u.name, value: u.id }));
+        const catalogRes = await axios.get('/api/request-catalog');
+        transferRequests.value = catalogRes.data.transfers ?? [];
+        loanRequests.value = catalogRes.data.loans ?? [];
+        unitsList.value = catalogRes.data.units ?? [];
     } catch (error) {
-        console.error("Error cargando unidades:", error);
+        console.error('Error cargando catálogo de solicitudes:', error);
     }
 });
-
-const goToCreate = () => {
-    router.push('/solicitudes/crear');
-};
-
-const clearFilters = () => {
-    filters.value = { number: '', auth: null, status: null, unit: null };
-};
 </script>
 
 <template>
     <div class="mb-4">
-        <h1 class="text-2xl font-bold mobile-page-title" style="color: #1560bd;">Solicitudes de Transferencia</h1>
+        <h1 class="text-2xl font-bold mobile-page-title solicitudes-page__title">{{ pageTitle }}</h1>
+    </div>
+
+    <div class="surface-card p-2 md:p-3 border-round-xl shadow-1 mb-4">
+        <div class="solicitudes-tabs-grid">
+            <div class="solicitudes-tabs-grid__item">
+                <button
+                    type="button"
+                    class="solicitudes-tab"
+                    :class="{ 'solicitudes-tab--active': activeTab === 'transferencias' }"
+                    @click="setTab('transferencias')"
+                >
+                    <i class="pi pi-file"></i>
+                    <span>Transferencias</span>
+                    <span class="solicitudes-tab__badge">{{ transferCount }}</span>
+                </button>
+            </div>
+
+            <div class="solicitudes-tabs-grid__item">
+                <button
+                    type="button"
+                    class="solicitudes-tab"
+                    :class="{ 'solicitudes-tab--active': activeTab === 'prestamos' }"
+                    @click="setTab('prestamos')"
+                >
+                    <i class="pi pi-file-edit"></i>
+                    <span>Préstamos</span>
+                    <span class="solicitudes-tab__badge">{{ loanCount }}</span>
+                </button>
+            </div>
+        </div>
     </div>
 
     <div class="surface-card p-4 border-round-xl shadow-1 mb-4">
-        
-        <div class="flex flex-wrap align-items-end gap-3">
-            
-            <div class="flex flex-column gap-2" style="flex: 1; min-width: 150px;">
-                <label class="text-sm font-bold text-gray-700">N° Transferencia</label>
-                <InputText v-model="filters.number" placeholder="Escriba..." class="w-full" />
+        <div v-if="activeTab === 'transferencias'" class="grid">
+            <div class="col-12 md:col-6 xl:col">
+                <label class="solicitudes-filter__label">Número de transferencia</label>
+                <InputText v-model="filters.number" placeholder="Escriba" class="w-full mt-2" />
             </div>
 
-            <div class="flex flex-column gap-2" style="flex: 1; min-width: 140px;">
-                <label class="text-sm font-bold text-gray-700">Autorización</label>
-                <Dropdown v-model="filters.auth" :options="['Autorizado', 'Denegado', 'Pendiente']" placeholder="Todos" showClear class="w-full" />
+            <div class="col-12 md:col-6 xl:col">
+                <label class="solicitudes-filter__label">Autorización</label>
+                <Dropdown v-model="filters.auth" :options="authOptions" placeholder="Seleccionar" showClear class="w-full mt-2" />
             </div>
 
-            <div class="flex flex-column gap-2" style="flex: 1; min-width: 140px;">
-                <label class="text-sm font-bold text-gray-700">Estado</label>
-                <Dropdown v-model="filters.status" 
-                          :options="['Aprobado', 'Transferido', 'Cancelado', 'Observado', 'Denegado', 'Agendado']" 
-                          placeholder="Todos" showClear class="w-full" />
+            <div class="col-12 md:col-6 xl:col">
+                <label class="solicitudes-filter__label">Estado</label>
+                <Dropdown v-model="filters.status" :options="currentStatusOptions" placeholder="Seleccionar" showClear class="w-full mt-2" />
             </div>
 
-            <div class="flex flex-column gap-2" style="flex: 1.5; min-width: 200px;">
-                <label class="text-sm font-bold text-gray-700">Unidad Productora</label>
-                <Dropdown v-model="filters.unit" :options="unitsList" optionLabel="label" optionValue="value" placeholder="Seleccione Unidad" showClear filter class="w-full" />
+            <div class="col-12 md:col-6 xl:col">
+                <label class="solicitudes-filter__label">Unidad</label>
+                <Dropdown v-model="filters.unit" :options="unitsList" placeholder="Seleccionar" showClear class="w-full mt-2" />
             </div>
 
-            <div class="flex">
-                 <Button icon="pi pi-filter-slash" label="Limpiar" severity="secondary" outlined @click="clearFilters" />
+            <div class="col-12 md:col-6 xl:col">
+                <label class="solicitudes-filter__label">Rango de fecha</label>
+                <InputText v-model="filters.dateRange" placeholder="dd/mm/aaaa" class="w-full mt-2" />
+            </div>
+        </div>
+
+        <div v-else class="grid">
+            <div class="col-12 md:col-6 xl:col">
+                <label class="solicitudes-filter__label">Número de préstamo</label>
+                <InputText v-model="filters.number" placeholder="Escriba" class="w-full mt-2" />
             </div>
 
-            <div v-if="canCreateTransfer" class="ml-auto">
-                <Button label="Nueva Transferencia" icon="pi pi-plus" class="border-none px-4" style="background-color: #1560bd;" @click="goToCreate" />
+            <div class="col-12 md:col-6 xl:col">
+                <label class="solicitudes-filter__label">Autorización</label>
+                <Dropdown v-model="filters.auth" :options="authOptions" placeholder="Seleccionar" showClear class="w-full mt-2" />
             </div>
 
+            <div class="col-12 md:col-6 xl:col">
+                <label class="solicitudes-filter__label">Estado</label>
+                <Dropdown v-model="filters.status" :options="currentStatusOptions" placeholder="Seleccionar" showClear class="w-full mt-2" />
+            </div>
+
+            <div class="col-12 md:col-6 xl:col">
+                <label class="solicitudes-filter__label">Búsqueda</label>
+                <Dropdown v-model="filters.search" :options="loanSearchOptions" placeholder="Seleccionar" showClear class="w-full mt-2" />
+            </div>
+
+            <div class="col-12 md:col-6 xl:col">
+                <label class="solicitudes-filter__label">Unidad</label>
+                <Dropdown v-model="filters.unit" :options="unitsList" placeholder="Seleccionar" showClear class="w-full mt-2" />
+            </div>
+
+            <div class="col-12 md:col-6 xl:col">
+                <label class="solicitudes-filter__label">Rango de fecha</label>
+                <InputText v-model="filters.dateRange" placeholder="dd/mm/aaaa" class="w-full mt-2" />
+            </div>
+        </div>
+
+        <div class="flex flex-wrap gap-3 mt-3">
+            <Button label="Filtrar" class="border-none px-4 py-2" style="background-color: #2f6f9f;" />
+            <Button label="Limpiar" severity="secondary" outlined class="px-4 py-2" @click="clearFilters" />
         </div>
     </div>
 
     <div class="surface-card p-0 border-round-xl shadow-1 overflow-hidden">
-        <DataTable :value="transfers" 
-                   :paginator="true" 
-                   :rows="5" 
-                   :rowsPerPageOptions="rowsPerPageOptions"
-                   stripedRows 
-                   responsiveLayout="scroll">
-            
+        <DataTable
+            v-if="activeTab === 'transferencias'"
+            :value="filteredTransfers"
+            :paginator="true"
+                :rows="5"
+            :rowsPerPageOptions="rowsPerPageOptions"
+            stripedRows
+            responsiveLayout="scroll"
+        >
             <template #empty>
                 <div class="text-center p-4 text-gray-500 font-medium">No se encontraron solicitudes.</div>
             </template>
 
-            <Column field="code" header="N° Transferencia" headerClass="bg-primary-custom text-white font-semibold"></Column>
-            <Column field="responsible" header="Responsable" headerClass="bg-primary-custom text-white font-semibold"></Column>
-            <Column field="unit" header="Unidad Productora" headerClass="bg-primary-custom text-white font-semibold"></Column>
-            <Column field="date" header="Fecha Recepción" headerClass="bg-primary-custom text-white font-semibold"></Column>
+            <Column field="number" header="Numero de transferencia" headerClass="bg-primary-custom text-white font-semibold" bodyClass="text-center" style="min-width: 15rem"></Column>
+            <Column field="responsible" header="Responsable del envio" headerClass="bg-primary-custom text-white font-semibold" style="min-width: 19rem"></Column>
+            <Column field="unit" header="Unidad productora" headerClass="bg-primary-custom text-white font-semibold" style="min-width: 18rem"></Column>
+            <Column field="receivedAt" header="Fecha de recepción" headerClass="bg-primary-custom text-white font-semibold" style="min-width: 14rem"></Column>
 
-            <Column header="Autorización" headerClass="bg-primary-custom text-white font-semibold">
+            <Column header="Autorización" headerClass="bg-primary-custom text-white font-semibold" bodyClass="text-center" style="min-width: 11rem">
                 <template #body="slotProps">
-                    <span :class="['px-2 py-1 border-round text-xs font-bold', 
-                        slotProps.data.auth === 'Autorizado' ? 'bg-green-100 text-green-700' : 
-                        slotProps.data.auth === 'Denegado' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700']">
-                        {{ slotProps.data.auth }}
-                    </span>
+                    <span :class="getAuthBadge(slotProps.data.auth)">{{ slotProps.data.auth }}</span>
                 </template>
             </Column>
 
-            <Column header="Estado" headerClass="bg-primary-custom text-white font-semibold">
+            <Column header="Estado" headerClass="bg-primary-custom text-white font-semibold" bodyClass="text-center" style="min-width: 10rem">
                 <template #body="slotProps">
-                    <span :class="['px-2 py-1 border-round text-xs font-bold', getStatusBadge(slotProps.data.status)]">
-                        {{ slotProps.data.status }}
-                    </span>
+                    <span :class="getStatusBadge(slotProps.data.status)">{{ slotProps.data.status }}</span>
                 </template>
             </Column>
 
-            <Column header="Acciones" headerClass="bg-primary-custom text-white font-semibold" bodyClass="text-center">
-                <template #body>
-                    <Button icon="pi pi-eye" text rounded severity="secondary" class="text-gray-600 hover:text-blue-600" />
+            <Column header="Acciones" headerClass="bg-primary-custom text-white font-semibold" bodyClass="text-center" style="min-width: 8rem">
+                <template #body="slotProps">
+                    <Button icon="pi pi-eye" text rounded severity="secondary" class="text-gray-600 hover:text-blue-600" @click="viewTransferDetail(slotProps.data.number)" />
+                </template>
+            </Column>
+        </DataTable>
+
+        <DataTable
+            v-else
+            :value="filteredLoans"
+            :paginator="true"
+                :rows="5"
+            :rowsPerPageOptions="rowsPerPageOptions"
+            stripedRows
+            responsiveLayout="scroll"
+        >
+            <template #empty>
+                <div class="text-center p-4 text-gray-500 font-medium">No se encontraron solicitudes.</div>
+            </template>
+
+            <Column field="number" header="Número de préstamo" headerClass="bg-primary-custom text-white font-semibold" bodyClass="text-center" style="min-width: 14rem"></Column>
+            <Column field="applicant" header="Solicitante" headerClass="bg-primary-custom text-white font-semibold" style="min-width: 18rem"></Column>
+            <Column field="unit" header="Unidad solicitante" headerClass="bg-primary-custom text-white font-semibold" style="min-width: 18rem"></Column>
+            <Column field="requestedAt" header="Fecha de solicitud" headerClass="bg-primary-custom text-white font-semibold" style="min-width: 14rem"></Column>
+
+            <Column header="Autorización" headerClass="bg-primary-custom text-white font-semibold" bodyClass="text-center" style="min-width: 11rem">
+                <template #body="slotProps">
+                    <span :class="getAuthBadge(slotProps.data.auth)">{{ slotProps.data.auth }}</span>
+                </template>
+            </Column>
+
+            <Column header="Estado" headerClass="bg-primary-custom text-white font-semibold" bodyClass="text-center" style="min-width: 10rem">
+                <template #body="slotProps">
+                    <span :class="getStatusBadge(slotProps.data.status)">{{ slotProps.data.status }}</span>
+                </template>
+            </Column>
+
+            <Column header="Búsqueda" headerClass="bg-primary-custom text-white font-semibold" bodyClass="text-center" style="min-width: 11rem">
+                <template #body="slotProps">
+                    <span v-if="slotProps.data.search === '-'" class="text-gray-400">-</span>
+                    <span v-else :class="getStatusBadge(slotProps.data.search)">{{ slotProps.data.search }}</span>
+                </template>
+            </Column>
+
+            <Column header="Acciones" headerClass="bg-primary-custom text-white font-semibold" bodyClass="text-center" style="min-width: 8rem">
+                <template #body="slotProps">
+                    <Button icon="pi pi-eye" text rounded severity="secondary" class="text-gray-600 hover:text-blue-600" @click="viewLoanDetail(slotProps.data.number)" />
                 </template>
             </Column>
         </DataTable>
@@ -184,7 +326,125 @@ const clearFilters = () => {
 </template>
 
 <style scoped>
+.solicitudes-page__title {
+    color: #2f6f9f;
+    font-size: 2.05rem;
+    line-height: 1.15;
+}
+
+.solicitudes-tabs-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.solicitudes-tabs-grid__item {
+    display: flex;
+}
+
+.solicitudes-tab {
+    width: 100%;
+    max-width: 100%;
+    min-height: 3rem;
+    border: none;
+    border-radius: 0.85rem;
+    background: #ffffff;
+    color: #4b5563;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.7rem;
+    padding: 0.85rem 1.25rem;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.solicitudes-tab--active {
+    background: #2f6f9f;
+    color: #ffffff;
+    box-shadow: 0 8px 18px rgba(47, 111, 159, 0.18);
+}
+
+.solicitudes-tab__badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.5rem;
+    height: 1.5rem;
+    padding: 0 0.35rem;
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.2);
+    font-size: 0.76rem;
+    font-weight: 700;
+}
+
+.solicitudes-filter__label {
+    color: #111827;
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+.solicitudes-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 1.9rem;
+    min-width: 6.4rem;
+    padding: 0.28rem 0.9rem;
+    border-radius: 9999px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.solicitudes-chip--success {
+    background: #c9f2e8;
+    color: #0c8a66;
+}
+
+.solicitudes-chip--danger {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.solicitudes-chip--warning {
+    background: #fde9a9;
+    color: #b45309;
+}
+
+.solicitudes-chip--neutral {
+    background: #d9dee7;
+    color: #64748b;
+}
+
+.solicitudes-chip--info {
+    background: #dbeafe;
+    color: #2563eb;
+}
+
 :deep(.bg-primary-custom) {
-    background-color: #1560bd !important;
+    background-color: #2f6f9f !important;
+}
+
+:deep(.p-datatable-thead > tr > th) {
+    padding: 1rem;
+    border-width: 0 0 1px 0;
+}
+
+:deep(.p-datatable-tbody > tr > td) {
+    vertical-align: middle;
+}
+
+@media (max-width: 991px) {
+    .solicitudes-page__title {
+        font-size: 1.65rem;
+    }
+
+    .solicitudes-tabs-grid {
+        grid-template-columns: 1fr;
+    }
 }
 </style>

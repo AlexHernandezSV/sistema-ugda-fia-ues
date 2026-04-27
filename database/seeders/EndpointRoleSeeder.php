@@ -31,6 +31,7 @@ class EndpointRoleSeeder extends Seeder
             'endpoint.api.documentary-series.create' => 'Permite crear series y subseries documentales',
             'endpoint.api.documentary-series.update' => 'Permite actualizar series y subseries documentales',
             'endpoint.api.documentary-series.delete' => 'Permite eliminar series y subseries documentales',
+            'endpoint.ui.reports.read' => 'Permite acceder al modulo de reportes dinamicos',
         ];
 
         foreach ($endpointRoles as $name => $description) {
@@ -56,6 +57,12 @@ class EndpointRoleSeeder extends Seeder
             'Director/Jefe de Unidad' => [
                 'endpoint.api.user.read',
                 'endpoint.api.units.read',
+            ],
+            'Usuario UGDA' => [
+                'endpoint.api.user.read',
+                'endpoint.api.units.read',
+                'endpoint.api.documentary-series.read',
+                'endpoint.ui.reports.read',
             ],
         ];
 

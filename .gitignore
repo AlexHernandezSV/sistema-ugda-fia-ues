@@ -18,6 +18,7 @@
 /public/storage
 /storage/*.key
 /storage/pail
+/.codex-artifacts
 /vendor
 Homestead.json
 Homestead.yaml

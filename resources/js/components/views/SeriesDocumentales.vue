@@ -69,8 +69,8 @@ const statusOptions = [
 ];
 
 const searchTerm = computed(() => searchValue.value.trim().toLowerCase());
-const canSaveSeries = computed(() => /^\d{3}$/.test(createSeriesForm.value.code) && String(createSeriesForm.value.name ?? '').trim().length > 0);
-const canSaveSubseries = computed(() => /^\d{2}$/.test(createSubseriesForm.value.code) && String(createSubseriesForm.value.name ?? '').trim().length > 0);
+const canSaveSeries = computed(() => /^\d+$/.test(createSeriesForm.value.code) && String(createSeriesForm.value.name ?? '').trim().length > 0);
+const canSaveSubseries = computed(() => /^\d+$/.test(createSubseriesForm.value.code) && String(createSubseriesForm.value.name ?? '').trim().length > 0);
 
 const filteredSeries = computed(() => {
     if (!searchTerm.value) {
@@ -115,19 +115,19 @@ const resetSubseriesErrors = () => {
 };
 
 const normalizeSeriesCode = (target = createSeriesForm.value) => {
-    target.code = String(target.code ?? '').replace(/\D/g, '').slice(0, 3);
+    target.code = String(target.code ?? '').replace(/\D/g, '').slice(0, 20);
 };
 
 const normalizeSubseriesCode = (target = createSubseriesForm.value) => {
-    target.code = String(target.code ?? '').replace(/\D/g, '').slice(0, 2);
+    target.code = String(target.code ?? '').replace(/\D/g, '').slice(0, 20);
 };
 
 const validateSeriesForm = (target = createSeriesForm.value) => {
     resetSeriesErrors();
     normalizeSeriesCode(target);
 
-    if (!/^\d{3}$/.test(target.code)) {
-        seriesErrors.value.code = 'El codigo debe contener exactamente 3 digitos.';
+    if (!/^\d+$/.test(target.code)) {
+        seriesErrors.value.code = 'El codigo solo puede contener digitos.';
     }
 
     if (!String(target.name ?? '').trim()) {
@@ -141,8 +141,8 @@ const validateSubseriesForm = (target = createSubseriesForm.value) => {
     resetSubseriesErrors();
     normalizeSubseriesCode(target);
 
-    if (!/^\d{2}$/.test(target.code)) {
-        subseriesErrors.value.code = 'El codigo debe contener exactamente 2 digitos.';
+    if (!/^\d+$/.test(target.code)) {
+        subseriesErrors.value.code = 'El codigo solo puede contener digitos.';
     }
 
     if (!String(target.name ?? '').trim()) {
@@ -526,8 +526,8 @@ const clearFilter = () => {
                 <label class="series-field__label">Codigo de Serie</label>
                 <InputText
                     v-model="createSeriesForm.code"
-                    maxlength="3"
-                    placeholder="Ej: 010"
+                    maxlength="20"
+                    placeholder="Ej: 5"
                     :class="{ 'p-invalid': seriesErrors.code }"
                     @input="normalizeSeriesCode(createSeriesForm)"
                 />
@@ -596,6 +596,9 @@ const clearFilter = () => {
                 </div>
 
                 <div class="series-panel__actions">
+                    <span :class="['series-status-chip', series.is_active ? 'series-status-chip--active' : 'series-status-chip--inactive']">
+                        {{ series.is_active ? 'Activa' : 'Inactiva' }}
+                    </span>
                     <Button
                         icon="pi pi-pencil"
                         text
@@ -640,8 +643,8 @@ const clearFilter = () => {
                             <label class="series-field__label">Codigo</label>
                             <InputText
                                 v-model="createSubseriesForm.code"
-                                maxlength="2"
-                                placeholder="Ej: 01"
+                                maxlength="20"
+                                placeholder="Ej: 12"
                                 :class="{ 'p-invalid': subseriesErrors.code }"
                                 @input="normalizeSubseriesCode(createSubseriesForm)"
                             />
@@ -693,6 +696,9 @@ const clearFilter = () => {
                         </div>
 
                         <div class="subseries-item__actions">
+                            <span :class="['series-status-chip', subseries.is_active ? 'series-status-chip--active' : 'series-status-chip--inactive']">
+                                {{ subseries.is_active ? 'Activa' : 'Inactiva' }}
+                            </span>
                             <Button
                                 icon="pi pi-pencil"
                                 text
@@ -730,8 +736,8 @@ const clearFilter = () => {
                 <label class="series-field__label">Codigo de Serie</label>
                 <InputText
                     v-model="editSeriesForm.code"
-                    maxlength="3"
-                    placeholder="Ej: 010"
+                    maxlength="20"
+                    placeholder="Ej: 5"
                     :class="{ 'p-invalid': seriesErrors.code }"
                     @input="normalizeSeriesCode(editSeriesForm)"
                 />
@@ -792,8 +798,8 @@ const clearFilter = () => {
                 <label class="series-field__label">Codigo de Subserie</label>
                 <InputText
                     v-model="editSubseriesForm.code"
-                    maxlength="2"
-                    placeholder="Ej: 01"
+                    maxlength="20"
+                    placeholder="Ej: 12"
                     :class="{ 'p-invalid': subseriesErrors.code }"
                     @input="normalizeSubseriesCode(editSubseriesForm)"
                 />
@@ -1144,7 +1150,8 @@ const clearFilter = () => {
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 0.35rem;
+    gap: 0.5rem;
+    flex-wrap: wrap;
 }
 
 .series-panel__body {
@@ -1213,12 +1220,36 @@ const clearFilter = () => {
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 0.35rem;
+    gap: 0.5rem;
+    flex-wrap: wrap;
 }
 
 .p-error {
     color: #e24c4c;
     font-size: 0.875rem;
+}
+
+.series-status-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 1.7rem;
+    padding: 0.15rem 0.7rem;
+    border-radius: 9999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1;
+    width: fit-content;
+}
+
+.series-status-chip--active {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.series-status-chip--inactive {
+    background: #fee2e2;
+    color: #dc2626;
 }
 
 @media (max-width: 991px) {
