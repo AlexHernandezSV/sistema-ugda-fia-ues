@@ -1,0 +1,4 @@
+interface:
+  display_name: "UGDA Laravel Vue"
+  short_description: "Flujo full-stack Laravel, Vue y Vite"
+  default_prompt: "Use $ugda-laravel-vue para implementar un cambio full-stack en el sistema UGDA."

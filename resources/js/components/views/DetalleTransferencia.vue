@@ -26,7 +26,7 @@ const decisionSubmitting = ref(false);
 const currentDecisionAction = ref(null);
 
 const decisionForm = ref({
-    date: '',
+    date: null,
     time: '',
     comments: '',
 });
@@ -569,7 +569,7 @@ const showError = (message) => {
 
 const resetDecisionForm = () => {
     decisionForm.value = {
-        date: '',
+        date: null,
         time: '',
         comments: '',
     };
@@ -577,16 +577,14 @@ const resetDecisionForm = () => {
 };
 
 const normalizeScheduledFor = (date, time) => {
-    const trimmedDate = String(date ?? '').trim();
     const trimmedTime = String(time ?? '').trim();
-
-    const match = trimmedDate.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-
-    if (!match) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime()) || !trimmedTime) {
         return null;
     }
 
-    const [, day, month, year] = match;
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
     return `${year}-${month}-${day} ${trimmedTime}:00`;
 };
 
@@ -623,7 +621,7 @@ const postTransferAction = async (url, payload, fallbackMessage) => {
 const openDecisionModal = (actionKey) => {
     currentDecisionAction.value = actionKey;
     decisionForm.value = {
-        date: '',
+        date: null,
         time: '',
         comments: '',
     };
@@ -677,7 +675,7 @@ const isDecisionSubmitDisabled = computed(() => {
     }
 
     if (currentDecisionAction.value === 'schedule') {
-        return String(decisionForm.value.date ?? '').trim() === '' || String(decisionForm.value.time ?? '').trim() === '';
+        return !(decisionForm.value.date instanceof Date) || Number.isNaN(decisionForm.value.date?.getTime?.()) || String(decisionForm.value.time ?? '').trim() === '';
     }
 
     if (decisionModalConfig.value.required) {
@@ -1043,7 +1041,7 @@ onMounted(fetchDetail);
                                     <th>Fecha inicial</th>
                                     <th>Fecha final</th>
                                     <th>N° de caja</th>
-                                    <th>Documentos</th>
+                                    <th class="ugda-chip-table-cell">Documentos</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1053,8 +1051,10 @@ onMounted(fetchDetail);
                                     <td>{{ row.startYear }}</td>
                                     <td>{{ row.endYear }}</td>
                                     <td>{{ row.boxNumber }}</td>
-                                    <td>
-                                        <span class="detalle-summary-badge">{{ row.documentsLabel }}</span>
+                                    <td class="ugda-chip-table-cell">
+                                        <div class="ugda-chip-cell">
+                                            <span class="detalle-summary-badge">{{ row.documentsLabel }}</span>
+                                        </div>
                                     </td>
                                 </tr>
                             </tbody>
@@ -1091,7 +1091,7 @@ onMounted(fetchDetail);
                                                 <th>Nombre del documento</th>
                                                 <th>Codigo</th>
                                                 <th>Serie del documento</th>
-                                                <th>Soporte</th>
+                                                <th class="ugda-chip-table-cell">Soporte</th>
                                                 <th>Año</th>
                                                 <th>Paginas</th>
                                                 <th>Archivo digital</th>
@@ -1107,8 +1107,10 @@ onMounted(fetchDetail);
                                                 </td>
                                                 <td>{{ document.code }}</td>
                                                 <td>{{ document.series }}</td>
-                                                <td>
-                                                    <span :class="supportChipClass(document.support)">{{ document.support }}</span>
+                                                <td class="ugda-chip-table-cell">
+                                                    <div class="ugda-chip-cell">
+                                                        <span :class="supportChipClass(document.support)">{{ document.support }}</span>
+                                                    </div>
                                                 </td>
                                                 <td>{{ document.year }}</td>
                                                 <td>{{ document.pages }}</td>
@@ -1245,7 +1247,7 @@ onMounted(fetchDetail);
                                             <th>Nombre del documento</th>
                                             <th>Codigo</th>
                                             <th>Serie del documento</th>
-                                            <th>Soporte</th>
+                                            <th class="ugda-chip-table-cell">Soporte</th>
                                             <th>Año</th>
                                             <th>Paginas</th>
                                             <th>Archivo digital</th>
@@ -1261,8 +1263,10 @@ onMounted(fetchDetail);
                                             </td>
                                             <td>{{ document.code }}</td>
                                             <td>{{ document.series }}</td>
-                                            <td>
-                                                <span :class="supportChipClass(document.support)">{{ document.support }}</span>
+                                            <td class="ugda-chip-table-cell">
+                                                <div class="ugda-chip-cell">
+                                                    <span :class="supportChipClass(document.support)">{{ document.support }}</span>
+                                                </div>
                                             </td>
                                             <td>{{ document.year }}</td>
                                             <td>{{ document.pages }}</td>
@@ -1343,10 +1347,13 @@ onMounted(fetchDetail);
                         <label class="detalle-decision-modal__label">
                             Fecha de entrega <span>*</span>
                         </label>
-                        <input
+                        <DatePicker
                             v-model="decisionForm.date"
-                            type="text"
-                            class="detalle-decision-modal__input"
+                            showIcon
+                            iconDisplay="input"
+                            dateFormat="dd/mm/yy"
+                            :manualInput="false"
+                            class="detalle-decision-modal__datepicker"
                             placeholder="dd/mm/aaaa"
                         />
                     </div>
@@ -1663,6 +1670,12 @@ onMounted(fetchDetail);
 .detalle-decision-modal__textarea:focus {
     border-color: #94a3b8;
     box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.18);
+}
+
+:deep(.detalle-decision-modal__datepicker),
+:deep(.detalle-decision-modal__datepicker .p-datepicker),
+:deep(.detalle-decision-modal__datepicker .p-inputtext) {
+    width: 100%;
 }
 
 .detalle-decision-modal__actions {

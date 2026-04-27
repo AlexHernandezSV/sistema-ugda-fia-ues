@@ -1,0 +1,4 @@
+interface:
+  display_name: "UGDA Docker Local"
+  short_description: "Levantar y diagnosticar Docker local UGDA"
+  default_prompt: "Use $ugda-docker-local para levantar o diagnosticar el entorno Docker del proyecto UGDA."

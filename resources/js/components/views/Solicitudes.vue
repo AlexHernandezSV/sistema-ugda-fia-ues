@@ -16,7 +16,7 @@ const filters = ref({
     status: null,
     search: null,
     unit: null,
-    dateRange: '',
+    dateRange: null,
 });
 
 const transferRequests = ref([]);
@@ -42,12 +42,63 @@ const currentStatusOptions = computed(() =>
 const transferCount = computed(() => transferRequests.value.length);
 const loanCount = computed(() => loanRequests.value.length);
 
+const parseDisplayDate = (value) => {
+    const rawValue = String(value ?? '').trim();
+
+    if (!rawValue) {
+        return null;
+    }
+
+    const [datePart] = rawValue.split(' ');
+    const match = datePart.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+
+    if (!match) {
+        return null;
+    }
+
+    const [, day, month, year] = match;
+    const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const normalizeRangeDate = (value) => {
+    if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+        return null;
+    }
+
+    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+};
+
+const matchesDateRange = (rawValue) => {
+    const selectedRange = filters.value.dateRange;
+
+    if (!Array.isArray(selectedRange) || selectedRange.length === 0 || !selectedRange[0]) {
+        return true;
+    }
+
+    const itemDate = parseDisplayDate(rawValue);
+
+    if (!itemDate) {
+        return false;
+    }
+
+    const startDate = normalizeRangeDate(selectedRange[0]);
+    const endDate = normalizeRangeDate(selectedRange[1] ?? selectedRange[0]);
+
+    if (!startDate || !endDate) {
+        return true;
+    }
+
+    return itemDate >= startDate && itemDate <= endDate;
+};
+
 const filteredTransfers = computed(() => transferRequests.value.filter((item) => {
     const matchesNumber = !filters.value.number || item.number.toLowerCase().includes(filters.value.number.toLowerCase());
     const matchesAuth = !filters.value.auth || item.auth === filters.value.auth;
     const matchesStatus = !filters.value.status || item.status === filters.value.status;
     const matchesUnit = !filters.value.unit || item.unit === filters.value.unit;
-    const matchesDate = !filters.value.dateRange || item.receivedAt.includes(filters.value.dateRange);
+    const matchesDate = matchesDateRange(item.receivedAt);
 
     return matchesNumber && matchesAuth && matchesStatus && matchesUnit && matchesDate;
 }));
@@ -58,7 +109,7 @@ const filteredLoans = computed(() => loanRequests.value.filter((item) => {
     const matchesStatus = !filters.value.status || item.status === filters.value.status;
     const matchesSearch = !filters.value.search || item.search === filters.value.search;
     const matchesUnit = !filters.value.unit || item.unit === filters.value.unit;
-    const matchesDate = !filters.value.dateRange || item.requestedAt.includes(filters.value.dateRange);
+    const matchesDate = matchesDateRange(item.requestedAt);
 
     return matchesNumber && matchesAuth && matchesStatus && matchesSearch && matchesUnit && matchesDate;
 }));
@@ -70,7 +121,7 @@ const clearFilters = () => {
         status: null,
         search: null,
         unit: null,
-        dateRange: '',
+        dateRange: null,
     };
 };
 
@@ -199,7 +250,16 @@ onMounted(async () => {
 
             <div class="col-12 md:col-6 xl:col">
                 <label class="solicitudes-filter__label">Rango de fecha</label>
-                <InputText v-model="filters.dateRange" placeholder="dd/mm/aaaa" class="w-full mt-2" />
+                <DatePicker
+                    v-model="filters.dateRange"
+                    selectionMode="range"
+                    showIcon
+                    iconDisplay="input"
+                    dateFormat="dd/mm/yy"
+                    placeholder="dd/mm/aaaa - dd/mm/aaaa"
+                    :manualInput="false"
+                    class="w-full mt-2 solicitudes-datepicker"
+                />
             </div>
         </div>
 
@@ -231,7 +291,16 @@ onMounted(async () => {
 
             <div class="col-12 md:col-6 xl:col">
                 <label class="solicitudes-filter__label">Rango de fecha</label>
-                <InputText v-model="filters.dateRange" placeholder="dd/mm/aaaa" class="w-full mt-2" />
+                <DatePicker
+                    v-model="filters.dateRange"
+                    selectionMode="range"
+                    showIcon
+                    iconDisplay="input"
+                    dateFormat="dd/mm/yy"
+                    placeholder="dd/mm/aaaa - dd/mm/aaaa"
+                    :manualInput="false"
+                    class="w-full mt-2 solicitudes-datepicker"
+                />
             </div>
         </div>
 
@@ -260,15 +329,19 @@ onMounted(async () => {
             <Column field="unit" header="Unidad productora" headerClass="bg-primary-custom text-white font-semibold" style="min-width: 18rem"></Column>
             <Column field="receivedAt" header="Fecha de recepción" headerClass="bg-primary-custom text-white font-semibold" style="min-width: 14rem"></Column>
 
-            <Column header="Autorización" headerClass="bg-primary-custom text-white font-semibold" bodyClass="text-center" style="min-width: 11rem">
+            <Column header="Autorización" headerClass="bg-primary-custom text-white font-semibold ugda-chip-header" bodyClass="ugda-chip-column" style="min-width: 11rem">
                 <template #body="slotProps">
-                    <span :class="getAuthBadge(slotProps.data.auth)">{{ slotProps.data.auth }}</span>
+                    <div class="ugda-chip-cell">
+                        <span :class="getAuthBadge(slotProps.data.auth)">{{ slotProps.data.auth }}</span>
+                    </div>
                 </template>
             </Column>
 
-            <Column header="Estado" headerClass="bg-primary-custom text-white font-semibold" bodyClass="text-center" style="min-width: 10rem">
+            <Column header="Estado" headerClass="bg-primary-custom text-white font-semibold ugda-chip-header" bodyClass="ugda-chip-column" style="min-width: 10rem">
                 <template #body="slotProps">
-                    <span :class="getStatusBadge(slotProps.data.status)">{{ slotProps.data.status }}</span>
+                    <div class="ugda-chip-cell">
+                        <span :class="getStatusBadge(slotProps.data.status)">{{ slotProps.data.status }}</span>
+                    </div>
                 </template>
             </Column>
 
@@ -297,22 +370,28 @@ onMounted(async () => {
             <Column field="unit" header="Unidad solicitante" headerClass="bg-primary-custom text-white font-semibold" style="min-width: 18rem"></Column>
             <Column field="requestedAt" header="Fecha de solicitud" headerClass="bg-primary-custom text-white font-semibold" style="min-width: 14rem"></Column>
 
-            <Column header="Autorización" headerClass="bg-primary-custom text-white font-semibold" bodyClass="text-center" style="min-width: 11rem">
+            <Column header="Autorización" headerClass="bg-primary-custom text-white font-semibold ugda-chip-header" bodyClass="ugda-chip-column" style="min-width: 11rem">
                 <template #body="slotProps">
-                    <span :class="getAuthBadge(slotProps.data.auth)">{{ slotProps.data.auth }}</span>
+                    <div class="ugda-chip-cell">
+                        <span :class="getAuthBadge(slotProps.data.auth)">{{ slotProps.data.auth }}</span>
+                    </div>
                 </template>
             </Column>
 
-            <Column header="Estado" headerClass="bg-primary-custom text-white font-semibold" bodyClass="text-center" style="min-width: 10rem">
+            <Column header="Estado" headerClass="bg-primary-custom text-white font-semibold ugda-chip-header" bodyClass="ugda-chip-column" style="min-width: 10rem">
                 <template #body="slotProps">
-                    <span :class="getStatusBadge(slotProps.data.status)">{{ slotProps.data.status }}</span>
+                    <div class="ugda-chip-cell">
+                        <span :class="getStatusBadge(slotProps.data.status)">{{ slotProps.data.status }}</span>
+                    </div>
                 </template>
             </Column>
 
-            <Column header="Búsqueda" headerClass="bg-primary-custom text-white font-semibold" bodyClass="text-center" style="min-width: 11rem">
+            <Column header="Búsqueda" headerClass="bg-primary-custom text-white font-semibold ugda-chip-header" bodyClass="ugda-chip-column" style="min-width: 11rem">
                 <template #body="slotProps">
-                    <span v-if="slotProps.data.search === '-'" class="text-gray-400">-</span>
-                    <span v-else :class="getStatusBadge(slotProps.data.search)">{{ slotProps.data.search }}</span>
+                    <div class="ugda-chip-cell">
+                        <span v-if="slotProps.data.search === '-'" class="text-gray-400">-</span>
+                        <span v-else :class="getStatusBadge(slotProps.data.search)">{{ slotProps.data.search }}</span>
+                    </div>
                 </template>
             </Column>
 
@@ -384,6 +463,12 @@ onMounted(async () => {
     color: #111827;
     font-size: 0.95rem;
     font-weight: 500;
+}
+
+:deep(.solicitudes-datepicker),
+:deep(.solicitudes-datepicker .p-datepicker),
+:deep(.solicitudes-datepicker .p-inputtext) {
+    width: 100%;
 }
 
 .solicitudes-chip {

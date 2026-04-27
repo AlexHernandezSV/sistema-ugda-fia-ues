@@ -18,15 +18,15 @@ const currentDecisionAction = ref(null);
 
 const loanForm = reactive({
     selectedIds: [],
-    loanDate: '',
-    dueDate: '',
+    loanDate: null,
+    dueDate: null,
     receivedBy: '',
     observations: '',
 });
 
 const returnForm = reactive({
     selectedIds: [],
-    returnDate: '',
+    returnDate: null,
     condition: '',
     observations: '',
 });
@@ -44,15 +44,15 @@ const goBack = () => {
 
 const resetLoanForm = () => {
     loanForm.selectedIds = [];
-    loanForm.loanDate = '';
-    loanForm.dueDate = '';
+    loanForm.loanDate = null;
+    loanForm.dueDate = null;
     loanForm.receivedBy = '';
     loanForm.observations = '';
 };
 
 const resetReturnForm = () => {
     returnForm.selectedIds = [];
-    returnForm.returnDate = '';
+    returnForm.returnDate = null;
     returnForm.condition = loan.value?.returnRegistration?.defaultCondition ?? '';
     returnForm.observations = '';
 };
@@ -116,6 +116,26 @@ const showError = (message) => {
         detail: message,
         life: 3600,
     });
+};
+
+const formatDateForRequest = (value) => {
+    if (!value) {
+        return '';
+    }
+
+    if (typeof value === 'string') {
+        return value;
+    }
+
+    if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+        return '';
+    }
+
+    const day = String(value.getDate()).padStart(2, '0');
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const year = value.getFullYear();
+
+    return `${day}/${month}/${year}`;
 };
 
 const postAction = async (url, payload, successMessage) => {
@@ -313,8 +333,8 @@ const submitLoanRegistration = async () => {
     try {
         const { data } = await axios.post(`/api/loans/${loan.value.number}/register`, {
             selected_ids: loanForm.selectedIds,
-            loan_date: loanForm.loanDate,
-            due_date: loanForm.dueDate,
+            loan_date: formatDateForRequest(loanForm.loanDate),
+            due_date: formatDateForRequest(loanForm.dueDate),
             received_by: loanForm.receivedBy,
             observations: loanForm.observations,
         });
@@ -336,7 +356,7 @@ const submitReturnRegistration = async () => {
     try {
         const { data } = await axios.post(`/api/loans/${loan.value.number}/return`, {
             selected_ids: returnForm.selectedIds,
-            return_date: returnForm.returnDate,
+            return_date: formatDateForRequest(returnForm.returnDate),
             condition: returnForm.condition,
             observations: returnForm.observations,
         });
@@ -974,11 +994,25 @@ onMounted(fetchDetail);
                 <div class="grid mt-4">
                     <div class="col-12 md:col-6">
                         <label class="detalle-form-label">Fecha de prestamo <span>*</span></label>
-                        <input v-model="loanForm.loanDate" type="text" class="detalle-input" placeholder="dd/mm/aaaa" />
+                        <DatePicker
+                            v-model="loanForm.loanDate"
+                            showIcon
+                            iconDisplay="input"
+                            dateFormat="dd/mm/yy"
+                            placeholder="dd/mm/aaaa"
+                            class="detalle-datepicker"
+                        />
                     </div>
                     <div class="col-12 md:col-6">
                         <label class="detalle-form-label">Fecha de devolucion programada <span>*</span></label>
-                        <input v-model="loanForm.dueDate" type="text" class="detalle-input" placeholder="dd/mm/aaaa" />
+                        <DatePicker
+                            v-model="loanForm.dueDate"
+                            showIcon
+                            iconDisplay="input"
+                            dateFormat="dd/mm/yy"
+                            placeholder="dd/mm/aaaa"
+                            class="detalle-datepicker"
+                        />
                     </div>
                     <div class="col-12">
                         <label class="detalle-form-label">Nombre de quien recibe <span>*</span></label>
@@ -1078,7 +1112,14 @@ onMounted(fetchDetail);
                 <div class="grid mt-4">
                     <div class="col-12">
                         <label class="detalle-form-label">Fecha de devolucion <span>*</span></label>
-                        <input v-model="returnForm.returnDate" type="text" class="detalle-input" placeholder="dd/mm/aaaa" />
+                        <DatePicker
+                            v-model="returnForm.returnDate"
+                            showIcon
+                            iconDisplay="input"
+                            dateFormat="dd/mm/yy"
+                            placeholder="dd/mm/aaaa"
+                            class="detalle-datepicker"
+                        />
                     </div>
                     <div class="col-12">
                         <label class="detalle-form-label">Condicion de los documentos <span>*</span></label>
@@ -1888,6 +1929,12 @@ onMounted(fetchDetail);
 
 .detalle-textarea {
     resize: vertical;
+}
+
+:deep(.detalle-datepicker),
+:deep(.detalle-datepicker .p-datepicker),
+:deep(.detalle-datepicker .p-inputtext) {
+    width: 100%;
 }
 
 @media (max-width: 991px) {

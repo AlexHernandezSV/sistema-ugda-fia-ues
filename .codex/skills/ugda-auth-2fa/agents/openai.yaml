@@ -1,0 +1,4 @@
+interface:
+  display_name: "UGDA Auth 2FA"
+  short_description: "Mantener login, sesión y 2FA por correo"
+  default_prompt: "Use $ugda-auth-2fa para modificar el flujo de login con verificación por correo."
