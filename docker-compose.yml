@@ -1,16 +1,19 @@
 services:
   app:
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: sistema-ugda-fia-ues-app:latest
     working_dir: /var/www/html
     volumes:
       - type: bind
-        source: ${PROJECT_ROOT:-C:/Users/aguil/OneDrive/Documents/proyectos/sistema-ugda-fia-ues}
+        source: .
         target: /var/www/html
       - type: volume
         source: app_vendor
         target: /var/www/html/vendor
     environment:
-      APP_NAME: Sistema UGDA
+      APP_NAME: "Sistema UGDA"
       APP_ENV: local
       APP_KEY: base64:W5I6LIKfVQeHxTuJ2is7/KmFtj6MELulEjXGcUI8LrY=
       APP_DEBUG: "true"
@@ -32,7 +35,7 @@ services:
       MAIL_HOST: mailpit
       MAIL_PORT: 1025
       MAIL_FROM_ADDRESS: noreply@ugda.local
-      MAIL_FROM_NAME: Sistema UGDA
+      MAIL_FROM_NAME: "Sistema UGDA"
     depends_on:
       postgres:
         condition: service_healthy
@@ -47,13 +50,13 @@ services:
     working_dir: /var/www/html
     volumes:
       - type: bind
-        source: ${PROJECT_ROOT:-C:/Users/aguil/OneDrive/Documents/proyectos/sistema-ugda-fia-ues}
+        source: .
         target: /var/www/html
       - type: volume
         source: app_node_modules
         target: /var/www/html/node_modules
     environment:
-      APP_NAME: Sistema UGDA
+      APP_NAME: "Sistema UGDA"
       APP_ENV: local
       APP_KEY: base64:W5I6LIKfVQeHxTuJ2is7/KmFtj6MELulEjXGcUI8LrY=
       APP_DEBUG: "true"
@@ -70,9 +73,10 @@ services:
       POSTGRES_USER: root
       POSTGRES_PASSWORD: root
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    command: ["postgres", "-c", "listen_addresses=*"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U root -d sistema_ugda"]
       interval: 5s
