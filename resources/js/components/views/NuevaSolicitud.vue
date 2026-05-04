@@ -1,467 +1,1602 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import axios from 'axios';
 import { getCurrentUser } from '../../services/authSession';
 
 const router = useRouter();
+const route = useRoute();
 const toast = useToast();
 
-// --- DATOS PRINCIPALES ---
 const headerForm = ref({
     code: '',
     request_date: new Date(),
     unit_id: null,
     user_name: '',
+    description: '',
 });
 
-const batchForm = ref({ series: null, year_start: '', year_end: '', quantity: 1 });
-const boxesList = ref([]); 
+const batchForm = ref({
+    series: null,
+    year_start: null,
+    year_end: null,
+    quantity: '',
+});
 
-// --- CATALOGOS ---
+const boxesList = ref([]);
+const editObservations = ref([]);
 const seriesOptions = ref([]);
 const unitsList = ref([]);
 const supportOptions = ref(['Físico', 'Digital', 'Mixto']);
+const isLoading = ref(false);
+const isSubmitting = ref(false);
 
-// --- ESTADO DEL MODAL ---
 const isModalOpen = ref(false);
+const isImportModalOpen = ref(false);
 const currentBoxIndex = ref(null);
 const currentBoxData = ref({});
 const tempDocuments = ref([]);
-
-// Formulario Modal
+const excelFile = ref(null);
+const isImporting = ref(false);
 const docForm = ref({
+    series: null,
     name: '',
-    date: '',
+    code: '',
+    date: null,
+    pages: '',
     support: null,
     file: null,
-    file_url: null // Para previsualizar
+    file_url: null,
 });
 
-// --- CARGA INICIAL ---
+const totalBoxes = computed(() => boxesList.value.length);
+const isEditMode = computed(() => route.name === 'solicitudes-transferencia-editar');
+const editNumber = computed(() => route.params.number);
+const pageTitle = computed(() => isEditMode.value ? 'Editar Solicitud de Transferencia' : 'Solicitud de Transferencia');
+const submitLabel = computed(() => isEditMode.value ? 'Guardar correcciones' : 'Enviar solicitud');
+
+const requiresDigitalFileInput = computed(() => docForm.value.support === 'Digital' || docForm.value.support === 'Mixto');
+
+const parseApiDate = (value) => {
+    if (!value) {
+        return new Date();
+    }
+
+    const date = new Date(`${value}T00:00:00`);
+
+    return Number.isNaN(date.getTime()) ? new Date() : date;
+};
+
+const formatDateForApi = (value) => {
+    if (!value) {
+        return '';
+    }
+
+    const date = value instanceof Date ? value : new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return '';
+    }
+
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+
+    return `${date.getFullYear()}-${month}-${day}`;
+};
+
+const getYearString = (value) => {
+    if (!value) {
+        return '';
+    }
+
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return String(value.getFullYear());
+    }
+
+    const year = String(value).match(/\d{4}/)?.[0] ?? '';
+
+    return year;
+};
+
+const resetDocumentForm = (defaultSeries = null) => {
+    docForm.value = {
+        series: defaultSeries,
+        name: '',
+        code: '',
+        date: null,
+        pages: '',
+        support: null,
+        file: null,
+        file_url: null,
+    };
+};
+
+const showError = (detail) => {
+    toast.add({
+        severity: 'error',
+        summary: 'Error',
+        detail,
+        life: 4200,
+    });
+};
+
 onMounted(async () => {
+    isLoading.value = true;
+
     try {
-        const [userRes, seriesRes, codeRes] = await Promise.all([
+        const [userRes, seriesRes, transferRes] = await Promise.all([
             getCurrentUser(),
             axios.get('/api/documentary-series'),
-            axios.get('/api/transfers/next-code'),
+            isEditMode.value
+                ? axios.get(`/api/transfers/${editNumber.value}/edit-data`)
+                : axios.get('/api/transfers/next-code'),
         ]);
-        headerForm.value.user_name = `${userRes.first_name ?? ''} ${userRes.first_last_name ?? ''}`.trim();
-        headerForm.value.unit_id = userRes.unit_id ?? userRes.unit?.id ?? null; 
-        headerForm.value.code = codeRes.data.code ?? '';
+
+        headerForm.value.user_name = [
+            userRes.first_name,
+            userRes.second_name,
+            userRes.first_last_name,
+            userRes.second_last_name,
+        ].filter(Boolean).join(' ');
+        headerForm.value.unit_id = userRes.unit_id ?? userRes.unit?.id ?? null;
         unitsList.value = Array.isArray(userRes.units)
-            ? userRes.units.map(u => ({ label: u.name, value: u.id }))
+            ? userRes.units.map((unit) => ({ label: unit.name, value: unit.id }))
             : [];
-        seriesOptions.value = Array.isArray(seriesRes.data) && seriesRes.data.length > 0
-            ? seriesRes.data.flatMap(series => {
+        seriesOptions.value = Array.isArray(seriesRes.data)
+            ? seriesRes.data.flatMap((series) => {
                 if (Array.isArray(series.subseries) && series.subseries.length > 0) {
-                    return series.subseries.map(subseries => ({
+                    return series.subseries.map((subseries) => ({
                         id: `subseries-${subseries.id}`,
-                        series_id: series.id,
-                        subseries_id: subseries.id,
                         label: `${series.code} - ${series.name} / ${subseries.code} - ${subseries.name}`,
-                        code: `${series.code}-${subseries.code}`,
-                        series_name: series.name,
-                        subseries_name: subseries.name,
                     }));
                 }
 
                 return [{
                     id: `series-${series.id}`,
-                    series_id: series.id,
-                    subseries_id: null,
                     label: `${series.code} - ${series.name}`,
-                    code: series.code,
-                    series_name: series.name,
-                    subseries_name: null,
                 }];
             })
             : [];
-    } catch (e) {
-        console.error(e);
-        seriesOptions.value = [];
-        toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo cargar la informacion base de la transferencia.', life: 4000 });
+
+        if (isEditMode.value) {
+            const editTransfer = transferRes.data.transfer ?? {};
+
+            headerForm.value.code = editTransfer.code ?? '';
+            headerForm.value.request_date = parseApiDate(editTransfer.request_date);
+            headerForm.value.unit_id = editTransfer.unit_id ?? headerForm.value.unit_id;
+            headerForm.value.user_name = editTransfer.responsible || headerForm.value.user_name;
+            headerForm.value.description = editTransfer.description ?? '';
+            boxesList.value = Array.isArray(transferRes.data.boxes)
+                ? transferRes.data.boxes
+                : [];
+            editObservations.value = Array.isArray(transferRes.data.observations)
+                ? transferRes.data.observations
+                : [];
+        } else {
+            headerForm.value.code = transferRes.data.code ?? '';
+        }
+    } catch (error) {
+        console.error('Error cargando datos de transferencia:', error);
+        showError('No se pudo cargar la información base de la solicitud.');
+        if (isEditMode.value) {
+            router.push('/solicitudes');
+        }
+    } finally {
+        isLoading.value = false;
     }
 });
 
-const totalBoxes = computed(() => boxesList.value.length);
-
-// --- LÓGICA PRINCIPAL: CAJAS ---
 const addBatch = () => {
-    if (!batchForm.value.series || !batchForm.value.year_start || !batchForm.value.year_end || !batchForm.value.quantity) {
-        toast.add({ severity: 'warn', summary: 'Faltan datos', detail: 'Complete todos los campos', life: 3000 });
-        return;
-    }
-    const yearRegex = /^\d{4}$/;
-    if (!yearRegex.test(batchForm.value.year_start) || !yearRegex.test(batchForm.value.year_end)) {
-        toast.add({ severity: 'error', summary: 'Formato inválido', detail: 'Años deben ser 4 dígitos', life: 3000 });
-        return;
-    }
-    if (parseInt(batchForm.value.year_end) < parseInt(batchForm.value.year_start)) {
-        toast.add({ severity: 'error', summary: 'Error', detail: 'Año final menor al inicial', life: 3000 });
+    const selectedSeries = batchForm.value.series;
+    const startYear = getYearString(batchForm.value.year_start);
+    const endYear = getYearString(batchForm.value.year_end);
+    const quantity = Number(batchForm.value.quantity);
+
+    if (!selectedSeries || !startYear || !endYear || !quantity) {
+        showError('Complete los datos del detalle de documentos.');
         return;
     }
 
-    const qty = parseInt(batchForm.value.quantity);
-    const selectedSeriesLabel = batchForm.value.series.label;
-    const existingBoxesOfSeries = boxesList.value.filter(box => box.series === selectedSeriesLabel);
-    
-    let startNumber = 1;
-    if (existingBoxesOfSeries.length > 0) {
-        const maxNum = Math.max(...existingBoxesOfSeries.map(b => b.box_number));
-        startNumber = maxNum + 1;
+    if (!/^\d{4}$/.test(startYear) || !/^\d{4}$/.test(endYear)) {
+        showError('Las fechas inicial y final deben ser años de 4 dígitos.');
+        return;
     }
 
-    for (let i = 0; i < qty; i++) {
+    if (Number(endYear) < Number(startYear)) {
+        showError('La fecha final no puede ser menor que la fecha inicial.');
+        return;
+    }
+
+    if (!Number.isInteger(quantity) || quantity < 1) {
+        showError('La cantidad de cajas debe ser mayor a cero.');
+        return;
+    }
+
+    const nextBoxNumber = boxesList.value.length > 0
+        ? Math.max(...boxesList.value.map((box) => Number(box.box_number))) + 1
+        : 1;
+
+    for (let index = 0; index < quantity; index += 1) {
         boxesList.value.push({
-            id_temp: Date.now() + i, 
-            series: selectedSeriesLabel,
-            year_start: batchForm.value.year_start,
-            year_end: batchForm.value.year_end,
-            box_number: startNumber + i,
+            id_temp: `${Date.now()}-${index}`,
+            series: selectedSeries.label,
+            year_start: startYear,
+            year_end: endYear,
+            box_number: nextBoxNumber + index,
             documents_count: 0,
-            documents_list: []
+            documents_list: [],
         });
     }
 
-    toast.add({ severity: 'success', summary: 'Agregado', detail: `${qty} cajas`, life: 3000 });
-    batchForm.value.quantity = 1; 
+    batchForm.value = {
+        series: null,
+        year_start: null,
+        year_end: null,
+        quantity: '',
+    };
+
+    toast.add({
+        severity: 'success',
+        summary: 'Cajas agregadas',
+        detail: `${quantity} caja(s) agregada(s) a la solicitud.`,
+        life: 2600,
+    });
 };
 
-const removeBox = (index) => boxesList.value.splice(index, 1);
-
-// --- LÓGICA MODAL: DOCUMENTOS ---
+const removeBox = (index) => {
+    boxesList.value.splice(index, 1);
+};
 
 const openDocsModal = (index) => {
     currentBoxIndex.value = index;
     currentBoxData.value = boxesList.value[index];
     tempDocuments.value = JSON.parse(JSON.stringify(boxesList.value[index].documents_list || []));
-    docForm.value = { name: '', date: '', support: null, file: null, file_url: null };
+    const defaultSeries = seriesOptions.value.find((option) => option.label === currentBoxData.value.series) ?? null;
+    resetDocumentForm(defaultSeries);
     isModalOpen.value = true;
 };
 
-// Subida de Archivo (Simulada para visualización)
 const onFileSelect = (event) => {
-    const file = event.target.files[0];
-    if (file) {
-        docForm.value.file = file;
-        // Creamos una URL temporal para poder "ver" el archivo inmediatamente
-        docForm.value.file_url = URL.createObjectURL(file);
+    const file = event.target.files?.[0];
+
+    if (!file) {
+        return;
+    }
+
+    docForm.value.file = file;
+    docForm.value.file_url = URL.createObjectURL(file);
+};
+
+const onExcelFileSelect = (event) => {
+    excelFile.value = event.target.files?.[0] ?? null;
+};
+
+const resetExcelFileInput = () => {
+    const fileInput = document.getElementById('excelImportFile');
+    if (fileInput) {
+        fileInput.value = '';
+    }
+};
+
+const needsDigitalFile = (support) => support === 'Digital' || support === 'Mixto';
+
+const downloadExcelTemplate = () => {
+    window.location.href = '/api/transfers/document-import-template';
+};
+
+const importDocumentsFromExcel = async () => {
+    if (!excelFile.value) {
+        showError('Seleccione un archivo Excel para importar.');
+        return;
+    }
+
+    isImporting.value = true;
+
+    try {
+        const formData = new FormData();
+        formData.append('file', excelFile.value);
+        formData.append('current_box_series', currentBoxData.value.series ?? '');
+
+        const { data } = await axios.post('/api/transfers/import-documents', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+            },
+        });
+
+        const importedDocuments = Array.isArray(data.documents) ? data.documents : [];
+
+        if (importedDocuments.length === 0) {
+            showError('El archivo no contiene filas con documentos.');
+            return;
+        }
+
+        tempDocuments.value.push(...importedDocuments.map((document, index) => ({
+            id_doc: `${Date.now()}-${index}`,
+            ...document,
+            file_name: null,
+            file_url: null,
+        })));
+        excelFile.value = null;
+        resetExcelFileInput();
+        isImportModalOpen.value = false;
+
+        toast.add({
+            severity: 'success',
+            summary: 'Documentos importados',
+            detail: `${importedDocuments.length} documento(s) agregado(s) al inventario de la caja.`,
+            life: 3200,
+        });
+    } catch (error) {
+        console.error('Error importando documentos:', error);
+        showError(error.response?.data?.message || error.message || 'No se pudo procesar el archivo Excel.');
+    } finally {
+        isImporting.value = false;
     }
 };
 
 const addDocumentToTemp = () => {
-    if (!docForm.value.name || !docForm.value.date || !docForm.value.support) {
-        toast.add({ severity: 'warn', summary: 'Incompleto', detail: 'Complete los campos obligatorios', life: 3000 });
-        return;
-    }
+    const documentSeries = docForm.value.series?.label ?? currentBoxData.value.series ?? '';
+    const documentName = String(docForm.value.name ?? '').trim();
+    const documentCode = String(docForm.value.code ?? '').trim();
+    const documentDate = getYearString(docForm.value.date);
+    const documentPages = String(docForm.value.pages ?? '').trim();
 
-    if ((docForm.value.support === 'Digital' || docForm.value.support === 'Mixto') && !docForm.value.file) {
-        toast.add({ severity: 'error', summary: 'Archivo Requerido', detail: 'Debe cargar un archivo', life: 3000 });
+    if (!documentSeries || !documentName || !documentCode || !docForm.value.support) {
+        showError('Complete los datos obligatorios del documento.');
         return;
     }
 
     tempDocuments.value.push({
         id_doc: Date.now(),
-        name: docForm.value.name,
-        date: docForm.value.date,
+        series: documentSeries,
+        name: documentName,
+        code: documentCode,
+        date: documentDate,
+        pages: documentPages,
         support: docForm.value.support,
         file_name: docForm.value.file ? docForm.value.file.name : null,
-        file_url: docForm.value.file_url // Guardamos la URL temporal
+        file_url: docForm.value.file_url,
     });
 
-    // Limpiar formulario (incluyendo el input file)
-    docForm.value = { name: '', date: '', support: null, file: null, file_url: null };
-    // Reset manual del input file
-    const fileInput = document.getElementById('fileUploadInput');
-    if (fileInput) fileInput.value = '';
+    const defaultSeries = docForm.value.series;
+    resetDocumentForm(defaultSeries);
+
+    const fileInput = document.getElementById('transferDocumentFile');
+    if (fileInput) {
+        fileInput.value = '';
+    }
 };
 
-const removeTempDoc = (idx) => tempDocuments.value.splice(idx, 1);
-
-// Ver archivo (abre en nueva pestaña)
-const viewFile = (url) => {
-    if (url) window.open(url, '_blank');
+const removeTempDoc = (index) => {
+    tempDocuments.value.splice(index, 1);
 };
 
-const saveBoxChanges = () => {
-    boxesList.value[currentBoxIndex.value].documents_list = [...tempDocuments.value];
-    boxesList.value[currentBoxIndex.value].documents_count = tempDocuments.value.length;
-    isModalOpen.value = false;
-    toast.add({ severity: 'success', summary: 'Guardado', detail: 'Caja actualizada', life: 3000 });
-};
+const onTempDocFileSelect = (index, event) => {
+    const file = event.target.files?.[0];
 
-// --- ENVÍO FINAL ---
-const submitTransfer = () => {
-    if (boxesList.value.length === 0) return;
-    const emptyBoxes = boxesList.value.filter(box => box.documents_count === 0);
-    if (emptyBoxes.length > 0) {
-        toast.add({ severity: 'error', summary: 'Error', detail: `Hay ${emptyBoxes.length} cajas vacías.`, life: 5000 });
+    if (!file) {
         return;
     }
 
-    axios.post('/api/transfers', {
-        code: headerForm.value.code,
-        request_date: headerForm.value.request_date,
-        unit_id: headerForm.value.unit_id,
-        boxes: boxesList.value,
-    }).then((response) => {
-        toast.add({ severity: 'success', summary: 'Exito', detail: response.data.message, life: 3000 });
-        setTimeout(() => {
-            router.push({
-                path: `/solicitudes/transferencias/${response.data.number}`,
-                query: { tab: 'transferencias' },
-            });
-        }, 1200);
-    }).catch((error) => {
-        const message = error.response?.data?.message || 'No se pudo registrar la transferencia.';
-        toast.add({ severity: 'error', summary: 'Error', detail: message, life: 4000 });
-    });
+    tempDocuments.value[index].file_name = file.name;
+    tempDocuments.value[index].file_url = URL.createObjectURL(file);
 };
 
-const goBack = () => router.back();
+const getSupportClass = (support) => {
+    const supportKey = {
+        Físico: 'fisico',
+        Digital: 'digital',
+        Mixto: 'mixto',
+    }[support] ?? 'fisico';
+
+    return `transfer-docs__support-chip--${supportKey}`;
+};
+
+const saveBoxChanges = () => {
+    if (currentBoxIndex.value === null) {
+        return;
+    }
+
+    boxesList.value[currentBoxIndex.value].documents_list = [...tempDocuments.value];
+    boxesList.value[currentBoxIndex.value].documents_count = tempDocuments.value.length;
+    isModalOpen.value = false;
+};
+
+const submitTransfer = async () => {
+    if (!headerForm.value.code || !formatDateForApi(headerForm.value.request_date) || !headerForm.value.unit_id) {
+        showError('Complete los datos generales de la solicitud.');
+        return;
+    }
+
+    if (boxesList.value.length === 0) {
+        showError('Debe agregar al menos una caja a la solicitud.');
+        return;
+    }
+
+    const emptyBoxes = boxesList.value.filter((box) => box.documents_count === 0);
+    if (emptyBoxes.length > 0) {
+        showError('Cada caja debe tener al menos un documento en su inventario.');
+        return;
+    }
+
+    isSubmitting.value = true;
+
+    try {
+        const payload = {
+            code: headerForm.value.code,
+            request_date: formatDateForApi(headerForm.value.request_date),
+            unit_id: headerForm.value.unit_id,
+            description: String(headerForm.value.description ?? '').trim() || null,
+            boxes: boxesList.value,
+        };
+
+        const { data } = isEditMode.value
+            ? await axios.put(`/api/transfers/${editNumber.value}/resubmit-correction`, payload)
+            : await axios.post('/api/transfers', payload);
+
+        toast.add({
+            severity: 'success',
+            summary: isEditMode.value ? 'Solicitud corregida' : 'Solicitud enviada',
+            detail: isEditMode.value
+                ? 'La solicitud fue reenviada con autorizacion Pendiente y estado Pendiente.'
+                : 'La solicitud fue enviada con autorizacion Pendiente y estado Pendiente.',
+            detail: 'La solicitud fue enviada con autorización Pendiente y estado Pendiente.',
+            life: 3200,
+        });
+
+        router.push({
+            path: `/solicitudes/transferencias/${data.number}`,
+            query: { tab: 'transferencias' },
+        });
+    } catch (error) {
+        showError(error.response?.data?.message || 'No se pudo registrar la solicitud de transferencia.');
+    } finally {
+        isSubmitting.value = false;
+    }
+};
+
+const goBack = () => {
+    router.push('/solicitudes');
+};
 </script>
 
 <template>
-    <div class="mb-4">
-        <div class="flex align-items-center gap-2 mb-3">
-            <Button icon="pi pi-arrow-left" text rounded class="text-gray-700" @click="goBack" />
-            <h1 class="text-2xl font-bold m-0 mobile-page-title" style="color: #1560bd;">Nueva Transferencia Documental</h1>
-        </div>
+    <section class="transfer-request">
+        <header class="transfer-request__header">
+            <Button icon="pi pi-arrow-left" text rounded class="transfer-request__back" aria-label="Volver" @click="goBack" />
+            <h1>{{ pageTitle }}</h1>
+        </header>
 
-        <div class="surface-card shadow-1 border-round-xl overflow-hidden mb-4">
-            <div class="p-3 font-bold text-white text-lg" style="background-color: #1560bd;">Datos Generales</div>
-            <div class="p-4 grid p-fluid">
-                <div class="col-12 md:col-6 mb-3">
-                    <div class="flex flex-column gap-2">
-                        <label class="font-bold text-sm text-gray-700">N° de transferencia</label>
-                        <InputText v-model="headerForm.code" disabled class="bg-gray-100" />
-                    </div>
+        <section v-if="isEditMode && editObservations.length" class="transfer-request__observations">
+            <div class="transfer-request__observations-head">
+                <div class="transfer-request__observations-icon">
+                    <i class="pi pi-eye"></i>
                 </div>
-                <div class="col-12 md:col-6 mb-3">
-                    <div class="flex flex-column gap-2">
-                        <label class="font-bold text-sm text-gray-700">Fecha de solicitud *</label>
-                        <DatePicker v-model="headerForm.request_date" showIcon dateFormat="dd/mm/yy" class="w-full" />
-                    </div>
-                </div>
-                <div class="col-12 md:col-6 mb-3">
-                    <div class="flex flex-column gap-2">
-                        <label class="font-bold text-sm text-gray-700">Unidad productora *</label>
-                        <Dropdown v-model="headerForm.unit_id" :options="unitsList" optionLabel="label" optionValue="value" placeholder="Seleccione" />
-                    </div>
-                </div>
-                <div class="col-12 md:col-6 mb-3">
-                    <div class="flex flex-column gap-2">
-                        <label class="font-bold text-sm text-gray-700">Responsable</label>
-                        <InputText v-model="headerForm.user_name" disabled class="bg-gray-100" />
-                    </div>
+                <div>
+                    <h2>Observaciones de la Solicitud</h2>
+                    <p>Revise las observaciones registradas antes de guardar las correcciones.</p>
                 </div>
             </div>
-        </div>
 
-        <div class="surface-card shadow-1 border-round-xl overflow-hidden">
-            <div class="p-3 font-bold text-white text-lg" style="background-color: #1560bd;">Detalle de Documentos</div>
-            <div class="p-4">
-                <div class="grid p-fluid align-items-end mb-4">
-                    <div class="col-12 md:col-3 mb-2">
-                        <div class="flex flex-column gap-2">
-                            <label class="font-bold text-sm text-gray-700">Serie / Subserie *</label>
-                            <Dropdown v-model="batchForm.series" :options="seriesOptions" optionLabel="label" placeholder="Seleccione" />
-                        </div>
+            <article v-for="item in editObservations" :key="`${item.actor}-${item.dateTime}`" class="transfer-request__observation-card">
+                <div class="transfer-request__observation-meta">
+                    <i class="pi pi-user"></i>
+                    <strong>{{ item.actor }}</strong>
+                    <span>{{ item.dateTime }}</span>
+                </div>
+                <p>{{ item.message }}</p>
+            </article>
+        </section>
+
+        <div class="transfer-request__card">
+            <div class="transfer-request__section-title">Datos Generales</div>
+
+            <div class="transfer-request__section-body">
+                <div class="transfer-request__grid">
+                    <div class="transfer-request__field">
+                        <label for="transferCode">N° de transferencia documental <span>*</span></label>
+                        <InputText id="transferCode" v-model="headerForm.code" :disabled="isLoading" readonly />
                     </div>
-                    <div class="col-6 md:col-2 mb-2">
-                        <div class="flex flex-column gap-2">
-                            <label class="font-bold text-sm text-gray-700">Fecha Inicial *</label>
-                            <InputText v-model="batchForm.year_start" placeholder="2020" maxlength="4" />
-                        </div>
+
+                    <div class="transfer-request__field">
+                        <label for="transferDate">Fecha de solicitud <span>*</span></label>
+                        <DatePicker
+                            id="transferDate"
+                            v-model="headerForm.request_date"
+                            :disabled="isLoading"
+                            dateFormat="dd/mm/yy"
+                            showIcon
+                            iconDisplay="input"
+                            fluid
+                        />
                     </div>
-                    <div class="col-6 md:col-2 mb-2">
-                        <div class="flex flex-column gap-2">
-                            <label class="font-bold text-sm text-gray-700">Fecha Final *</label>
-                            <InputText v-model="batchForm.year_end" placeholder="2021" maxlength="4" />
-                        </div>
+
+                    <div class="transfer-request__field">
+                        <label for="transferUnit">Unidad productora <span>*</span></label>
+                        <Dropdown
+                            id="transferUnit"
+                            v-model="headerForm.unit_id"
+                            :options="unitsList"
+                            :disabled="isLoading"
+                            optionLabel="label"
+                            optionValue="value"
+                            placeholder="Seleccionar unidad"
+                            fluid
+                        />
                     </div>
-                    <div class="col-6 md:col-3 mb-2">
-                        <div class="flex flex-column gap-2">
-                            <label class="font-bold text-sm text-gray-700">Cantidad *</label>
-                            <InputText v-model="batchForm.quantity" type="number" min="1" />
-                        </div>
-                    </div>
-                    <div class="col-6 md:col-2 mb-2">
-                        <Button label="Agregar" icon="pi pi-plus" class="w-full border-none" style="background-color: #1560bd;" @click="addBatch" />
+
+                    <div class="transfer-request__field">
+                        <label for="transferResponsible">Responsable del envío <span>*</span></label>
+                        <InputText
+                            id="transferResponsible"
+                            v-model="headerForm.user_name"
+                            :disabled="isLoading"
+                            placeholder="Nombre completo"
+                            readonly
+                        />
                     </div>
                 </div>
 
-                <div v-if="boxesList.length === 0" class="text-center p-6 border-1 border-dashed border-300 border-round bg-gray-50">
-                    <i class="pi pi-box text-6xl text-gray-300 mb-3"></i>
-                    <span class="text-gray-500 font-medium block">No hay cajas agregadas.</span>
+                <div class="transfer-request__field transfer-request__description">
+                    <label for="transferDescription">Descripción (opcional)</label>
+                    <textarea
+                        id="transferDescription"
+                        v-model="headerForm.description"
+                        :disabled="isLoading"
+                        maxlength="1000"
+                        rows="4"
+                        placeholder="Ingrese una descripción breve de la documentación a transferir"
+                    ></textarea>
                 </div>
 
-                <DataTable v-else :value="boxesList" stripedRows size="small" class="mt-3 clean-table rounded-table">
-                    <Column header="N°" style="width: 3rem; text-align: center" headerClass="bg-primary-custom text-white">
-                        <template #body="slotProps">{{ slotProps.index + 1 }}</template>
+                <div class="transfer-request__section-title transfer-request__section-title--detached">Detalle de Documentos</div>
+
+                <div class="transfer-request__detail-grid">
+                    <div class="transfer-request__field">
+                        <label for="transferSeries">Serie / Subserie <span>*</span></label>
+                        <Dropdown
+                            id="transferSeries"
+                            v-model="batchForm.series"
+                            :options="seriesOptions"
+                            :disabled="isLoading"
+                            optionLabel="label"
+                            placeholder="Seleccionar"
+                            filter
+                            fluid
+                        />
+                    </div>
+
+                    <div class="transfer-request__field">
+                        <label for="transferStartYear">Fecha inicial <span>*</span></label>
+                        <DatePicker
+                            inputId="transferStartYear"
+                            v-model="batchForm.year_start"
+                            :disabled="isLoading"
+                            view="year"
+                            dateFormat="yy"
+                            showIcon
+                            iconDisplay="input"
+                            readonlyInput
+                            placeholder="Año (Ej: 2020)"
+                            fluid
+                        />
+                    </div>
+
+                    <div class="transfer-request__field">
+                        <label for="transferEndYear">Fecha final <span>*</span></label>
+                        <DatePicker
+                            inputId="transferEndYear"
+                            v-model="batchForm.year_end"
+                            :disabled="isLoading"
+                            view="year"
+                            dateFormat="yy"
+                            showIcon
+                            iconDisplay="input"
+                            readonlyInput
+                            placeholder="Año (Ej: 2024)"
+                            fluid
+                        />
+                    </div>
+
+                    <div class="transfer-request__field">
+                        <label for="transferQuantity">Cantidad de cajas <span>*</span></label>
+                        <InputText
+                            id="transferQuantity"
+                            v-model="batchForm.quantity"
+                            :disabled="isLoading"
+                            type="number"
+                            min="1"
+                            placeholder="Ej: 2"
+                        />
+                    </div>
+
+                    <Button
+                        label="Agregar"
+                        icon="pi pi-plus"
+                        class="transfer-request__add"
+                        :disabled="isLoading"
+                        @click="addBatch"
+                    />
+                </div>
+
+                <div v-if="boxesList.length === 0" class="transfer-request__empty">
+                    No hay cajas agregadas. Complete el formulario y haga clic en "Agregar".
+                </div>
+
+                <DataTable v-else :value="boxesList" class="transfer-request__table" size="small" stripedRows>
+                    <Column header="N°" style="width: 5rem">
+                        <template #body="{ index }">{{ index + 1 }}</template>
                     </Column>
-                    <Column field="series" header="Serie / Subserie" headerClass="bg-primary-custom text-white"></Column>
-                    <Column field="year_start" header="Inicio" style="width: 80px; text-align: center;" headerClass="bg-primary-custom text-white"></Column>
-                    <Column field="year_end" header="Fin" style="width: 80px; text-align: center;" headerClass="bg-primary-custom text-white"></Column>
-                    <Column field="box_number" header="N° Caja" style="width: 80px; text-align: center;" headerClass="bg-primary-custom text-white"></Column>
-                    
-                    <Column header="Documentos" style="width: 140px; text-align: center;" headerClass="bg-primary-custom text-white">
-                        <template #body="slotProps">
-                            <Button 
-                                :label="`${slotProps.data.documents_count} (Lista)`" 
-                                :icon="slotProps.data.documents_count > 0 ? 'pi pi-check-circle' : 'pi pi-list'" 
-                                :severity="slotProps.data.documents_count > 0 ? 'success' : 'info'" 
-                                outlined size="small" 
-                                class="p-1 text-xs w-full"
-                                @click="openDocsModal(slotProps.index)" 
-                            />
+                    <Column field="series" header="Serie / Subserie"></Column>
+                    <Column field="year_start" header="Fecha inicial" style="width: 11rem"></Column>
+                    <Column field="year_end" header="Fecha final" style="width: 11rem"></Column>
+                    <Column field="box_number" header="N° de caja" style="width: 11rem"></Column>
+                    <Column header="Documentos" style="width: 12rem">
+                        <template #body="{ data }">
+                            <span class="transfer-request__docs-pill">{{ data.documents_count }} doc(s)</span>
                         </template>
                     </Column>
-                    
-                    <Column header="Acciones" style="width: 100px; text-align: center;" headerClass="bg-primary-custom text-white">
-                        <template #body="slotProps">
-                            <div class="flex justify-content-center gap-2">
-                                <Button icon="pi pi-trash" text rounded severity="danger" size="small" @click="removeBox(slotProps.index)" />
+                    <Column header="Acciones" style="width: 9rem">
+                        <template #body="{ index }">
+                            <div class="transfer-request__row-actions">
+                            <Button
+                                icon="pi pi-cog"
+                                text
+                                rounded
+                                class="transfer-request__icon-action transfer-request__icon-action--config"
+                                aria-label="Gestionar documentos"
+                                @click="openDocsModal(index)"
+                            />
+                            <Button
+                                icon="pi pi-trash"
+                                text
+                                rounded
+                                class="transfer-request__icon-action transfer-request__icon-action--delete"
+                                aria-label="Eliminar caja"
+                                @click="removeBox(index)"
+                            />
                             </div>
                         </template>
                     </Column>
-                    <template #footer>
-                        <div class="flex justify-content-end align-items-center px-2 py-1 gap-3">
-                            <span class="text-gray-600 font-medium">Total Cajas:</span>
-                            <span class="text-xl font-bold" style="color: #1560bd;">{{ totalBoxes }}</span>
-                        </div>
-                    </template>
                 </DataTable>
 
-                <div class="flex justify-content-start gap-3 mt-5 pt-3 border-top-1 border-gray-200">
-                    <Button label="Enviar transferencia" class="px-4 border-none" style="background-color: #1560bd;" :disabled="boxesList.length === 0" @click="submitTransfer" />
-                    <Button label="Cancelar" severity="secondary" outlined class="px-4" @click="goBack" />
+                <div class="transfer-request__actions">
+                    <Button
+                        :label="submitLabel"
+                        class="transfer-request__submit"
+                        :loading="isSubmitting"
+                        :disabled="isLoading"
+                        @click="submitTransfer"
+                    />
+                    <Button label="Cancelar" outlined class="transfer-request__cancel" :disabled="isSubmitting" @click="goBack" />
                 </div>
             </div>
         </div>
-    </div>
 
-    <Dialog v-model:visible="isModalOpen" modal :style="{ width: '60vw' }" :draggable="false">
-        
-        <template #header>
-            <div class="w-full">
-                <h3 class="m-0 text-white">Documentos de la Caja #{{ currentBoxData.box_number }}</h3>
-                <span class="text-sm text-blue-100">{{ currentBoxData.series }} ({{ currentBoxData.year_start }} - {{ currentBoxData.year_end }})</span>
-            </div>
-        </template>
+        <Dialog v-model:visible="isModalOpen" modal :draggable="false" class="transfer-docs-dialog" :style="{ width: 'min(1024px, 94vw)' }">
+            <template #header>
+                <div class="transfer-docs__header">
+                    <h2>Documentos de la Caja #{{ currentBoxData.box_number }}</h2>
+                    <p>{{ currentBoxData.series }} ({{ currentBoxData.year_start }} - {{ currentBoxData.year_end }})</p>
+                </div>
+            </template>
 
-        <div class="pt-2">
-            <div class="surface-ground p-3 border-round mb-4">
-                <h4 class="m-0 mb-3 text-gray-800">Agregar Documento</h4>
-                
-                <div class="grid p-fluid">
-                    <div class="col-12 md:col-4 mb-3">
-                        <div class="flex flex-column gap-2">
-                            <label class="text-sm font-bold text-gray-700">Nombre del Documento *</label>
-                            <InputText v-model="docForm.name" placeholder="Ej: Acta de reunión" />
-                        </div>
+            <div class="transfer-docs">
+                <div class="transfer-docs__form">
+                    <div class="transfer-docs__form-title">
+                        <h3>Agregar Documento</h3>
+                        <Button
+                            label="Importar desde Excel"
+                            icon="pi pi-file-excel"
+                            class="transfer-docs__excel-button"
+                            @click="isImportModalOpen = true"
+                        />
                     </div>
 
-                    <div class="col-12 md:col-4 mb-3">
-                        <div class="flex flex-column gap-2">
-                            <label class="text-sm font-bold text-gray-700">Fecha (Año) *</label>
-                            <InputText v-model="docForm.date" placeholder="Ej: 2020" />
-                        </div>
+                    <div class="transfer-request__field transfer-docs__series">
+                        <label for="documentSeries">Serie del documento <span>*</span></label>
+                        <Dropdown
+                            id="documentSeries"
+                            v-model="docForm.series"
+                            :options="seriesOptions"
+                            optionLabel="label"
+                            placeholder="Seleccionar"
+                            filter
+                            fluid
+                        />
                     </div>
 
-                    <div class="col-12 md:col-4 mb-3">
-                        <div class="flex flex-column gap-2">
-                            <label class="text-sm font-bold text-gray-700">Soporte *</label>
-                            <Dropdown v-model="docForm.support" :options="supportOptions" placeholder="Seleccione" />
-                        </div>
+                    <div class="transfer-request__field">
+                        <label for="documentName">Nombre del documento <span>*</span></label>
+                        <InputText id="documentName" v-model="docForm.name" placeholder="Ej: Acta de reunión" />
                     </div>
 
-                    <div class="col-12 mb-3" v-if="docForm.support === 'Digital' || docForm.support === 'Mixto'">
-                        <div class="flex flex-column gap-2">
-                            <label class="text-sm font-bold text-gray-700">Archivo Digital (Requerido)</label>
-                            <div class="p-inputgroup">
-                                <span class="p-inputgroup-addon bg-gray-100"><i class="pi pi-upload"></i></span>
-                                <input type="file" id="fileUploadInput" class="w-full border-1 border-gray-300 p-2 border-round-right" @change="onFileSelect" accept=".pdf,.doc,.docx,.jpg,.png" />
+                    <div class="transfer-request__field">
+                        <label for="documentCode">Código <span>*</span></label>
+                        <InputText id="documentCode" v-model="docForm.code" placeholder="Ej: ACT-2024-001" />
+                    </div>
+
+                    <div class="transfer-request__field">
+                        <label for="documentSupport">Soporte <span>*</span></label>
+                        <Dropdown id="documentSupport" v-model="docForm.support" :options="supportOptions" placeholder="Seleccionar" fluid />
+                    </div>
+
+                    <div class="transfer-request__field">
+                        <label for="documentDate">Año</label>
+                        <DatePicker
+                            inputId="documentDate"
+                            v-model="docForm.date"
+                            view="year"
+                            dateFormat="yy"
+                            showIcon
+                            iconDisplay="input"
+                            readonlyInput
+                            placeholder="Ej: 2025"
+                            fluid
+                        />
+                    </div>
+
+                    <div class="transfer-request__field">
+                        <label for="documentPages">Cantidad de páginas</label>
+                        <InputText id="documentPages" v-model="docForm.pages" type="number" min="1" placeholder="Ej: 10" />
+                    </div>
+
+                    <div v-if="requiresDigitalFileInput" class="transfer-request__field transfer-docs__file">
+                        <label for="transferDocumentFile">Archivo digital (opcional)</label>
+                        <label
+                            class="transfer-docs__file-trigger"
+                            :class="{ 'transfer-docs__file-trigger--selected': docForm.file }"
+                            for="transferDocumentFile"
+                        >
+                            <i class="pi pi-upload"></i>
+                            <span v-if="docForm.file">Archivo seleccionado: {{ docForm.file.name }}</span>
+                            <span v-else>Seleccionar archivo...</span>
+                        </label>
+                        <input id="transferDocumentFile" type="file" accept=".pdf" @change="onFileSelect" />
+                        <a
+                            v-if="docForm.file_url"
+                            :href="docForm.file_url"
+                            class="transfer-docs__file-link"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            {{ docForm.file.name }}
+                        </a>
+                        <small>Formatos permitidos: PDF</small>
+                    </div>
+
+                    <Button label="Agregar documento" icon="pi pi-plus" class="transfer-docs__add" @click="addDocumentToTemp" />
+                </div>
+
+                <h3 class="transfer-docs__list-title">Documentos agregados ({{ tempDocuments.length }})</h3>
+
+                <div v-if="tempDocuments.length === 0" class="transfer-docs__empty">
+                    No hay documentos agregados. Agregue documentos usando el formulario anterior.
+                </div>
+
+                <div v-else class="transfer-docs__list">
+                    <article v-for="(document, index) in tempDocuments" :key="document.id_doc" class="transfer-docs__item">
+                        <div class="transfer-docs__item-grid">
+                            <div>
+                                <span>Serie del documento</span>
+                                <strong>{{ document.series }}</strong>
                             </div>
-                            <small v-if="docForm.file" class="text-green-600 font-bold">
-                                <i class="pi pi-check"></i> Archivo seleccionado: {{ docForm.file.name }}
-                            </small>
+                            <div>
+                                <span>Nombre</span>
+                                <strong>{{ document.name }}</strong>
+                            </div>
+                            <div>
+                                <span>Código</span>
+                                <strong>{{ document.code }}</strong>
+                            </div>
+                            <div>
+                                <span>Soporte</span>
+                                <strong
+                                    class="transfer-docs__support-chip"
+                                    :class="getSupportClass(document.support)"
+                                >
+                                    {{ document.support }}
+                                </strong>
+                            </div>
+                            <div>
+                                <span>Año</span>
+                                <strong>{{ document.date || 'No indicado' }}</strong>
+                            </div>
+                            <div>
+                                <span>Cantidad de páginas</span>
+                                <strong>{{ document.pages ? `${document.pages} págs` : 'No indicada' }}</strong>
+                            </div>
+                            <div v-if="needsDigitalFile(document.support)" class="transfer-docs__digital-link">
+                                <span>Archivo digital</span>
+                                <a v-if="document.file_url" :href="document.file_url" target="_blank" rel="noopener noreferrer">{{ document.file_name }}</a>
+                                <label
+                                    v-else
+                                    class="transfer-docs__inline-file-trigger"
+                                    :for="`transferTempDocumentFile-${index}`"
+                                >
+                                    <i class="pi pi-upload"></i>
+                                    Seleccionar archivo digital
+                                </label>
+                                <input
+                                    :id="`transferTempDocumentFile-${index}`"
+                                    class="transfer-docs__inline-file-input"
+                                    type="file"
+                                    accept=".pdf"
+                                    @change="onTempDocFileSelect(index, $event)"
+                                />
+                                <small v-if="!document.file_url">Formatos permitidos: PDF</small>
+                            </div>
                         </div>
-                    </div>
-
-                    <div class="col-12">
-                        <Button label="Agregar documento" icon="pi pi-plus" class="w-auto px-4 border-none" style="background-color: #205081;" @click="addDocumentToTemp" />
-                    </div>
+                        <div class="transfer-docs__item-actions">
+                            <Button icon="pi pi-trash" text rounded severity="danger" aria-label="Quitar documento" @click="removeTempDoc(index)" />
+                        </div>
+                    </article>
                 </div>
             </div>
 
-            <h4 class="m-0 mb-3 text-gray-800">Documentos agregados ({{ tempDocuments.length }})</h4>
-            
-            <div v-if="tempDocuments.length === 0" class="text-center p-4 border-1 border-dashed border-200 text-gray-500 mb-4">
-                No hay documentos agregados.
+            <template #footer>
+                <Button label="Cancelar" outlined class="transfer-docs__cancel" @click="isModalOpen = false" />
+                <Button label="Guardar documentos" class="transfer-docs__save" @click="saveBoxChanges" />
+            </template>
+        </Dialog>
+
+        <Dialog
+            v-model:visible="isImportModalOpen"
+            modal
+            :draggable="false"
+            class="transfer-import-dialog"
+            :style="{ width: 'min(896px, 94vw)' }"
+        >
+            <template #header>
+                <div class="transfer-docs__header">
+                    <h2>Importación Masiva de Documentos</h2>
+                    <p>Siga las instrucciones para importar documentos desde Excel</p>
+                </div>
+            </template>
+
+            <div class="transfer-import">
+                <section class="transfer-import__instructions">
+                    <i class="pi pi-info-circle"></i>
+                    <div>
+                        <strong>Instrucciones importantes:</strong>
+                        <ul>
+                            <li>Descargue la plantilla de Excel y complete los datos solicitados</li>
+                            <li>No modifique las cabeceras de las columnas</li>
+                            <li>Los valores del campo "Serie del documento" deben coincidir con las series disponibles en el sistema</li>
+                            <li>Los valores del campo "Soporte" deben ser exactamente: Físico, Digital o Mixto</li>
+                            <li>Los archivos digitales no se cargan desde Excel; se agregan después desde el formulario del documento</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <Button
+                    label="Descargar Plantilla de Excel"
+                    icon="pi pi-download"
+                    class="transfer-import__download"
+                    @click="downloadExcelTemplate"
+                />
+                <p class="transfer-import__hint">Complete la plantilla con los datos de sus documentos</p>
+
+                <section class="transfer-import__dropzone">
+                    <i class="pi pi-file"></i>
+                    <strong>Cargar archivo Excel</strong>
+                    <span>Seleccione el archivo Excel con los documentos a importar</span>
+                    <label class="transfer-import__select" for="excelImportFile">
+                        <i class="pi pi-upload"></i>
+                        Seleccionar archivo Excel
+                    </label>
+                    <input id="excelImportFile" type="file" accept=".xlsx" @change="onExcelFileSelect" />
+                    <a v-if="excelFile" class="transfer-import__file-name" href="#" @click.prevent>{{ excelFile.name }}</a>
+                    <small>Formato permitido: .xlsx</small>
+                </section>
             </div>
 
-            <div v-else class="border-1 border-200 border-round mb-4 overflow-hidden">
-                <div class="grid bg-gray-100 p-2 font-bold text-sm text-gray-700 m-0 border-bottom-1 border-200">
-                    <div class="col-4">Nombre Documento</div>
-                    <div class="col-2 text-center">Fecha</div>
-                    <div class="col-2 text-center">Soporte</div>
-                    <div class="col-3 text-center">Archivo Digital</div>
-                    <div class="col-1 text-center">Acción</div>
-                </div>
-
-                <div v-for="(doc, idx) in tempDocuments" :key="doc.id_doc" class="grid align-items-center p-2 m-0 border-bottom-1 border-200 text-sm hover:bg-gray-50">
-                    
-                    <div class="col-4 font-medium text-gray-800">{{ doc.name }}</div>
-                    
-                    <div class="col-2 text-center text-gray-600">{{ doc.date }}</div>
-                    
-                    <div class="col-2 text-center">
-                        <span class="px-2 py-1 border-round text-xs font-bold" 
-                            :class="doc.support === 'Físico' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'">
-                            {{ doc.support }}
-                        </span>
-                    </div>
-                    
-                    <div class="col-3 text-center">
-                        <Button v-if="doc.file_url" label="Ver Archivo" icon="pi pi-eye" link size="small" class="p-0 text-blue-600" @click="viewFile(doc.file_url)" />
-                        <span v-else class="text-gray-400">-</span>
-                    </div>
-                    
-                    <div class="col-1 text-center">
-                        <Button icon="pi pi-trash" text rounded severity="danger" class="w-2rem h-2rem" @click="removeTempDoc(idx)" />
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <template #footer>
-            <Button label="Cancelar" severity="secondary" outlined @click="isModalOpen = false" />
-            <Button label="Guardar documentos" class="border-none" style="background-color: #205081;" @click="saveBoxChanges" />
-        </template>
-    </Dialog>
+            <template #footer>
+                <Button label="Cancelar" outlined class="transfer-docs__cancel" @click="isImportModalOpen = false" />
+                <Button
+                    label="Importar"
+                    icon="pi pi-check"
+                    class="transfer-docs__save"
+                    :loading="isImporting"
+                    :disabled="!excelFile"
+                    @click="importDocumentsFromExcel"
+                />
+            </template>
+        </Dialog>
+    </section>
 </template>
 
 <style scoped>
-:deep(.bg-primary-custom) { background-color: #1560bd !important; }
-:deep(.clean-table .p-datatable-thead > tr > th),
-:deep(.clean-table .p-datatable-tbody > tr > td) { border: none !important; }
-:deep(.clean-table .p-datatable-footer) { background: transparent; border: none; border-top: 1px solid #e5e7eb; }
-:deep(.rounded-table) { border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb; }
-:deep(.p-datepicker), :deep(.p-datepicker-input) { width: 100% !important; }
-
-/* Modal Styles */
-:deep(.p-dialog-header) {
-    background-color: #1560bd;
-    color: white;
-    border-top-left-radius: 12px;
-    border-top-right-radius: 12px;
+.transfer-request {
+    color: #1f2937;
 }
-:deep(.p-dialog-header-icons .p-dialog-header-icon) { color: white; }
-:deep(.p-dialog-content) { padding: 1.5rem 2rem; }
 
-/* Input File Custom */
-input[type="file"]::file-selector-button { display: none; }
+.transfer-request__header {
+    align-items: center;
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.transfer-request__header h1 {
+    color: #2d6f9f;
+    font-size: 2rem;
+    font-weight: 800;
+    line-height: 1.15;
+    margin: 0;
+}
+
+.transfer-request__back {
+    color: #2d6f9f;
+}
+
+.transfer-request__observations {
+    background: #fff3c4;
+    border-left: 4px solid #f6ad3c;
+    border-radius: 8px;
+    color: #7a4b00;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding: 1.35rem 1.5rem;
+}
+
+.transfer-request__observations-head {
+    align-items: flex-start;
+    display: flex;
+    gap: 1rem;
+}
+
+.transfer-request__observations-icon {
+    align-items: center;
+    background: #f6ad3c;
+    border-radius: 0.75rem;
+    color: #ffffff;
+    display: inline-flex;
+    flex-shrink: 0;
+    height: 2.4rem;
+    justify-content: center;
+    width: 2.4rem;
+}
+
+.transfer-request__observations h2,
+.transfer-request__observations p {
+    margin: 0;
+}
+
+.transfer-request__observations h2 {
+    color: #7a4b00;
+    font-size: 1.1rem;
+    font-weight: 800;
+}
+
+.transfer-request__observations-head p {
+    margin-top: 0.45rem;
+}
+
+.transfer-request__observation-card {
+    background: #ffffff;
+    border: 1px solid #f3d27a;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.transfer-request__observation-meta {
+    align-items: center;
+    color: #9a5f00;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-bottom: 0.75rem;
+}
+
+.transfer-request__card {
+    background: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 1px 5px rgba(15, 23, 42, 0.16);
+    overflow: hidden;
+}
+
+.transfer-request__section-title {
+    background: #2d6f9f;
+    color: #ffffff;
+    font-size: 1.1rem;
+    font-weight: 800;
+    padding: 1rem 1.5rem;
+}
+
+.transfer-request__section-title--detached {
+    border-radius: 8px;
+    margin: 2rem -1.5rem 1.5rem;
+}
+
+.transfer-request__section-body {
+    padding: 1.75rem 2rem 2rem;
+}
+
+.transfer-request__grid {
+    display: grid;
+    gap: 1.7rem 1.5rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.transfer-request__detail-grid {
+    align-items: end;
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: minmax(14rem, 1fr) minmax(10rem, 0.75fr) minmax(10rem, 0.75fr) minmax(10rem, 0.75fr) 14rem;
+}
+
+.transfer-request__field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    min-width: 0;
+}
+
+.transfer-request__field label {
+    color: #111827;
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+.transfer-request__field > label:not(.transfer-docs__file-trigger) span {
+    color: #dc2626;
+}
+
+.transfer-request__field :deep(.p-inputtext),
+.transfer-request__field :deep(.p-select),
+.transfer-request__field :deep(.p-datepicker-input) {
+    border-color: #d7dde5;
+    border-radius: 6px;
+    min-height: 3.15rem;
+    width: 100%;
+}
+
+.transfer-request__field textarea {
+    border: 1px solid #d7dde5;
+    border-radius: 6px;
+    color: #111827;
+    font: inherit;
+    line-height: 1.5;
+    min-height: 7rem;
+    padding: 0.9rem 1rem;
+    resize: vertical;
+    width: 100%;
+}
+
+.transfer-request__field textarea:focus {
+    border-color: #2d6f9f;
+    box-shadow: 0 0 0 0.2rem rgba(45, 111, 159, 0.14);
+    outline: 0;
+}
+
+.transfer-request__field :deep(.p-inputtext[readonly]) {
+    background: #f8fafc;
+    color: #111827;
+}
+
+.transfer-request__description {
+    margin-top: 1.6rem;
+}
+
+.transfer-request__add,
+.transfer-request__submit,
+.transfer-docs__add,
+.transfer-docs__save {
+    background: #2d6f9f;
+    border-color: #2d6f9f;
+}
+
+.transfer-request__add {
+    min-height: 3.15rem;
+}
+
+.transfer-request__empty {
+    align-items: center;
+    border: 2px dashed #d9e2ec;
+    border-radius: 8px;
+    color: #4b6278;
+    display: flex;
+    justify-content: center;
+    margin-top: 1.5rem;
+    min-height: 7.8rem;
+    padding: 1.5rem;
+    text-align: center;
+}
+
+.transfer-request__table {
+    margin-top: 1.5rem;
+    overflow: hidden;
+}
+
+.transfer-request__table :deep(.p-datatable-table) {
+    min-width: 720px;
+}
+
+.transfer-request__table :deep(.p-datatable-thead > tr > th) {
+    background: #2d6f9f;
+    border: 0;
+    color: #ffffff;
+    font-weight: 800;
+    padding: 0.95rem 1rem;
+}
+
+.transfer-request__table :deep(.p-datatable-tbody > tr > td) {
+    border: 0;
+    color: #2f4358;
+    padding: 1rem;
+    vertical-align: middle;
+}
+
+.transfer-request__table :deep(.p-datatable-tbody > tr:nth-child(even) > td) {
+    background: #eef0f4;
+}
+
+.transfer-request__table :deep(.p-datatable-tbody > tr:nth-child(odd) > td) {
+    background: #ffffff;
+}
+
+.transfer-request__table :deep(.p-datatable-thead > tr > th:first-child) {
+    border-top-left-radius: 8px;
+}
+
+.transfer-request__table :deep(.p-datatable-thead > tr > th:last-child) {
+    border-top-right-radius: 8px;
+}
+
+.transfer-request__docs-pill {
+    background: #eaf4ff;
+    border-radius: 999px;
+    color: #1f5f8e;
+    display: inline-flex;
+    font-size: 0.82rem;
+    font-weight: 700;
+    padding: 0.35rem 0.75rem;
+}
+
+.transfer-request__row-actions {
+    align-items: center;
+    display: flex;
+    gap: 0.7rem;
+}
+
+.transfer-request__icon-action {
+    height: 2rem;
+    width: 2rem;
+}
+
+.transfer-request__icon-action--config {
+    color: #2d6f9f;
+}
+
+.transfer-request__icon-action--delete {
+    color: #ef4444;
+}
+
+.transfer-request__actions {
+    display: flex;
+    gap: 1rem;
+    margin-top: 2rem;
+}
+
+.transfer-request__submit,
+.transfer-request__cancel {
+    min-height: 3.25rem;
+    min-width: 10.5rem;
+}
+
+.transfer-request__cancel {
+    border-color: #2d6f9f;
+    color: #1f5f8e;
+}
+
+.transfer-docs__cancel {
+    border-color: #2d6f9f;
+    color: #1f5f8e;
+    min-width: 8rem;
+}
+
+.transfer-docs__cancel:hover,
+.transfer-docs__cancel:focus,
+.transfer-docs__cancel:focus-visible {
+    background: #eaf4ff;
+    border-color: #2d6f9f;
+    box-shadow: 0 0 0 0.2rem rgba(45, 111, 159, 0.18);
+    color: #1f5f8e;
+}
+
+.transfer-docs {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.transfer-docs__header h2,
+.transfer-docs__header p {
+    margin: 0;
+}
+
+.transfer-docs__header h2 {
+    color: #ffffff;
+    font-size: 1.25rem;
+    font-weight: 800;
+}
+
+.transfer-docs__header p {
+    color: #e6f2fb;
+    font-size: 0.9rem;
+    margin-top: 0.55rem;
+}
+
+:global(.transfer-docs-dialog.p-dialog),
+:global(.transfer-import-dialog.p-dialog) {
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+:global(.transfer-docs-dialog .p-dialog-header),
+:global(.transfer-import-dialog .p-dialog-header) {
+    background: #2d6f9f;
+    border-bottom: 0;
+    color: #ffffff;
+    padding: 1.35rem 1.5rem;
+}
+
+:global(.transfer-docs-dialog .p-dialog-header-close),
+:global(.transfer-import-dialog .p-dialog-header-close) {
+    color: #ffffff;
+}
+
+:global(.transfer-docs-dialog .p-dialog-content),
+:global(.transfer-import-dialog .p-dialog-content) {
+    padding: 1.5rem;
+}
+
+:global(.transfer-docs-dialog .p-dialog-footer),
+:global(.transfer-import-dialog .p-dialog-footer) {
+    border-top: 1px solid #dbe3ed;
+    padding: 1rem 1.5rem;
+}
+
+.transfer-docs__form {
+    background: #f8fafc;
+    border-radius: 8px;
+    display: grid;
+    gap: 1.1rem 1rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding: 1.1rem;
+}
+
+.transfer-docs__form-title,
+.transfer-docs__series {
+    grid-column: 1 / -1;
+}
+
+.transfer-docs__form-title {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+}
+
+.transfer-docs__form-title h3,
+.transfer-docs__list-title {
+    color: #111827;
+    font-size: 1rem;
+    font-weight: 800;
+    margin: 0;
+}
+
+.transfer-docs__excel-button,
+.transfer-import__download {
+    background: #00a63e;
+    border-color: #00a63e;
+}
+
+.transfer-docs__excel-button {
+    min-height: 2.45rem;
+}
+
+.transfer-docs__file,
+.transfer-docs__add {
+    grid-column: 1 / -1;
+}
+
+.transfer-docs__add {
+    justify-self: start;
+    min-width: 13rem;
+}
+
+.transfer-docs__file input,
+.transfer-docs__inline-file-input,
+.transfer-import__dropzone input {
+    display: none;
+}
+
+.transfer-docs__file-trigger {
+    align-items: center;
+    background: #ffffff;
+    border: 1px solid #2d6f9f;
+    border-radius: 6px;
+    color: #48627c;
+    cursor: pointer;
+    display: flex;
+    gap: 0.75rem;
+    min-height: 2.65rem;
+    padding: 0 1rem;
+}
+
+.transfer-docs__file-trigger i {
+    color: #2d6f9f;
+}
+
+.transfer-docs__file-trigger--selected {
+    background: #f8fbff;
+    color: #1f5f8e;
+    font-weight: 700;
+}
+
+.transfer-docs__file small,
+.transfer-import__dropzone small {
+    color: #48627c;
+    font-size: 0.8rem;
+}
+
+.transfer-docs__file-link,
+.transfer-docs__digital-link a,
+.transfer-import__file-name {
+    color: #1f5f8e;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.transfer-docs__file-link:hover,
+.transfer-docs__digital-link a:hover,
+.transfer-import__file-name:hover {
+    text-decoration: underline;
+}
+
+.transfer-docs__empty {
+    align-items: center;
+    border: 1px dashed #d9e2ec;
+    border-radius: 8px;
+    color: #64748b;
+    display: flex;
+    justify-content: center;
+    min-height: 5.4rem;
+    padding: 1.25rem;
+    text-align: center;
+}
+
+.transfer-docs__list {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.transfer-docs__item {
+    align-items: flex-start;
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem;
+}
+
+.transfer-docs__item + .transfer-docs__item {
+    border-top: 1px solid #e5e7eb;
+}
+
+.transfer-docs__item-grid {
+    display: grid;
+    gap: 1rem 1.5rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+}
+
+.transfer-docs__item-grid strong,
+.transfer-docs__item-grid span {
+    display: block;
+}
+
+.transfer-docs__item-grid span {
+    color: #64748b;
+    font-size: 0.78rem;
+    margin-bottom: 0.35rem;
+}
+
+.transfer-docs__item-grid strong {
+    color: #111827;
+    font-size: 0.9rem;
+    overflow-wrap: anywhere;
+}
+
+.transfer-docs__support-chip {
+    border-radius: 999px;
+    display: inline-flex;
+    font-size: 0.78rem;
+    font-weight: 800;
+    padding: 0.35rem 0.75rem;
+    width: fit-content;
+}
+
+.transfer-docs__support-chip--fisico {
+    background: #eaf4ff;
+    color: #1f5f8e;
+}
+
+.transfer-docs__support-chip--digital {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.transfer-docs__support-chip--mixto {
+    background: #f3e8ff;
+    color: #7e22ce;
+}
+
+.transfer-docs__digital-link {
+    grid-column: 1 / -1;
+}
+
+.transfer-docs__inline-file-trigger {
+    align-items: center;
+    border: 1px solid #2d6f9f;
+    border-radius: 6px;
+    color: #1f5f8e;
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 0.88rem;
+    font-weight: 700;
+    gap: 0.5rem;
+    min-height: 2.35rem;
+    padding: 0 0.9rem;
+    width: fit-content;
+}
+
+.transfer-docs__digital-link small {
+    color: #48627c;
+    display: block;
+    font-size: 0.78rem;
+    margin-top: 0.35rem;
+}
+
+.transfer-docs__item-actions {
+    align-items: center;
+    display: flex;
+    flex-shrink: 0;
+    gap: 0.25rem;
+}
+
+.transfer-import {
+    display: flex;
+    flex-direction: column;
+    gap: 1.4rem;
+}
+
+.transfer-import__instructions {
+    background: #eff6ff;
+    border-left: 4px solid #2563eb;
+    border-radius: 8px;
+    color: #0b3b8f;
+    display: flex;
+    gap: 1rem;
+    padding: 1.1rem 1.2rem;
+}
+
+.transfer-import__instructions > i {
+    color: #2563eb;
+    font-size: 1.25rem;
+    margin-top: 0.05rem;
+}
+
+.transfer-import__instructions strong {
+    display: block;
+    margin-bottom: 0.7rem;
+}
+
+.transfer-import__instructions ul {
+    margin: 0;
+    padding-left: 1.25rem;
+}
+
+.transfer-import__instructions li + li {
+    margin-top: 0.45rem;
+}
+
+.transfer-import__download {
+    min-height: 3.4rem;
+    width: 100%;
+}
+
+.transfer-import__hint {
+    color: #48627c;
+    font-size: 0.82rem;
+    margin: -0.8rem 0 0;
+    text-align: center;
+}
+
+.transfer-import__dropzone {
+    align-items: center;
+    border: 2px dashed #d9e2ec;
+    border-radius: 8px;
+    color: #48627c;
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+    padding: 1.8rem 1.5rem;
+    text-align: center;
+}
+
+.transfer-import__dropzone > i {
+    color: #2d6f9f;
+    font-size: 3.5rem;
+}
+
+.transfer-import__dropzone strong {
+    color: #111827;
+    font-size: 1rem;
+}
+
+.transfer-import__select {
+    align-items: center;
+    background: #2d6f9f;
+    border-radius: 8px;
+    color: #ffffff;
+    cursor: pointer;
+    display: flex;
+    font-weight: 800;
+    gap: 0.75rem;
+    justify-content: center;
+    min-height: 3rem;
+    width: min(100%, 50rem);
+}
+
+@media (max-width: 1180px) {
+    .transfer-request__detail-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .transfer-request__add {
+        width: 100%;
+    }
+}
+
+@media (max-width: 768px) {
+    .transfer-request__header h1 {
+        font-size: 1.55rem;
+    }
+
+    .transfer-request__section-body {
+        padding: 1.25rem;
+    }
+
+    .transfer-request__grid,
+    .transfer-request__detail-grid,
+    .transfer-docs__form,
+    .transfer-docs__item-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .transfer-docs__form-title {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .transfer-request__section-title--detached {
+        margin-left: -1.25rem;
+        margin-right: -1.25rem;
+    }
+
+    .transfer-request__actions {
+        flex-direction: column;
+    }
+
+    .transfer-request__submit,
+    .transfer-request__cancel {
+        width: 100%;
+    }
+}
 </style>

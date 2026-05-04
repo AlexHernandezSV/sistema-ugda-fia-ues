@@ -119,10 +119,17 @@ Route::middleware('auth')->group(function () {
     Route::get('/api/request-catalog', [RequestCatalogController::class, 'index']);
     Route::get('/api/dashboard-summary', [RequestCatalogController::class, 'dashboard']);
     Route::get('/api/transfers/next-code', [TransferController::class, 'nextCode']);
+    Route::get('/api/transfers/document-import-template', [TransferController::class, 'documentImportTemplate']);
+    Route::post('/api/transfers/import-documents', [TransferController::class, 'importDocuments']);
     Route::post('/api/transfers', [TransferController::class, 'store']);
     Route::get('/api/transfers/{number}', [RequestCatalogController::class, 'showTransfer']);
+    Route::get('/api/transfers/{number}/edit-data', [TransferController::class, 'editData']);
+    Route::put('/api/transfers/{number}/resubmit-correction', [TransferController::class, 'resubmitCorrection']);
     Route::get('/api/transfers/{number}/documents/{code}/download', [RequestCatalogController::class, 'downloadTransferDocument']);
+    Route::post('/api/transfers/{number}/unit-authorize', [TransferController::class, 'authorizeByUnit']);
+    Route::post('/api/transfers/{number}/unit-deny', [TransferController::class, 'denyByUnit']);
     Route::post('/api/transfers/{number}/schedule', [TransferController::class, 'schedule']);
+    Route::post('/api/transfers/{number}/complete-locations', [TransferController::class, 'completeLocations']);
     Route::post('/api/transfers/{number}/observe', [TransferController::class, 'observe']);
     Route::post('/api/transfers/{number}/deny', [TransferController::class, 'deny']);
     Route::get('/api/loans/{number}', [RequestCatalogController::class, 'showLoan']);
