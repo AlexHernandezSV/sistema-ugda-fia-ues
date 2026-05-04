@@ -90,6 +90,12 @@ const routes = [
         component: NuevaSolicitud 
     },
 
+    { path: '/solicitudes/transferencias/:number/editar',
+        name: 'solicitudes-transferencia-editar',
+        meta: { title: 'Editar Transferencia Documental', permission: 'endpoint.api.documentary-series.read' },
+        component: NuevaSolicitud
+    },
+
     { path: '/solicitudes/transferencias/:number',
         name: 'solicitudes-transferencia-detalle',
         meta: { title: 'Detalle de Transferencia' },

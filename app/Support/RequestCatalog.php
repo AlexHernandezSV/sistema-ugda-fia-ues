@@ -41,7 +41,7 @@ class RequestCatalog
         ];
     }
 
-    public static function transferDetail(string $number): ?array
+    public static function transferDetail(string $number, ?User $viewer = null): ?array
     {
         $transfer = Transfer::query()
             ->with([
@@ -76,11 +76,30 @@ class RequestCatalog
             ->filter(fn ($event) => $event->status?->code === 'transfer_status_scheduled')
             ->sortByDesc('occurred_at')
             ->first();
+        $latestObservation = $observations->sortByDesc('occurred_at')->first();
+        $latestCorrection = $transfer->events
+            ->filter(fn ($event) => $event->title === 'Corregido y reenviado')
+            ->sortByDesc('occurred_at')
+            ->first();
 
         $workflowCode = $transfer->workflowStatus?->code;
         $authCode = $transfer->authorizationStatus?->code;
-        $isReview = $transfer->view_mode === 'review';
+        $viewerProfile = $viewer?->activeProfile()?->name;
+        $viewerUnitIds = $viewer
+            ? $viewer->units()->pluck('units.id')->all()
+            : [];
+        $isUnitDirectorReview = $authCode === 'transfer_auth_pending'
+            && $workflowCode === 'transfer_status_pending'
+            && $viewerProfile === 'Director/Jefe de Unidad'
+            && in_array($transfer->unit_id, $viewerUnitIds, true);
+        $isUgdaReview = $authCode === 'transfer_auth_authorized'
+            && $workflowCode === 'transfer_status_pending'
+            && self::viewerCanManageUgda($viewer);
+        $canCorrectObserved = $workflowCode === 'transfer_status_observed'
+            && self::viewerCanCorrectObservedTransfer($viewer, $transfer);
+        $isReview = $isUnitDirectorReview || $isUgdaReview;
         $isScheduled = $workflowCode === 'transfer_status_scheduled';
+        $mode = $isUnitDirectorReview ? 'unitAuthorization' : ($isUgdaReview ? 'review' : 'detail');
 
         return [
             'number' => $transfer->code,
@@ -95,7 +114,7 @@ class RequestCatalog
                 : ($isScheduled
                     ? 'Solicitud #' . $transfer->code . ' - ' . ($transfer->unit?->name ?? 'Sin unidad')
                     : 'Detalle de la solicitud'),
-            'mode' => $isReview ? 'review' : 'detail',
+            'mode' => $mode,
             'showPrintCard' => (bool) $transfer->show_print_card,
             'boxDisplayState' => $transfer->box_display_state ?: 'collapsed',
             'authorizedBy' => self::userDisplayName($transfer->authorizedBy),
@@ -127,17 +146,24 @@ class RequestCatalog
                     'buttonLabel' => 'Iniciar proceso de transferencia',
                 ]
                 : null,
-            'workflowNotice' => $isReview && $workflowCode === 'transfer_status_pending'
+            'workflowNotice' => $isUnitDirectorReview
+                ? [
+                    'title' => 'Solicitud pendiente de autorizacion',
+                    'description' => 'Esta transferencia debe ser autorizada por la jefatura de la unidad productora antes de pasar a gestion UGDA.',
+                ]
+                : ($isUgdaReview && $workflowCode === 'transfer_status_pending'
                 ? [
                     'title' => 'Solicitud pendiente de gestion',
-                    'description' => 'Esta solicitud ha sido autorizada por el Director y requiere su gestion para continuar el proceso.',
+                    'description' => 'Esta solicitud ha sido autorizada por la jefatura de unidad y requiere gestion de la UGDA para continuar el proceso.',
                 ]
-                : null,
+                : null),
             'observationsRegistered' => $workflowCode === 'transfer_status_observed' && $observations->isNotEmpty()
                 ? [
                     'count' => $observations->count(),
                     'title' => 'Observaciones Registradas',
                     'description' => 'Esta solicitud tiene ' . $observations->count() . ' observacion(es) registrada(s)',
+                    'canCorrect' => $canCorrectObserved,
+                    'actionLabel' => 'Editar solicitud y corregir observaciones',
                     'items' => $observations->map(fn ($event) => [
                         'actor' => self::eventActorName($event),
                         'dateTime' => self::formatDateTime($event->occurred_at),
@@ -145,12 +171,28 @@ class RequestCatalog
                     ])->values()->all(),
                 ]
                 : null,
+            'resolvedObservation' => $workflowCode === 'transfer_status_pending'
+                && $latestObservation
+                && $latestCorrection
+                && $latestCorrection->occurred_at?->greaterThan($latestObservation->occurred_at)
+                ? [
+                    'title' => 'Observacion resuelta',
+                    'description' => 'La unidad solicitante corrigio la solicitud y la reenvio a jefatura para autorizacion.',
+                    'observedBy' => self::eventActorName($latestObservation),
+                    'observedAt' => self::formatDateTime($latestObservation->occurred_at),
+                    'observation' => $latestObservation->description,
+                    'resolvedBy' => self::eventActorName($latestCorrection),
+                    'resolvedAt' => self::formatDateTime($latestCorrection->occurred_at),
+                ]
+                : null,
             'decisionCard' => $workflowCode === 'transfer_status_denied' && $latestDecision
                 ? self::mapTransferDecisionCard($latestDecision)
                 : null,
             'documentSummary' => $isReview ? self::buildTransferDocumentSummary($transfer) : null,
             'boxes' => $transfer->boxes->map(fn ($box) => self::mapTransferBox($transfer->code, $box))->values()->all(),
-            'actions' => $isReview ? self::transferReviewActions($workflowCode) : [],
+            'actions' => $isUnitDirectorReview
+                ? self::transferUnitAuthorizationActions()
+                : ($isUgdaReview ? self::transferReviewActions($workflowCode) : []),
             'history' => self::mapHistory($transfer->events),
         ];
     }
@@ -451,6 +493,8 @@ class RequestCatalog
             'title' => $box->title ?: 'Caja #' . $number,
             'period' => $box->period_label ?: self::buildPeriodLabel($box->start_year, $box->end_year),
             'documentsCount' => $box->documents->count(),
+            'physicalLocation' => $box->location_code,
+            'isLocated' => !empty($box->location_code),
             'documents' => $box->documents->map(fn ($document) => [
                 'code' => $document->code,
                 'name' => $document->name,
@@ -762,6 +806,15 @@ class RequestCatalog
         ];
     }
 
+    private static function transferUnitAuthorizationActions(): array
+    {
+        return [
+            ['key' => 'authorizeUnit', 'label' => 'Autorizar transferencia', 'icon' => 'pi pi-check-circle', 'variant' => 'success'],
+            ['key' => 'denyUnit', 'label' => 'Denegar transferencia', 'icon' => 'pi pi-times-circle', 'variant' => 'danger'],
+            ['key' => 'back', 'label' => 'Volver', 'icon' => null, 'variant' => 'secondary'],
+        ];
+    }
+
     private static function loanChips(Loan $loan): array
     {
         $chips = [
@@ -774,6 +827,38 @@ class RequestCatalog
         }
 
         return $chips;
+    }
+
+    private static function viewerCanManageUgda(?User $viewer): bool
+    {
+        if ($viewer === null) {
+            return false;
+        }
+
+        $profile = $viewer->activeProfile()?->name;
+
+        if (in_array($profile, ['Administrador', 'Usuario UGDA'], true)) {
+            return true;
+        }
+
+        return $viewer->units()
+            ->where('units.code', 'UGDA')
+            ->exists();
+    }
+
+    private static function viewerCanCorrectObservedTransfer(?User $viewer, Transfer $transfer): bool
+    {
+        if ($viewer === null) {
+            return false;
+        }
+
+        if ($viewer->activeProfile()?->name !== 'Unidad Solicitante') {
+            return false;
+        }
+
+        return $viewer->units()
+            ->where('units.id', $transfer->unit_id)
+            ->exists();
     }
 
     private static function userDisplayName(?User $user): ?string

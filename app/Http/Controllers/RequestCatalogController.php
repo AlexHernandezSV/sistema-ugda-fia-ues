@@ -21,10 +21,10 @@ class RequestCatalogController extends Controller
         }
     }
 
-    public function showTransfer(string $number)
+    public function showTransfer(Request $request, string $number)
     {
         try {
-            $detail = RequestCatalog::transferDetail($number);
+            $detail = RequestCatalog::transferDetail($number, $request->user());
 
             if ($detail === null) {
                 return response()->json([

@@ -22,12 +22,23 @@ const labelPreviewCards = ref([]);
 const labelPreviewItems = ref([]);
 const labelsBusy = ref(false);
 const decisionModalVisible = ref(false);
+const unitAuthorizeModalVisible = ref(false);
+const transferProcessModalVisible = ref(false);
 const decisionSubmitting = ref(false);
+const unitAuthorizeSubmitting = ref(false);
+const transferProcessSubmitting = ref(false);
 const currentDecisionAction = ref(null);
+const activeProcessBox = ref(null);
+const boxLocations = ref({});
+
+const aisleOptions = ref(['Pasillo A', 'Pasillo B', 'Pasillo C', 'Area temporal']);
+const shelfOptions = ref(['Estante 1', 'Estante 2', 'Estante 3', 'Estante 4']);
+const levelOptions = ref(['Nivel 1', 'Nivel 2', 'Nivel 3', 'Nivel 4']);
+const positionOptions = ref(['Posicion 1', 'Posicion 2', 'Posicion 3', 'Posicion 4']);
 
 const decisionForm = ref({
     date: null,
-    time: '',
+    time: null,
     comments: '',
 });
 
@@ -213,6 +224,49 @@ const openLabelsPreview = () => {
     requestAnimationFrame(() => {
         labelsPreviewRef.value?.scrollTo({ top: 0, behavior: 'auto' });
     });
+};
+
+const parsePhysicalLocation = (location) => {
+    const parts = String(location ?? '').split('/').map((part) => part.trim());
+
+    return {
+        aisle: parts[0] ?? null,
+        shelf: parts[1] ?? null,
+        level: parts[2] ?? null,
+        position: parts[3] ?? null,
+    };
+};
+
+const ensureBoxLocation = (box) => {
+    if (!boxLocations.value[box.number]) {
+        boxLocations.value[box.number] = parsePhysicalLocation(box.physicalLocation);
+    }
+
+    return boxLocations.value[box.number];
+};
+
+const isBoxLocated = (boxNumber) => {
+    const location = boxLocations.value[boxNumber] ?? {};
+
+    return Boolean(location.aisle && location.shelf && location.level && location.position);
+};
+
+const openTransferProcessModal = () => {
+    const boxes = transfer.value?.boxes ?? [];
+    boxLocations.value = boxes.reduce((acc, box) => ({
+        ...acc,
+        [box.number]: parsePhysicalLocation(box.physicalLocation),
+    }), {});
+    activeProcessBox.value = boxes[0]?.number ?? null;
+    transferProcessModalVisible.value = true;
+};
+
+const closeTransferProcessModal = () => {
+    if (transferProcessSubmitting.value) {
+        return;
+    }
+
+    transferProcessModalVisible.value = false;
 };
 
 const setLabelPreviewCard = (element, index) => {
@@ -570,14 +624,26 @@ const showError = (message) => {
 const resetDecisionForm = () => {
     decisionForm.value = {
         date: null,
-        time: '',
+        time: null,
         comments: '',
     };
     currentDecisionAction.value = null;
 };
 
+const formatTimeForApi = (value) => {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        const hours = String(value.getHours()).padStart(2, '0');
+        const minutes = String(value.getMinutes()).padStart(2, '0');
+
+        return `${hours}:${minutes}`;
+    }
+
+    const time = String(value ?? '').trim();
+    return /^\d{2}:\d{2}$/.test(time) ? time : '';
+};
+
 const normalizeScheduledFor = (date, time) => {
-    const trimmedTime = String(time ?? '').trim();
+    const trimmedTime = formatTimeForApi(time);
     if (!(date instanceof Date) || Number.isNaN(date.getTime()) || !trimmedTime) {
         return null;
     }
@@ -592,6 +658,8 @@ const boxTitle = (box) => box.title || `Caja #${box.number}`;
 
 const actionClass = (variant) => {
     switch (variant) {
+        case 'success':
+            return 'detalle-action detalle-action--success';
         case 'warning':
             return 'detalle-action detalle-action--warning';
         case 'danger':
@@ -618,11 +686,110 @@ const postTransferAction = async (url, payload, fallbackMessage) => {
     }
 };
 
+const transferSummary = computed(() => {
+    const boxes = transfer.value?.boxes ?? [];
+    const documents = boxes.flatMap((box) => box.documents ?? []);
+    const series = new Set(boxes.map((box) => box.series || box.title).filter(Boolean));
+
+    return {
+        totalBoxes: boxes.length,
+        totalDocuments: documents.length,
+        totalSeries: series.size,
+    };
+});
+
+const locatedBoxesCount = computed(() => (transfer.value?.boxes ?? []).filter((box) => isBoxLocated(box.number)).length);
+const pendingBoxesCount = computed(() => Math.max((transfer.value?.boxes?.length ?? 0) - locatedBoxesCount.value, 0));
+const locationProgress = computed(() => {
+    const total = transfer.value?.boxes?.length ?? 0;
+
+    if (total === 0) {
+        return 0;
+    }
+
+    return Math.round((locatedBoxesCount.value / total) * 100);
+});
+const canCompleteTransferProcess = computed(() => {
+    const total = transfer.value?.boxes?.length ?? 0;
+
+    return total > 0 && locatedBoxesCount.value === total && !transferProcessSubmitting.value;
+});
+
+const openUnitAuthorizeModal = () => {
+    unitAuthorizeModalVisible.value = true;
+};
+
+const closeUnitAuthorizeModal = () => {
+    if (unitAuthorizeSubmitting.value) {
+        return;
+    }
+
+    unitAuthorizeModalVisible.value = false;
+};
+
+const confirmUnitAuthorization = async () => {
+    if (!transfer.value) {
+        return;
+    }
+
+    unitAuthorizeSubmitting.value = true;
+
+    try {
+        const { data } = await axios.post(`/api/transfers/${transfer.value.number}/unit-authorize`, {
+            comments: commentDraft.value.trim(),
+        });
+        toast.add({
+            severity: 'success',
+            summary: 'Actualizado',
+            detail: data.message || 'Transferencia autorizada por jefatura de unidad.',
+            life: 2800,
+        });
+        unitAuthorizeModalVisible.value = false;
+        await fetchDetail();
+    } catch (error) {
+        showError(error.response?.data?.message || 'No se pudo autorizar la transferencia.');
+    } finally {
+        unitAuthorizeSubmitting.value = false;
+    }
+};
+
+const completeTransferProcess = async () => {
+    if (!transfer.value || !canCompleteTransferProcess.value) {
+        return;
+    }
+
+    const locations = (transfer.value.boxes ?? []).map((box) => ({
+        box_number: Number(box.number),
+        ...boxLocations.value[box.number],
+    }));
+
+    transferProcessSubmitting.value = true;
+
+    try {
+        const { data } = await axios.post(`/api/transfers/${transfer.value.number}/complete-locations`, {
+            locations,
+        });
+
+        toast.add({
+            severity: 'success',
+            summary: 'Transferencia completada',
+            detail: data.message || 'Ubicaciones fisicas asignadas correctamente.',
+            life: 3200,
+        });
+        transferProcessModalVisible.value = false;
+        await fetchDetail();
+    } catch (error) {
+        showError(error.response?.data?.message || 'No se pudo completar el proceso de transferencia.');
+    } finally {
+        transferProcessSubmitting.value = false;
+    }
+};
+
 const openDecisionModal = (actionKey) => {
     currentDecisionAction.value = actionKey;
     decisionForm.value = {
         date: null,
-        time: '',
+        time: null,
         comments: '',
     };
     decisionModalVisible.value = true;
@@ -653,9 +820,10 @@ const decisionModalConfig = computed(() => {
                 required: true,
             };
         case 'deny':
+        case 'denyUnit':
             return {
                 icon: 'pi pi-times-circle',
-                title: 'Denegar Transferencia',
+                title: currentDecisionAction.value === 'denyUnit' ? 'Denegar Transferencia por Jefatura' : 'Denegar Transferencia',
                 subtitle: 'Debe proporcionar un motivo para denegar esta transferencia',
                 label: 'Motivo de denegacion',
                 placeholder: 'Describa el motivo por el cual se deniega esta transferencia...',
@@ -675,7 +843,7 @@ const isDecisionSubmitDisabled = computed(() => {
     }
 
     if (currentDecisionAction.value === 'schedule') {
-        return !(decisionForm.value.date instanceof Date) || Number.isNaN(decisionForm.value.date?.getTime?.()) || String(decisionForm.value.time ?? '').trim() === '';
+        return !(decisionForm.value.date instanceof Date) || Number.isNaN(decisionForm.value.date?.getTime?.()) || !formatTimeForApi(decisionForm.value.time);
     }
 
     if (decisionModalConfig.value.required) {
@@ -701,9 +869,27 @@ const handleAction = async (action) => {
         return;
     }
 
+    if (action.key === 'authorizeUnit') {
+        openUnitAuthorizeModal();
+        return;
+    }
+
+    if (action.key === 'denyUnit') {
+        openDecisionModal('denyUnit');
+        return;
+    }
+
     if (action.key === 'deny') {
         openDecisionModal('deny');
     }
+};
+
+const editObservedTransfer = () => {
+    if (!transfer.value?.number) {
+        return;
+    }
+
+    router.push(`/solicitudes/transferencias/${transfer.value.number}/editar`);
 };
 
 const submitDecisionAction = async () => {
@@ -761,6 +947,11 @@ const submitDecisionAction = async () => {
             payload = { reason: comments };
             successMessage = 'Transferencia denegada.';
             break;
+        case 'denyUnit':
+            endpoint = `/api/transfers/${transfer.value.number}/unit-deny`;
+            payload = { reason: comments };
+            successMessage = 'Transferencia denegada por jefatura de unidad.';
+            break;
         default:
             return;
     }
@@ -803,10 +994,10 @@ const fetchDetail = async () => {
     }
 };
 
-const isReviewMode = computed(() => transfer.value?.mode === 'review');
+const isReviewMode = computed(() => ['review', 'unitAuthorization'].includes(transfer.value?.mode));
 const pageTitle = computed(() => transfer.value?.pageTitle ?? (transfer.value ? `Transferencia #${transfer.value.number}` : 'Transferencia'));
 const pageSubtitle = computed(() => transfer.value?.pageSubtitle ?? 'Detalle de la solicitud');
-const showHistory = computed(() => !isReviewMode.value && (transfer.value?.history?.length ?? 0) > 0);
+const showHistory = computed(() => (transfer.value?.history?.length ?? 0) > 0);
 const showDescription = computed(() => !isReviewMode.value && Boolean(transfer.value?.description));
 const showPrintCard = computed(() => Boolean(transfer.value?.showPrintCard) && !transfer.value?.scheduledSummary);
 const hasReviewActions = computed(() => (transfer.value?.actions?.length ?? 0) > 0);
@@ -896,18 +1087,18 @@ onMounted(fetchDetail);
             </div>
         </div>
 
-        <div v-if="transfer.processCard" class="surface-card shadow-1 border-round-xl p-4 detalle-process-card">
-            <div class="flex flex-column md:flex-row md:align-items-center md:justify-content-between gap-3">
-                <div class="flex align-items-start gap-3">
+        <div v-if="transfer.processCard" class="surface-card shadow-1 border-round-xl detalle-process-card">
+            <div class="detalle-process-card__content">
+                <div class="detalle-process-card__main">
                     <div class="detalle-process-card__icon">
-                        <i class="pi pi-box text-xl"></i>
+                        <i class="pi pi-box"></i>
                     </div>
                     <div>
-                        <h3 class="m-0 text-900 text-xl font-bold">{{ transfer.processCard.title }}</h3>
-                        <p class="m-0 text-600 mt-2">{{ transfer.processCard.description }}</p>
+                        <h3>{{ transfer.processCard.title }}</h3>
+                        <p>{{ transfer.processCard.description }}</p>
                     </div>
                 </div>
-                <Button :label="transfer.processCard.buttonLabel" icon="pi pi-box" class="detalle-process-card__button" @click="openLabelsPreview" />
+                <Button :label="transfer.processCard.buttonLabel" icon="pi pi-box" class="detalle-process-card__button" @click="openTransferProcessModal" />
             </div>
         </div>
 
@@ -947,6 +1138,15 @@ onMounted(fetchDetail);
                     <p class="detalle-observation-card__message m-0">{{ item.message }}</p>
                 </div>
             </div>
+
+            <div v-if="transfer.observationsRegistered.canCorrect" class="detalle-banner__actions">
+                <Button
+                    :label="transfer.observationsRegistered.actionLabel"
+                    icon="pi pi-pencil"
+                    class="detalle-banner__edit-button"
+                    @click="editObservedTransfer"
+                />
+            </div>
         </div>
 
         <div v-else-if="transfer.workflowNotice" class="detalle-notice">
@@ -956,6 +1156,31 @@ onMounted(fetchDetail);
             <div>
                 <div class="detalle-notice__title">{{ transfer.workflowNotice.title }}</div>
                 <p class="detalle-notice__text m-0">{{ transfer.workflowNotice.description }}</p>
+            </div>
+        </div>
+
+        <div v-if="transfer.resolvedObservation" class="detalle-banner detalle-banner--success">
+            <div class="detalle-banner__head">
+                <div class="detalle-banner__icon detalle-banner__icon--success">
+                    <i class="pi pi-check-circle"></i>
+                </div>
+                <div>
+                    <h2 class="detalle-banner__title m-0">{{ transfer.resolvedObservation.title }}</h2>
+                    <p class="detalle-banner__text m-0">{{ transfer.resolvedObservation.description }}</p>
+                </div>
+            </div>
+
+            <div class="detalle-banner__panel">
+                <div class="detalle-observation-card__meta">
+                    <i class="pi pi-eye"></i>
+                    <span class="font-semibold">{{ transfer.resolvedObservation.observedBy }}</span>
+                    <span>{{ transfer.resolvedObservation.observedAt }}</span>
+                </div>
+                <p class="m-0 detalle-observation-card__message">{{ transfer.resolvedObservation.observation }}</p>
+                <div class="detalle-banner__footer">
+                    <i class="pi pi-check-circle mr-2"></i>
+                    Resuelta por {{ transfer.resolvedObservation.resolvedBy }} el {{ transfer.resolvedObservation.resolvedAt }}
+                </div>
             </div>
         </div>
 
@@ -1162,17 +1387,37 @@ onMounted(fetchDetail);
                     <span>{{ action.label }}</span>
                 </button>
             </div>
+
+            <div v-if="showHistory" class="detalle-panel">
+                <div class="detalle-panel__header">Historial de Estados</div>
+                <div class="detalle-panel__body">
+                    <div class="detalle-history">
+                        <div v-for="(item, index) in transfer.history" :key="`${item.status}-${item.dateTime}`" class="detalle-history__item">
+                            <div class="detalle-history__icon">
+                                <i :class="item.icon"></i>
+                            </div>
+                            <div class="detalle-history__content">
+                                <div class="flex flex-wrap align-items-center gap-3 mb-2">
+                                    <span class="detalle-history__status">{{ item.status }}</span>
+                                    <span class="detalle-history__date">{{ item.dateTime }}</span>
+                                </div>
+                                <p class="m-0 detalle-history__description">{{ item.description }}</p>
+                            </div>
+                            <div v-if="index !== transfer.history.length - 1" class="detalle-history__line"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </template>
 
         <template v-else>
-            <div class="surface-card shadow-1 border-round-xl p-4">
-                <div class="flex flex-column md:flex-row md:justify-content-between md:align-items-start gap-3 mb-4">
-                    <h3 class="m-0 text-900 text-2xl font-bold">Informacion General</h3>
-                    <div class="flex gap-2 flex-wrap">
-                        <span :class="authChipClass(transfer.auth)">{{ transfer.auth }}</span>
-                        <span :class="statusChipClass(transfer.status)">{{ transfer.status }}</span>
-                    </div>
-                </div>
+            <div class="detalle-panel">
+                <div class="detalle-panel__header">Información General</div>
+                <div class="detalle-panel__body">
+                    <div class="flex flex-column md:flex-row md:justify-content-end gap-2 mb-4">
+                            <span :class="authChipClass(transfer.auth)">{{ transfer.auth }}</span>
+                            <span :class="statusChipClass(transfer.status)">{{ transfer.status }}</span>
+                        </div>
 
                 <div class="grid">
                     <div class="col-12 md:col-6">
@@ -1208,22 +1453,26 @@ onMounted(fetchDetail);
                         </div>
                     </div>
                 </div>
+                </div>
             </div>
 
-            <div v-if="showDescription" class="surface-card shadow-1 border-round-xl p-4">
-                <h3 class="m-0 text-900 text-2xl font-bold mb-4">Descripcion</h3>
-                <p class="m-0 text-700 text-lg line-height-3">{{ transfer.description }}</p>
+            <div v-if="showDescription" class="detalle-panel">
+                <div class="detalle-panel__header">Descripción</div>
+                <div class="detalle-panel__body">
+                    <p class="m-0 text-700 text-lg line-height-3">{{ transfer.description }}</p>
+                </div>
             </div>
 
-            <div class="surface-card shadow-1 border-round-xl p-4">
-                <div class="flex flex-column md:flex-row md:justify-content-between md:align-items-center gap-3 mb-4">
-                    <h3 class="m-0 text-900 text-2xl font-bold">Cajas y Documentos</h3>
+            <div class="detalle-panel">
+                <div class="detalle-panel__header detalle-panel__header--split">
+                    <span>Cajas y Documentos</span>
                     <button type="button" class="detalle-link-button" @click="toggleAllBoxes">
                         {{ allBoxesExpanded ? 'Ocultar documentos' : 'Mostrar todos los documentos' }}
                         <i :class="allBoxesExpanded ? 'pi pi-chevron-up ml-2' : 'pi pi-chevron-down ml-2'"></i>
                     </button>
                 </div>
 
+                <div class="detalle-panel__body">
                 <div class="flex flex-column gap-3">
                     <div v-for="box in transfer.boxes" :key="box.number" class="detalle-box-card">
                         <button type="button" class="detalle-box-card__header" @click="toggleBox(box.number)">
@@ -1289,11 +1538,12 @@ onMounted(fetchDetail);
                         </div>
                     </div>
                 </div>
+                </div>
             </div>
 
-            <div v-if="showHistory" class="surface-card shadow-1 border-round-xl p-4">
-                <h3 class="m-0 text-900 text-2xl font-bold mb-4">Historial de Estados</h3>
-
+            <div v-if="showHistory" class="detalle-panel">
+                <div class="detalle-panel__header">Historial de Estados</div>
+                <div class="detalle-panel__body">
                 <div class="detalle-history">
                     <div v-for="(item, index) in transfer.history" :key="`${item.status}-${item.dateTime}`" class="detalle-history__item">
                         <div class="detalle-history__icon">
@@ -1308,6 +1558,7 @@ onMounted(fetchDetail);
                         </div>
                         <div v-if="index !== transfer.history.length - 1" class="detalle-history__line"></div>
                     </div>
+                </div>
                 </div>
             </div>
         </template>
@@ -1362,10 +1613,12 @@ onMounted(fetchDetail);
                         <label class="detalle-decision-modal__label">
                             Hora de entrega <span>*</span>
                         </label>
-                        <input
+                        <DatePicker
                             v-model="decisionForm.time"
-                            type="text"
-                            class="detalle-decision-modal__input"
+                            timeOnly
+                            hourFormat="12"
+                            :manualInput="false"
+                            class="detalle-decision-modal__datepicker"
                             placeholder="--:--"
                         />
                     </div>
@@ -1417,6 +1670,236 @@ onMounted(fetchDetail);
                     </button>
                 </div>
             </div>
+        </div>
+    </Dialog>
+
+    <Dialog
+        v-model:visible="unitAuthorizeModalVisible"
+        modal
+        :draggable="false"
+        :closable="false"
+        :showHeader="false"
+        :contentStyle="{ padding: '0', overflow: 'hidden' }"
+        :style="{ width: 'min(780px, 96vw)' }"
+    >
+        <div class="detalle-unit-auth-modal">
+            <header class="detalle-unit-auth-modal__header">
+                <div>
+                    <h2>Autorizar Transferencia Documental</h2>
+                    <p>Revise el resumen completo antes de autorizar</p>
+                </div>
+                <button type="button" class="detalle-unit-auth-modal__close" :disabled="unitAuthorizeSubmitting" @click="closeUnitAuthorizeModal">
+                    <i class="pi pi-times"></i>
+                </button>
+            </header>
+
+            <div class="detalle-unit-auth-modal__body">
+                <section class="detalle-unit-auth-modal__notice">
+                    <i class="pi pi-check-circle"></i>
+                    <div>
+                        <strong>Al autorizar, esta solicitud será enviada a la UGDA para su revisión y procesamiento</strong>
+                        <span>La UGDA gestionará el agendamiento y la recepción física de la documentación</span>
+                    </div>
+                </section>
+
+                <section class="detalle-unit-auth-modal__card detalle-unit-auth-modal__general">
+                    <h3>Datos Generales</h3>
+                    <div class="detalle-unit-auth-modal__divider"></div>
+                    <div class="detalle-unit-auth-modal__grid">
+                        <div>
+                            <span>Unidad Productora</span>
+                            <strong>{{ transfer?.unit || 'Sin unidad' }}</strong>
+                        </div>
+                        <div>
+                            <span>Responsable</span>
+                            <strong>{{ transfer?.responsible || 'Sin responsable' }}</strong>
+                        </div>
+                        <div>
+                            <span>Fecha de solicitud</span>
+                            <strong>{{ transfer?.receivedAt || '(Sin especificar)' }}</strong>
+                        </div>
+                        <div>
+                            <span>N° de transferencia</span>
+                            <strong>{{ transfer?.number }}</strong>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="detalle-unit-auth-modal__summary">
+                    <h3>Resumen de Transferencia</h3>
+                    <div class="detalle-unit-auth-modal__divider"></div>
+                    <div class="detalle-unit-auth-modal__stats">
+                        <div>
+                            <span>Total de Cajas</span>
+                            <strong>{{ transferSummary.totalBoxes }}</strong>
+                        </div>
+                        <div>
+                            <span>Total de Documentos</span>
+                            <strong>{{ transferSummary.totalDocuments }}</strong>
+                        </div>
+                        <div>
+                            <span>Series Documentales</span>
+                            <strong>{{ transferSummary.totalSeries }}</strong>
+                        </div>
+                    </div>
+
+                    <div class="detalle-unit-auth-modal__boxes">
+                        <article v-for="box in transfer?.boxes ?? []" :key="`auth-${box.number}`" class="detalle-unit-auth-modal__box">
+                            <div>
+                                <span>Caja #{{ String(box.number).padStart(3, '0') }}</span>
+                                <strong>{{ box.series || box.title }}</strong>
+                                <small>Periodo: {{ box.period }}</small>
+                            </div>
+                            <strong>{{ box.documentsCount }} documento(s)</strong>
+                        </article>
+                    </div>
+                </section>
+            </div>
+
+            <footer class="detalle-unit-auth-modal__footer">
+                <button type="button" class="detalle-unit-auth-modal__button detalle-unit-auth-modal__button--cancel" :disabled="unitAuthorizeSubmitting" @click="closeUnitAuthorizeModal">
+                    Cancelar
+                </button>
+                <button type="button" class="detalle-unit-auth-modal__button detalle-unit-auth-modal__button--confirm" :disabled="unitAuthorizeSubmitting" @click="confirmUnitAuthorization">
+                    {{ unitAuthorizeSubmitting ? 'Autorizando...' : 'Confirmar Autorización' }}
+                </button>
+            </footer>
+        </div>
+    </Dialog>
+
+    <Dialog
+        v-model:visible="transferProcessModalVisible"
+        modal
+        :draggable="false"
+        :closable="false"
+        :showHeader="false"
+        :contentStyle="{ padding: '0', overflow: 'hidden' }"
+        :style="{ width: 'min(1260px, 96vw)' }"
+    >
+        <div class="detalle-process-modal">
+            <header class="detalle-process-modal__header">
+                <button type="button" class="detalle-process-modal__back" :disabled="transferProcessSubmitting" @click="closeTransferProcessModal">
+                    <i class="pi pi-arrow-left"></i>
+                </button>
+                <div>
+                    <h2>Proceso de Transferencia</h2>
+                    <p>Asignación de ubicaciones físicas - Solicitud #{{ transfer?.number }}</p>
+                </div>
+                <button type="button" class="detalle-process-modal__close" :disabled="transferProcessSubmitting" @click="closeTransferProcessModal">
+                    <i class="pi pi-times"></i>
+                </button>
+            </header>
+
+            <div class="detalle-process-modal__body">
+                <section class="detalle-process-modal__progress">
+                    <div class="detalle-process-modal__progress-head">
+                        <strong>Progreso de Asignación</strong>
+                        <span>{{ locatedBoxesCount }} de {{ transfer?.boxes?.length ?? 0 }} cajas ubicadas</span>
+                    </div>
+                    <div class="detalle-process-modal__progress-track">
+                        <div class="detalle-process-modal__progress-bar" :style="{ width: `${locationProgress}%` }"></div>
+                    </div>
+                </section>
+
+                <div class="detalle-process-modal__grid">
+                    <aside class="detalle-process-modal__info">
+                        <h3>Información de la Solicitud</h3>
+                        <div>
+                            <span>N° de transferencia</span>
+                            <strong>{{ transfer?.number }}</strong>
+                        </div>
+                        <div>
+                            <span>Unidad productora</span>
+                            <strong>{{ transfer?.unit }}</strong>
+                        </div>
+                        <div>
+                            <span>Responsable</span>
+                            <strong>{{ transfer?.responsible }}</strong>
+                        </div>
+                        <div>
+                            <span>Estado</span>
+                            <em>{{ transfer?.status }}</em>
+                        </div>
+                        <hr />
+                        <div>
+                            <span>Fecha de entrega programada</span>
+                            <strong>{{ transfer?.scheduledSummary?.deliveryDate || 'Sin fecha' }}</strong>
+                        </div>
+                        <div>
+                            <span>Hora de entrega</span>
+                            <strong>{{ transfer?.scheduledSummary?.deliveryTime || 'Sin hora' }}</strong>
+                        </div>
+                        <hr />
+                        <div>
+                            <span>Total de cajas</span>
+                            <strong>{{ transfer?.boxes?.length ?? 0 }} caja(s)</strong>
+                        </div>
+                    </aside>
+
+                    <section class="detalle-process-modal__boxes">
+                        <article
+                            v-for="box in transfer?.boxes ?? []"
+                            :key="`process-${box.number}`"
+                            :class="['detalle-process-box', { 'detalle-process-box--active': activeProcessBox === box.number }]"
+                        >
+                            <button type="button" class="detalle-process-box__summary" @click="activeProcessBox = activeProcessBox === box.number ? null : box.number">
+                                <div class="detalle-process-box__summary-main">
+                                    <div class="detalle-process-box__icon">
+                                        <i class="pi pi-box"></i>
+                                    </div>
+                                    <div>
+                                        <div class="detalle-process-box__title">
+                                            Caja #{{ String(box.number).padStart(3, '0') }}
+                                            <span :class="isBoxLocated(box.number) ? 'detalle-process-box__status detalle-process-box__status--done' : 'detalle-process-box__status'">
+                                                <i :class="isBoxLocated(box.number) ? 'pi pi-check-circle' : 'pi pi-exclamation-circle'"></i>
+                                                {{ isBoxLocated(box.number) ? 'Ubicada' : 'Pendiente' }}
+                                            </span>
+                                        </div>
+                                        <p>{{ box.title }} - {{ box.period }}</p>
+                                    </div>
+                                </div>
+                                <i :class="activeProcessBox === box.number ? 'pi pi-chevron-up' : 'pi pi-chevron-down'"></i>
+                            </button>
+
+                            <div v-if="activeProcessBox === box.number" class="detalle-process-box__form">
+                                <h4><i class="pi pi-map-marker"></i> Asignar Ubicación Física</h4>
+                                <div class="detalle-process-box__fields">
+                                    <label>
+                                        <span>Pasillo/Área *</span>
+                                        <Dropdown v-model="ensureBoxLocation(box).aisle" :options="aisleOptions" placeholder="Seleccionar" fluid />
+                                    </label>
+                                    <label>
+                                        <span>Estante *</span>
+                                        <Dropdown v-model="ensureBoxLocation(box).shelf" :options="shelfOptions" placeholder="Seleccionar" fluid />
+                                    </label>
+                                    <label>
+                                        <span>Nivel *</span>
+                                        <Dropdown v-model="ensureBoxLocation(box).level" :options="levelOptions" placeholder="Seleccionar" fluid />
+                                    </label>
+                                    <label>
+                                        <span>Posición *</span>
+                                        <Dropdown v-model="ensureBoxLocation(box).position" :options="positionOptions" placeholder="Seleccionar" fluid />
+                                    </label>
+                                </div>
+                            </div>
+                        </article>
+                    </section>
+                </div>
+            </div>
+
+            <footer class="detalle-process-modal__footer">
+                <button type="button" class="detalle-process-modal__complete" :disabled="!canCompleteTransferProcess" @click="completeTransferProcess">
+                    <i class="pi pi-save"></i>
+                    {{ transferProcessSubmitting ? 'Completando...' : 'Completar transferencia' }}
+                </button>
+                <button type="button" class="detalle-process-modal__cancel" :disabled="transferProcessSubmitting" @click="closeTransferProcessModal">
+                    Cancelar
+                </button>
+                <span class="detalle-process-modal__pending">
+                    <i class="pi pi-info-circle"></i>
+                    {{ pendingBoxesCount }} caja(s) pendiente(s)
+                </span>
+            </footer>
         </div>
     </Dialog>
 
@@ -1840,6 +2323,19 @@ onMounted(fetchDetail);
     color: #475569;
 }
 
+.detalle-banner__actions {
+    border-top: 1px solid #f3d27a;
+    margin-top: 1rem;
+    padding-top: 1rem;
+}
+
+.detalle-banner__edit-button {
+    background: #f6ad3c;
+    border-color: #f6ad3c;
+    color: #ffffff;
+    font-weight: 800;
+}
+
 .detalle-banner__reason {
     border-top: 1px solid #f7b5b5;
     padding-top: 1rem;
@@ -1853,6 +2349,64 @@ onMounted(fetchDetail);
 
 .detalle-process-card {
     border: 2px solid #2f6f9f;
+    border-radius: 8px;
+    box-shadow: none;
+    min-height: 104px;
+    overflow: hidden;
+}
+
+.detalle-process-card__content {
+    align-items: center;
+    display: flex;
+    gap: 1.5rem;
+    justify-content: space-between;
+    min-height: 100px;
+    padding: 1.5rem 1.55rem;
+}
+
+.detalle-process-card__main {
+    align-items: center;
+    display: flex;
+    gap: 1rem;
+    min-width: 0;
+}
+
+.detalle-process-card__icon {
+    width: 3.1rem;
+    height: 3.1rem;
+    border-radius: 8px;
+    background: #2f6f9f;
+    color: #ffffff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 1.35rem;
+}
+
+.detalle-process-card h3 {
+    color: #0f172a;
+    font-size: 1.15rem;
+    font-weight: 800;
+    margin: 0;
+}
+
+.detalle-process-card p {
+    color: #43546a;
+    font-size: 0.95rem;
+    line-height: 1.45;
+    margin: 0.45rem 0 0;
+}
+
+.detalle-process-card__button {
+    background: #2f6f9f;
+    border: none;
+    border-radius: 8px;
+    flex-shrink: 0;
+    font-size: 0.95rem;
+    font-weight: 800;
+    min-height: 3rem;
+    min-width: 19rem;
 }
 
 .detalle-print-card__icon {
@@ -1868,23 +2422,6 @@ onMounted(fetchDetail);
 
 .detalle-print-card__button {
     background: #10b981;
-    border: none;
-}
-
-.detalle-process-card__icon {
-    width: 3rem;
-    height: 3rem;
-    border-radius: 0.95rem;
-    background: #2f6f9f;
-    color: #ffffff;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-
-.detalle-process-card__button {
-    background: #2f6f9f;
     border: none;
 }
 
@@ -1953,6 +2490,17 @@ onMounted(fetchDetail);
     font-size: 1.15rem;
     font-weight: 700;
     padding: 1rem 1.3rem;
+}
+
+.detalle-panel__header--split {
+    align-items: center;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+}
+
+.detalle-panel__header--split .detalle-link-button {
+    color: #ffffff;
 }
 
 .detalle-panel__body {
@@ -2231,6 +2779,11 @@ onMounted(fetchDetail);
     color: #ffffff;
 }
 
+.detalle-action--success {
+    background: #56b657;
+    color: #ffffff;
+}
+
 .detalle-action--warning {
     background: #f6ad3c;
     color: #ffffff;
@@ -2245,6 +2798,530 @@ onMounted(fetchDetail);
     background: #ffffff;
     color: #2f6f9f;
     border: 1px solid #2f6f9f;
+}
+
+.detalle-unit-auth-modal {
+    background: #ffffff;
+    max-height: 86vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.detalle-unit-auth-modal__header {
+    align-items: center;
+    background: #56b657;
+    color: #ffffff;
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.35rem 1.55rem;
+}
+
+.detalle-unit-auth-modal__header h2,
+.detalle-unit-auth-modal__header p {
+    margin: 0;
+}
+
+.detalle-unit-auth-modal__header h2 {
+    font-size: 1.25rem;
+    font-weight: 800;
+}
+
+.detalle-unit-auth-modal__header p {
+    font-size: 0.92rem;
+    margin-top: 0.45rem;
+}
+
+.detalle-unit-auth-modal__close {
+    align-items: center;
+    background: transparent;
+    border: 2px solid rgba(255, 255, 255, 0.9);
+    border-radius: 999px;
+    color: #ffffff;
+    cursor: pointer;
+    display: inline-flex;
+    height: 2.1rem;
+    justify-content: center;
+    width: 2.1rem;
+}
+
+.detalle-unit-auth-modal__body {
+    display: flex;
+    flex-direction: column;
+    gap: 1.4rem;
+    overflow: auto;
+    padding: 1.5rem;
+}
+
+.detalle-unit-auth-modal__notice {
+    align-items: flex-start;
+    background: #d9f0f6;
+    border-left: 4px solid #1da6c1;
+    border-radius: 8px;
+    color: #14566a;
+    display: flex;
+    gap: 0.9rem;
+    padding: 1rem;
+}
+
+.detalle-unit-auth-modal__notice i {
+    font-size: 1.25rem;
+    margin-top: 0.12rem;
+}
+
+.detalle-unit-auth-modal__notice strong,
+.detalle-unit-auth-modal__notice span {
+    display: block;
+}
+
+.detalle-unit-auth-modal__notice span {
+    font-size: 0.92rem;
+    margin-top: 0.55rem;
+}
+
+.detalle-unit-auth-modal__card,
+.detalle-unit-auth-modal__summary {
+    border-radius: 8px;
+    padding: 1.35rem 1.5rem;
+}
+
+.detalle-unit-auth-modal__card {
+    background: #f8fafc;
+}
+
+.detalle-unit-auth-modal__summary {
+    border: 1px solid #dbe3ed;
+}
+
+.detalle-unit-auth-modal__card h3,
+.detalle-unit-auth-modal__summary h3 {
+    color: #1f2937;
+    font-size: 1rem;
+    font-weight: 800;
+    margin: 0;
+}
+
+.detalle-unit-auth-modal__divider {
+    background: #dbe3ed;
+    height: 1px;
+    margin: 0.9rem 0 1.15rem;
+}
+
+.detalle-unit-auth-modal__grid {
+    display: grid;
+    gap: 1.4rem 2rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.detalle-unit-auth-modal__grid span,
+.detalle-unit-auth-modal__box small {
+    color: #64748b;
+    display: block;
+    font-size: 0.86rem;
+}
+
+.detalle-unit-auth-modal__grid strong,
+.detalle-unit-auth-modal__box strong {
+    color: #111827;
+    display: block;
+    margin-top: 0.45rem;
+}
+
+.detalle-unit-auth-modal__stats {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.detalle-unit-auth-modal__stats div {
+    background: #eef6fb;
+    border-radius: 8px;
+    padding: 1rem;
+    text-align: center;
+}
+
+.detalle-unit-auth-modal__stats span {
+    color: #64748b;
+    display: block;
+    font-size: 0.82rem;
+}
+
+.detalle-unit-auth-modal__stats strong {
+    color: #56b657;
+    display: block;
+    font-size: 1.85rem;
+    margin-top: 0.55rem;
+}
+
+.detalle-unit-auth-modal__boxes {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    margin-top: 1.5rem;
+}
+
+.detalle-unit-auth-modal__box {
+    align-items: center;
+    border: 1px solid #dbe3ed;
+    border-radius: 8px;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+    padding: 1rem;
+}
+
+.detalle-unit-auth-modal__box > strong {
+    color: #56b657;
+    flex-shrink: 0;
+}
+
+.detalle-unit-auth-modal__box span {
+    background: #56b657;
+    border-radius: 999px;
+    color: #ffffff;
+    display: inline-flex;
+    font-size: 0.8rem;
+    font-weight: 800;
+    padding: 0.3rem 0.85rem;
+}
+
+.detalle-unit-auth-modal__footer {
+    align-items: center;
+    background: #f8fafc;
+    border-top: 1px solid #dbe3ed;
+    display: flex;
+    gap: 0.8rem;
+    justify-content: flex-end;
+    padding: 1rem 1.5rem;
+}
+
+.detalle-unit-auth-modal__button {
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 800;
+    min-height: 3.2rem;
+    min-width: 7.2rem;
+    padding: 0 1.4rem;
+}
+
+.detalle-unit-auth-modal__button--cancel {
+    background: #ffffff;
+    border: 1px solid #64748b;
+    color: #64748b;
+}
+
+.detalle-unit-auth-modal__button--confirm {
+    background: #56b657;
+    border: 1px solid #56b657;
+    color: #ffffff;
+    min-width: 14.5rem;
+}
+
+.detalle-process-modal {
+    background: #f3f5f8;
+    display: flex;
+    flex-direction: column;
+    max-height: 92vh;
+}
+
+.detalle-process-modal__header {
+    align-items: center;
+    background: #f3f5f8;
+    display: flex;
+    gap: 1.2rem;
+    padding: 1.4rem 1.6rem;
+}
+
+.detalle-process-modal__header h2,
+.detalle-process-modal__header p {
+    margin: 0;
+}
+
+.detalle-process-modal__header h2 {
+    color: #2f6f9f;
+    font-size: 2rem;
+    font-weight: 800;
+}
+
+.detalle-process-modal__header p {
+    color: #526377;
+    margin-top: 0.45rem;
+}
+
+.detalle-process-modal__back,
+.detalle-process-modal__close {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    color: #2f6f9f;
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 1.1rem;
+    height: 2.4rem;
+    justify-content: center;
+    width: 2.4rem;
+}
+
+.detalle-process-modal__close {
+    margin-left: auto;
+}
+
+.detalle-process-modal__body {
+    display: flex;
+    flex-direction: column;
+    gap: 1.4rem;
+    overflow: auto;
+    padding: 0 1.5rem 1rem;
+}
+
+.detalle-process-modal__progress,
+.detalle-process-modal__info,
+.detalle-process-box,
+.detalle-process-modal__footer {
+    background: #ffffff;
+    border: 1px solid #d7e0ea;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+}
+
+.detalle-process-modal__progress {
+    padding: 1.4rem 1.5rem;
+}
+
+.detalle-process-modal__progress-head {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+
+.detalle-process-modal__progress-head span {
+    color: #1f5f8e;
+    font-weight: 800;
+}
+
+.detalle-process-modal__progress-track {
+    background: #e5e7eb;
+    border-radius: 999px;
+    height: 0.8rem;
+    overflow: hidden;
+}
+
+.detalle-process-modal__progress-bar {
+    background: #2f6f9f;
+    height: 100%;
+    transition: width 0.2s ease;
+}
+
+.detalle-process-modal__grid {
+    display: grid;
+    gap: 1.5rem;
+    grid-template-columns: minmax(18rem, 0.45fr) minmax(0, 1fr);
+}
+
+.detalle-process-modal__info {
+    align-self: start;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    padding: 1.5rem;
+}
+
+.detalle-process-modal__info h3 {
+    color: #1f2937;
+    font-size: 1.2rem;
+    font-weight: 800;
+    margin: 0;
+}
+
+.detalle-process-modal__info span {
+    color: #64748b;
+    display: block;
+    font-size: 0.88rem;
+    margin-bottom: 0.45rem;
+}
+
+.detalle-process-modal__info strong {
+    color: #111827;
+}
+
+.detalle-process-modal__info em {
+    background: #dbeafe;
+    border-radius: 999px;
+    color: #1f5f8e;
+    display: inline-flex;
+    font-style: normal;
+    font-weight: 800;
+    padding: 0.3rem 0.75rem;
+}
+
+.detalle-process-modal__info hr {
+    border: 0;
+    border-top: 1px solid #d7e0ea;
+    margin: 0;
+    width: 100%;
+}
+
+.detalle-process-modal__boxes {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.detalle-process-box {
+    overflow: hidden;
+}
+
+.detalle-process-box--active {
+    border-color: #2f6f9f;
+    box-shadow: 0 0 0 1px #2f6f9f;
+}
+
+.detalle-process-box__summary {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    padding: 1.25rem;
+    text-align: left;
+    width: 100%;
+}
+
+.detalle-process-box__summary-main {
+    align-items: center;
+    display: flex;
+    gap: 1rem;
+    min-width: 0;
+}
+
+.detalle-process-box__icon {
+    align-items: center;
+    background: #2f6f9f;
+    border-radius: 8px;
+    color: #ffffff;
+    display: inline-flex;
+    flex-shrink: 0;
+    font-size: 1.25rem;
+    height: 3rem;
+    justify-content: center;
+    width: 3rem;
+}
+
+.detalle-process-box__title {
+    align-items: center;
+    color: #111827;
+    display: flex;
+    flex-wrap: wrap;
+    font-size: 1.05rem;
+    font-weight: 800;
+    gap: 0.65rem;
+}
+
+.detalle-process-box__summary p {
+    color: #526377;
+    margin: 0.45rem 0 0;
+}
+
+.detalle-process-box__status {
+    align-items: center;
+    color: #f59e0b;
+    display: inline-flex;
+    font-size: 0.78rem;
+    font-weight: 800;
+    gap: 0.3rem;
+}
+
+.detalle-process-box__status--done {
+    color: #10b981;
+}
+
+.detalle-process-box__form {
+    border-top: 1px solid #d7e0ea;
+    padding: 1.35rem;
+}
+
+.detalle-process-box__form h4 {
+    align-items: center;
+    color: #111827;
+    display: flex;
+    gap: 0.6rem;
+    margin: 0 0 1.2rem;
+}
+
+.detalle-process-box__form h4 i {
+    color: #2f6f9f;
+}
+
+.detalle-process-box__fields {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.detalle-process-box__fields label {
+    color: #526377;
+    display: flex;
+    flex-direction: column;
+    font-size: 0.86rem;
+    font-weight: 700;
+    gap: 0.55rem;
+}
+
+.detalle-process-box__fields label span {
+    color: #526377;
+}
+
+.detalle-process-modal__footer {
+    align-items: center;
+    display: flex;
+    gap: 1rem;
+    margin: 0 1.5rem 1.5rem;
+    padding: 1rem;
+}
+
+.detalle-process-modal__complete,
+.detalle-process-modal__cancel {
+    align-items: center;
+    border-radius: 8px;
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 1rem;
+    font-weight: 800;
+    gap: 0.65rem;
+    justify-content: center;
+    min-height: 3.2rem;
+    padding: 0 1.4rem;
+}
+
+.detalle-process-modal__complete {
+    background: #2f6f9f;
+    border: 1px solid #2f6f9f;
+    color: #ffffff;
+    min-width: 16.5rem;
+}
+
+.detalle-process-modal__complete:disabled {
+    background: #98b6d2;
+    border-color: #98b6d2;
+    cursor: not-allowed;
+}
+
+.detalle-process-modal__cancel {
+    background: #ffffff;
+    border: 1px solid #2f6f9f;
+    color: #1f5f8e;
+    min-width: 8rem;
+}
+
+.detalle-process-modal__pending {
+    align-items: center;
+    color: #64748b;
+    display: inline-flex;
+    gap: 0.55rem;
+    margin-left: auto;
 }
 
 .detalle-history {
@@ -2594,6 +3671,36 @@ onMounted(fetchDetail);
     .detalle-action {
         width: 100%;
         justify-content: center;
+    }
+
+    .detalle-process-card__content {
+        align-items: stretch;
+        flex-direction: column;
+        min-height: auto;
+    }
+
+    .detalle-process-card__button {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .detalle-process-modal__grid,
+    .detalle-process-box__fields {
+        grid-template-columns: 1fr;
+    }
+
+    .detalle-process-modal__footer {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .detalle-process-modal__complete,
+    .detalle-process-modal__cancel {
+        width: 100%;
+    }
+
+    .detalle-process-modal__pending {
+        margin-left: 0;
     }
 
     .detalle-labels-preview {

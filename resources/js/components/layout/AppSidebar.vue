@@ -7,6 +7,7 @@ import { clearCachedUser, getCachedUser, getCurrentUser } from '../../services/a
 const MOBILE_BREAKPOINT = 991;
 const REPORTS_PERMISSION = 'endpoint.ui.reports.read';
 const UGDA_PROFILE = 'usuario ugda';
+const REQUESTER_PROFILE = 'unidad solicitante';
 
 const route = useRoute();
 const isExpanded = ref(true);
@@ -25,12 +26,25 @@ const userData = ref({
 const hasPermission = (permission) => userData.value.permissions.includes(permission);
 const normalizedRole = computed(() => String(userData.value.role ?? '').trim().toLowerCase());
 const canAccessReports = computed(() => hasPermission(REPORTS_PERMISSION) || normalizedRole.value === UGDA_PROFILE);
+const isRequesterProfile = computed(() => normalizedRole.value === REQUESTER_PROFILE);
 
 const menuItems = computed(() => {
     const items = [
         { label: 'Inicio', icon: 'pi pi-home', to: '/dashboard' },
-        { label: 'Todas las Solicitudes', icon: 'pi pi-file', to: '/solicitudes' },
+        {
+            label: isRequesterProfile.value ? 'Mis Solicitudes' : 'Todas las Solicitudes',
+            icon: 'pi pi-file',
+            to: '/solicitudes',
+        },
     ];
+
+    if (isRequesterProfile.value && hasPermission('endpoint.api.documentary-series.read')) {
+        items.push({
+            label: 'Solicitud de Transferencia',
+            icon: 'pi pi-file-plus',
+            to: '/solicitudes/crear',
+        });
+    }
 
     if (canAccessReports.value) {
         items.push({ label: 'Reportes', icon: 'pi pi-chart-bar', to: '/reportes' });
