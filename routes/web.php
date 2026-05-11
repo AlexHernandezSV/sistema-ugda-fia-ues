@@ -7,9 +7,11 @@ use App\Http\Controllers\DocumentarySeriesController;
 use App\Http\Controllers\LoanController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RequestCatalogController;
+use App\Http\Controllers\SystemNotificationController;
 use App\Http\Controllers\TransferController;
 use App\Http\Controllers\UnitController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\UserProfileController;
 
 /*
 |--------------------------------------------------------------------------
@@ -23,7 +25,11 @@ use App\Http\Controllers\UserController;
 
 Route::post('/login-auth', [AuthController::class, 'login']);
 Route::post('/login-verify', [AuthController::class, 'verify2FA']);
+Route::post('/login-change-password', [AuthController::class, 'completeTemporaryPassword']);
 Route::get('/logout', [AuthController::class, 'logout']);
+Route::get('/login', function () {
+    return view('welcome');
+})->name('login');
 
 // ------------------------------------------------------------------------
 // 2. RUTAS PROTEGIDAS (API Interna para Vue)
@@ -83,6 +89,17 @@ Route::middleware('auth')->group(function () {
     Route::get('/api/profiles', [ProfileController::class, 'index'])
         ->middleware('permission:endpoint.api.profiles.read');
 
+    Route::get('/api/profile', [UserProfileController::class, 'show']);
+    Route::post('/api/profile/password', [UserProfileController::class, 'updatePassword']);
+    Route::post('/api/profile/two-factor', [UserProfileController::class, 'updateTwoFactor']);
+    Route::post('/api/profile/two-factor/authenticator/prepare', [UserProfileController::class, 'prepareAuthenticator']);
+    Route::post('/api/profile/two-factor/authenticator/confirm', [UserProfileController::class, 'confirmAuthenticator']);
+
+    Route::get('/api/notifications', [SystemNotificationController::class, 'index']);
+    Route::get('/api/notifications/summary', [SystemNotificationController::class, 'summary']);
+    Route::post('/api/notifications/mark-all-read', [SystemNotificationController::class, 'markAllAsRead']);
+    Route::post('/api/notifications/{id}/read', [SystemNotificationController::class, 'markAsRead']);
+
     Route::get('/api/units', [UnitController::class, 'index'])
         ->middleware('permission:endpoint.api.units.read');
     Route::post('/api/units', [UnitController::class, 'store'])
@@ -97,6 +114,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/api/users', [UserController::class, 'store'])
         ->middleware('permission:endpoint.api.users.create');
     Route::put('/api/users/{id}', [UserController::class, 'update'])
+        ->middleware('permission:endpoint.api.users.update');
+    Route::post('/api/users/{id}/reset-password', [UserController::class, 'resetPassword'])
         ->middleware('permission:endpoint.api.users.update');
     Route::delete('/api/users/{id}', [UserController::class, 'destroy'])
         ->middleware('permission:endpoint.api.users.delete');
@@ -132,7 +151,12 @@ Route::middleware('auth')->group(function () {
     Route::post('/api/transfers/{number}/complete-locations', [TransferController::class, 'completeLocations']);
     Route::post('/api/transfers/{number}/observe', [TransferController::class, 'observe']);
     Route::post('/api/transfers/{number}/deny', [TransferController::class, 'deny']);
+    Route::get('/api/loans/create/catalog', [LoanController::class, 'createCatalog']);
+    Route::get('/api/loans/pending-authorization', [LoanController::class, 'pendingAuthorization']);
+    Route::post('/api/loans', [LoanController::class, 'store']);
     Route::get('/api/loans/{number}', [RequestCatalogController::class, 'showLoan']);
+    Route::post('/api/loans/{number}/unit-authorize', [LoanController::class, 'authorizeByUnit']);
+    Route::post('/api/loans/{number}/unit-deny', [LoanController::class, 'denyByUnit']);
     Route::post('/api/loans/{number}/authorize', [LoanController::class, 'authorizeLoan']);
     Route::post('/api/loans/{number}/observe', [LoanController::class, 'observe']);
     Route::post('/api/loans/{number}/deny', [LoanController::class, 'deny']);

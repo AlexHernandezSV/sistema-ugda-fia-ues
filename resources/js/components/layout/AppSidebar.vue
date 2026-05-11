@@ -1,19 +1,33 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 import { clearCachedUser, getCachedUser, getCurrentUser } from '../../services/authSession';
+import {
+    fetchNotificationSummary,
+    getNotificationState,
+    markAllNotificationsAsRead,
+    markNotificationAsRead,
+} from '../../services/notifications';
 
 const MOBILE_BREAKPOINT = 991;
 const REPORTS_PERMISSION = 'endpoint.ui.reports.read';
 const UGDA_PROFILE = 'usuario ugda';
 const REQUESTER_PROFILE = 'unidad solicitante';
+const UNIT_DIRECTOR_PROFILE = 'director/jefe de unidad';
 
 const route = useRoute();
+const router = useRouter();
 const isExpanded = ref(true);
 const isMobile = ref(false);
 const isMobileMenuOpen = ref(false);
 const isProfileMenuOpen = ref(false);
+const isNotificationMenuOpen = ref(false);
+const notificationPollingId = ref(null);
+const notifications = ref({
+    unreadCount: 0,
+    latest: [],
+});
 const expandedMenus = ref({});
 
 const userData = ref({
@@ -27,6 +41,15 @@ const hasPermission = (permission) => userData.value.permissions.includes(permis
 const normalizedRole = computed(() => String(userData.value.role ?? '').trim().toLowerCase());
 const canAccessReports = computed(() => hasPermission(REPORTS_PERMISSION) || normalizedRole.value === UGDA_PROFILE);
 const isRequesterProfile = computed(() => normalizedRole.value === REQUESTER_PROFILE);
+const isUnitDirectorProfile = computed(() => normalizedRole.value === UNIT_DIRECTOR_PROFILE);
+const unreadNotificationLabel = computed(() => {
+    if (notifications.value.unreadCount > 99) {
+        return '99+';
+    }
+
+    return String(notifications.value.unreadCount);
+});
+const hasUnreadNotifications = computed(() => notifications.value.unreadCount > 0);
 
 const menuItems = computed(() => {
     const items = [
@@ -43,6 +66,19 @@ const menuItems = computed(() => {
             label: 'Solicitud de Transferencia',
             icon: 'pi pi-file-plus',
             to: '/solicitudes/crear',
+        });
+        items.push({
+            label: 'Solicitud de Prestamo',
+            icon: 'pi pi-file-export',
+            to: '/solicitudes/prestamos/crear',
+        });
+    }
+
+    if (isUnitDirectorProfile.value) {
+        items.push({
+            label: 'Pendientes',
+            icon: 'pi pi-file-check',
+            to: '/solicitudes/prestamos/pendientes',
         });
     }
 
@@ -144,7 +180,7 @@ const fetchUserProfile = async () => {
     }
 
     try {
-        const user = await getCurrentUser();
+        const user = await getCurrentUser({ force: true });
         const unitNames = Array.isArray(user.units) && user.units.length
             ? user.units.map(unit => unit.name).join(', ')
             : (user.unit ? user.unit.name : 'Sin Unidad Asignada');
@@ -170,9 +206,12 @@ const closeMobileMenu = () => {
 
     isMobileMenuOpen.value = false;
     isProfileMenuOpen.value = false;
+    isNotificationMenuOpen.value = false;
 };
 
 const handleNavigationSelection = () => {
+    isNotificationMenuOpen.value = false;
+    isProfileMenuOpen.value = false;
     closeMobileMenu();
 };
 
@@ -193,21 +232,91 @@ const toggleSidebar = () => {
         isMobileMenuOpen.value = !isMobileMenuOpen.value;
         if (!isMobileMenuOpen.value) {
             isProfileMenuOpen.value = false;
+            isNotificationMenuOpen.value = false;
         }
         return;
     }
 
     isExpanded.value = !isExpanded.value;
+    isNotificationMenuOpen.value = false;
 };
 
 const toggleProfileMenu = () => {
+    isNotificationMenuOpen.value = false;
     isProfileMenuOpen.value = !isProfileMenuOpen.value;
 };
 
+const syncNotificationState = (payload) => {
+    notifications.value = {
+        unreadCount: payload?.unreadCount ?? payload?.unread_count ?? 0,
+        latest: payload?.latest ?? [],
+    };
+};
+
+const refreshNotifications = async () => {
+    try {
+        const data = await fetchNotificationSummary();
+        syncNotificationState(data);
+    } catch (error) {
+        console.error('Error al cargar notificaciones:', error);
+    }
+};
+
+const handleNotificationsUpdated = (event) => {
+    syncNotificationState(event.detail);
+};
+
+const toggleNotificationMenu = () => {
+    if (!sidebarIsExpanded.value) {
+        isExpanded.value = true;
+        setTimeout(() => {
+            isNotificationMenuOpen.value = true;
+            isProfileMenuOpen.value = false;
+        }, 50);
+        return;
+    }
+
+    isNotificationMenuOpen.value = !isNotificationMenuOpen.value;
+    isProfileMenuOpen.value = false;
+};
+
+const openNotificationsPage = () => {
+    isNotificationMenuOpen.value = false;
+    closeMobileMenu();
+    router.push('/notificaciones');
+};
+
+const openNotification = async (notification) => {
+    try {
+        if (!notification.is_read) {
+            await markNotificationAsRead(notification.id);
+        }
+
+        isNotificationMenuOpen.value = false;
+        closeMobileMenu();
+
+        if (notification.action_url) {
+            router.push(notification.action_url);
+        } else {
+            router.push('/notificaciones');
+        }
+    } catch (error) {
+        console.error('Error al abrir notificacion:', error);
+    }
+};
+
+const markAllPreviewAsRead = async () => {
+    try {
+        await markAllNotificationsAsRead();
+    } catch (error) {
+        console.error('Error al marcar notificaciones:', error);
+    }
+};
+
 const goToProfile = () => {
-    console.log('Navegando a Mi Perfil...');
     isProfileMenuOpen.value = false;
     closeMobileMenu();
+    router.push('/mi-perfil');
 };
 
 const handleLogout = async () => {
@@ -224,6 +333,7 @@ const handleLogout = async () => {
 watch(() => route.path, () => {
     syncMenuWithRoute();
     closeMobileMenu();
+    refreshNotifications();
 });
 
 watch(isExpanded, (newValue) => {
@@ -242,14 +352,23 @@ onMounted(() => {
     updateViewportState();
     fetchUserProfile();
     syncMenuWithRoute();
+    syncNotificationState(getNotificationState());
+    refreshNotifications();
+    notificationPollingId.value = window.setInterval(refreshNotifications, 20000);
     window.addEventListener('resize', updateViewportState);
     window.addEventListener('ugda:toggle-sidebar', handleExternalSidebarToggle);
+    window.addEventListener('ugda:notifications-updated', handleNotificationsUpdated);
     updateBodyScrollLock();
 });
 
 onBeforeUnmount(() => {
+    if (notificationPollingId.value) {
+        window.clearInterval(notificationPollingId.value);
+    }
+
     window.removeEventListener('resize', updateViewportState);
     window.removeEventListener('ugda:toggle-sidebar', handleExternalSidebarToggle);
+    window.removeEventListener('ugda:notifications-updated', handleNotificationsUpdated);
     document.body.style.overflow = '';
 });
 </script>
@@ -349,6 +468,82 @@ onBeforeUnmount(() => {
 
             <div class="mt-auto relative" :class="sidebarIsExpanded ? 'p-3' : 'p-2'">
                 <div
+                    v-if="isNotificationMenuOpen && sidebarIsExpanded"
+                    class="sidebar-notifications-panel fadein animation-duration-200"
+                >
+                    <div class="sidebar-notifications-panel__header">
+                        <div>
+                            <strong>Notificaciones</strong>
+                            <span>{{ notifications.unreadCount }} no leidas</span>
+                        </div>
+                        <button
+                            type="button"
+                            class="sidebar-notifications-panel__mark"
+                            :disabled="!hasUnreadNotifications"
+                            @click="markAllPreviewAsRead"
+                        >
+                            Leidas
+                        </button>
+                    </div>
+
+                    <div v-if="notifications.latest.length === 0" class="sidebar-notifications-panel__empty">
+                        Sin notificaciones recientes
+                    </div>
+
+                    <div v-else class="sidebar-notifications-panel__list">
+                        <button
+                            v-for="notification in notifications.latest"
+                            :key="notification.id"
+                            type="button"
+                            class="sidebar-notification-item"
+                            :class="{ 'sidebar-notification-item--unread': !notification.is_read }"
+                            @click="openNotification(notification)"
+                        >
+                            <span class="sidebar-notification-item__dot"></span>
+                            <span class="sidebar-notification-item__body">
+                                <strong>{{ notification.title }}</strong>
+                                <small>{{ notification.short_message }}</small>
+                                <em>{{ notification.created_at_label }}</em>
+                            </span>
+                        </button>
+                    </div>
+
+                    <button type="button" class="sidebar-notifications-panel__all" @click="openNotificationsPage">
+                        Ver todas
+                    </button>
+                </div>
+
+                <button
+                    type="button"
+                    class="sidebar-notifications-trigger"
+                    :class="[
+                        isNotificationMenuOpen ? 'bg-white-alpha-20 border-white-alpha-30' : 'border-white-alpha-10 hover:bg-white-alpha-10',
+                        sidebarIsExpanded ? 'justify-content-between p-3 mb-2' : 'justify-content-center h-4rem w-full mb-2'
+                    ]"
+                    :title="!sidebarIsExpanded ? 'Notificaciones' : ''"
+                    @click="toggleNotificationMenu"
+                >
+                    <span class="sidebar-notifications-trigger__content flex align-items-center gap-3">
+                        <span class="sidebar-notifications-trigger__icon">
+                            <i class="pi pi-bell text-white text-lg"></i>
+                            <span v-if="hasUnreadNotifications" class="sidebar-notifications-trigger__badge">{{ unreadNotificationLabel }}</span>
+                        </span>
+                        <span v-if="sidebarIsExpanded" class="flex flex-column fadein white-space-nowrap overflow-hidden">
+                            <span class="text-sm font-bold text-white">Notificaciones</span>
+                            <span class="text-xs text-white-alpha-70">
+                                {{ hasUnreadNotifications ? `${notifications.unreadCount} pendientes` : 'Sin pendientes' }}
+                            </span>
+                        </span>
+                    </span>
+
+                    <i
+                        v-if="sidebarIsExpanded"
+                        class="pi pi-chevron-up text-xs text-white-alpha-70 flex-shrink-0 transition-transform transition-duration-200"
+                        :style="{ transform: isNotificationMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)' }"
+                    ></i>
+                </button>
+
+                <div
                     v-if="isProfileMenuOpen && sidebarIsExpanded"
                     class="absolute left-0 px-3 pb-2 z-5 fadein animation-duration-200"
                     :style="{ bottom: '100%', width: profileMenuWidth }"
@@ -402,6 +597,183 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.sidebar-notifications-trigger {
+    align-items: center;
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid;
+    border-radius: 0.75rem;
+    box-sizing: border-box;
+    color: #ffffff;
+    cursor: pointer;
+    display: flex;
+    font: inherit;
+    min-height: 4.1rem;
+    text-align: left;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+    width: 100%;
+}
+
+.sidebar-notifications-trigger__content {
+    min-width: 0;
+    overflow: visible;
+}
+
+.sidebar-notifications-trigger__icon {
+    align-items: center;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 0.55rem;
+    display: inline-flex;
+    flex-shrink: 0;
+    height: 2rem;
+    justify-content: center;
+    position: relative;
+    width: 2rem;
+}
+
+.sidebar-notifications-trigger__badge {
+    align-items: center;
+    background: #dc2626;
+    border: 2px solid #ffffff;
+    border-radius: 999px;
+    color: #ffffff;
+    display: inline-flex;
+    font-size: 0.68rem;
+    font-weight: 800;
+    height: 1.2rem;
+    justify-content: center;
+    line-height: 1;
+    min-width: 1.2rem;
+    padding: 0 0.25rem;
+    position: absolute;
+    right: -0.35rem;
+    top: -0.35rem;
+}
+
+.sidebar-notifications-panel {
+    background: #ffffff;
+    border-radius: 0.85rem;
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.24);
+    color: #1f2937;
+    margin-bottom: 0.75rem;
+    overflow: hidden;
+}
+
+.sidebar-notifications-panel__header {
+    align-items: center;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.9rem 1rem;
+}
+
+.sidebar-notifications-panel__header strong,
+.sidebar-notification-item strong {
+    display: block;
+    font-size: 0.9rem;
+    line-height: 1.3;
+}
+
+.sidebar-notifications-panel__header span {
+    color: #64748b;
+    display: block;
+    font-size: 0.75rem;
+    margin-top: 0.2rem;
+}
+
+.sidebar-notifications-panel__mark {
+    background: #edf3fa;
+    border: 0;
+    border-radius: 999px;
+    color: #2f6f9f;
+    cursor: pointer;
+    font-size: 0.72rem;
+    font-weight: 800;
+    padding: 0.35rem 0.65rem;
+}
+
+.sidebar-notifications-panel__mark:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.sidebar-notifications-panel__list {
+    max-height: 17rem;
+    overflow-y: auto;
+}
+
+.sidebar-notification-item {
+    align-items: flex-start;
+    background: #ffffff;
+    border: 0;
+    border-bottom: 1px solid #edf2f7;
+    color: #334155;
+    cursor: pointer;
+    display: flex;
+    font: inherit;
+    gap: 0.65rem;
+    padding: 0.85rem 1rem;
+    text-align: left;
+    width: 100%;
+}
+
+.sidebar-notification-item:hover,
+.sidebar-notification-item--unread {
+    background: #f8fbff;
+}
+
+.sidebar-notification-item__dot {
+    background: #cbd5e1;
+    border-radius: 999px;
+    flex-shrink: 0;
+    height: 0.55rem;
+    margin-top: 0.28rem;
+    width: 0.55rem;
+}
+
+.sidebar-notification-item--unread .sidebar-notification-item__dot {
+    background: #dc2626;
+}
+
+.sidebar-notification-item__body {
+    min-width: 0;
+}
+
+.sidebar-notification-item small {
+    color: #64748b;
+    display: block;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    margin-top: 0.25rem;
+}
+
+.sidebar-notification-item em {
+    color: #94a3b8;
+    display: block;
+    font-size: 0.72rem;
+    font-style: normal;
+    margin-top: 0.35rem;
+}
+
+.sidebar-notifications-panel__empty {
+    color: #64748b;
+    font-size: 0.85rem;
+    padding: 1.1rem;
+    text-align: center;
+}
+
+.sidebar-notifications-panel__all {
+    background: #f8fafc;
+    border: 0;
+    color: #2f6f9f;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.86rem;
+    font-weight: 800;
+    padding: 0.85rem 1rem;
+    width: 100%;
+}
+
 @media (max-width: 991px) {
     .app-sidebar {
         border-radius: 0;

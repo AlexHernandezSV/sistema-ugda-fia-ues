@@ -383,6 +383,30 @@ const onTempDocFileSelect = (index, event) => {
     tempDocuments.value[index].file_url = URL.createObjectURL(file);
 };
 
+const removeTempDocFile = (index) => {
+    if (!isEditMode.value || !tempDocuments.value[index]) {
+        return;
+    }
+
+    const currentDocument = tempDocuments.value[index];
+    const currentUrl = currentDocument.file_url;
+    if (currentUrl && String(currentUrl).startsWith('blob:')) {
+        URL.revokeObjectURL(currentUrl);
+    }
+
+    tempDocuments.value.splice(index, 1, {
+        ...currentDocument,
+        file_name: null,
+        file_url: null,
+        file_removed: true,
+    });
+
+    const fileInput = document.getElementById(`transferTempDocumentFile-${index}`);
+    if (fileInput) {
+        fileInput.value = '';
+    }
+};
+
 const getSupportClass = (support) => {
     const supportKey = {
         Físico: 'fisico',
@@ -441,7 +465,6 @@ const submitTransfer = async () => {
             detail: isEditMode.value
                 ? 'La solicitud fue reenviada con autorizacion Pendiente y estado Pendiente.'
                 : 'La solicitud fue enviada con autorizacion Pendiente y estado Pendiente.',
-            detail: 'La solicitud fue enviada con autorización Pendiente y estado Pendiente.',
             life: 3200,
         });
 
@@ -625,38 +648,29 @@ const goBack = () => {
                 </div>
 
                 <DataTable v-else :value="boxesList" class="transfer-request__table" size="small" stripedRows>
-                    <Column header="N°" style="width: 5rem">
-                        <template #body="{ index }">{{ index + 1 }}</template>
+                    <Column field="box_number" header="Caja" style="width: 6rem">
+                        <template #body="{ data }">#{{ String(data.box_number).padStart(3, '0') }}</template>
                     </Column>
                     <Column field="series" header="Serie / Subserie"></Column>
-                    <Column field="year_start" header="Fecha inicial" style="width: 11rem"></Column>
-                    <Column field="year_end" header="Fecha final" style="width: 11rem"></Column>
-                    <Column field="box_number" header="N° de caja" style="width: 11rem"></Column>
-                    <Column header="Documentos" style="width: 12rem">
-                        <template #body="{ data }">
-                            <span class="transfer-request__docs-pill">{{ data.documents_count }} doc(s)</span>
-                        </template>
+                    <Column header="Periodo" style="width: 12rem">
+                        <template #body="{ data }">{{ data.year_start }} - {{ data.year_end }}</template>
                     </Column>
-                    <Column header="Acciones" style="width: 9rem">
-                        <template #body="{ index }">
-                            <div class="transfer-request__row-actions">
+                    <Column header="Inventario" style="width: 12rem">
+                        <template #body="{ data, index }">
                             <Button
-                                icon="pi pi-cog"
-                                text
-                                rounded
-                                class="transfer-request__icon-action transfer-request__icon-action--config"
-                                aria-label="Gestionar documentos"
+                                :label="`${data.documents_count} documento(s)`"
+                                :icon="data.documents_count > 0 ? 'pi pi-check-circle' : 'pi pi-list'"
+                                :severity="data.documents_count > 0 ? 'success' : 'secondary'"
+                                outlined
+                                size="small"
+                                class="w-full"
                                 @click="openDocsModal(index)"
                             />
-                            <Button
-                                icon="pi pi-trash"
-                                text
-                                rounded
-                                class="transfer-request__icon-action transfer-request__icon-action--delete"
-                                aria-label="Eliminar caja"
-                                @click="removeBox(index)"
-                            />
-                            </div>
+                        </template>
+                    </Column>
+                    <Column header="" style="width: 4rem">
+                        <template #body="{ index }">
+                            <Button icon="pi pi-trash" text rounded severity="danger" aria-label="Eliminar caja" @click="removeBox(index)" />
                         </template>
                     </Column>
                 </DataTable>
@@ -809,7 +823,19 @@ const goBack = () => {
                             </div>
                             <div v-if="needsDigitalFile(document.support)" class="transfer-docs__digital-link">
                                 <span>Archivo digital</span>
-                                <a v-if="document.file_url" :href="document.file_url" target="_blank" rel="noopener noreferrer">{{ document.file_name }}</a>
+                                <div v-if="document.file_url" class="transfer-docs__digital-file-row">
+                                    <a :href="document.file_url" target="_blank" rel="noopener noreferrer">{{ document.file_name }}</a>
+                                    <button
+                                        v-if="isEditMode"
+                                        type="button"
+                                        class="transfer-docs__remove-file"
+                                        aria-label="Quitar archivo digital"
+                                        title="Quitar archivo digital"
+                                        @click.prevent.stop="removeTempDocFile(index)"
+                                    >
+                                        <i class="pi pi-times"></i>
+                                    </button>
+                                </div>
                                 <label
                                     v-else
                                     class="transfer-docs__inline-file-trigger"
@@ -1109,71 +1135,10 @@ const goBack = () => {
 
 .transfer-request__table {
     margin-top: 1.5rem;
-    overflow: hidden;
 }
 
 .transfer-request__table :deep(.p-datatable-table) {
     min-width: 720px;
-}
-
-.transfer-request__table :deep(.p-datatable-thead > tr > th) {
-    background: #2d6f9f;
-    border: 0;
-    color: #ffffff;
-    font-weight: 800;
-    padding: 0.95rem 1rem;
-}
-
-.transfer-request__table :deep(.p-datatable-tbody > tr > td) {
-    border: 0;
-    color: #2f4358;
-    padding: 1rem;
-    vertical-align: middle;
-}
-
-.transfer-request__table :deep(.p-datatable-tbody > tr:nth-child(even) > td) {
-    background: #eef0f4;
-}
-
-.transfer-request__table :deep(.p-datatable-tbody > tr:nth-child(odd) > td) {
-    background: #ffffff;
-}
-
-.transfer-request__table :deep(.p-datatable-thead > tr > th:first-child) {
-    border-top-left-radius: 8px;
-}
-
-.transfer-request__table :deep(.p-datatable-thead > tr > th:last-child) {
-    border-top-right-radius: 8px;
-}
-
-.transfer-request__docs-pill {
-    background: #eaf4ff;
-    border-radius: 999px;
-    color: #1f5f8e;
-    display: inline-flex;
-    font-size: 0.82rem;
-    font-weight: 700;
-    padding: 0.35rem 0.75rem;
-}
-
-.transfer-request__row-actions {
-    align-items: center;
-    display: flex;
-    gap: 0.7rem;
-}
-
-.transfer-request__icon-action {
-    height: 2rem;
-    width: 2rem;
-}
-
-.transfer-request__icon-action--config {
-    color: #2d6f9f;
-}
-
-.transfer-request__icon-action--delete {
-    color: #ef4444;
 }
 
 .transfer-request__actions {
@@ -1438,6 +1403,32 @@ const goBack = () => {
 
 .transfer-docs__digital-link {
     grid-column: 1 / -1;
+}
+
+.transfer-docs__digital-file-row {
+    align-items: center;
+    display: flex;
+    gap: 0.45rem;
+    min-height: 2.25rem;
+}
+
+.transfer-docs__remove-file {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    color: #ef4444;
+    cursor: pointer;
+    display: inline-flex;
+    flex-shrink: 0;
+    height: 2rem;
+    justify-content: center;
+    padding: 0;
+    width: 2rem;
+}
+
+.transfer-docs__remove-file:hover {
+    background: #fee2e2;
+    border-radius: 999px;
 }
 
 .transfer-docs__inline-file-trigger {

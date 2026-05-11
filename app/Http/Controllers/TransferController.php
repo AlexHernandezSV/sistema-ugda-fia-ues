@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\RequestStatusCatalog;
 use App\Models\Transfer;
+use App\Services\SystemNotificationService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -190,6 +191,8 @@ class TransferController extends Controller
                 ]);
             });
 
+            app(SystemNotificationService::class)->transferAuthorizedByUnit($transfer->fresh(['unit']), $request->user());
+
             return response()->json([
                 'message' => 'Transferencia autorizada por jefatura de unidad.',
             ]);
@@ -267,6 +270,8 @@ class TransferController extends Controller
                     'occurred_at' => now(),
                 ]);
             });
+
+            app(SystemNotificationService::class)->transferDeniedByUnit($transfer->fresh(), $request->user(), $reason);
 
             return response()->json([
                 'message' => 'Transferencia denegada por jefatura de unidad.',
@@ -460,6 +465,8 @@ class TransferController extends Controller
                 ]);
             });
 
+            app(SystemNotificationService::class)->transferResubmitted($transfer->fresh(['unit']), $request->user());
+
             return response()->json([
                 'message' => 'Solicitud corregida y reenviada a jefatura.',
                 'number' => $transfer->code,
@@ -502,6 +509,12 @@ class TransferController extends Controller
             ], 422);
         }
 
+        if (!$request->user()->units()->where('units.id', (int) $request->input('unit_id'))->exists()) {
+            return response()->json([
+                'message' => 'No puede crear una transferencia para una unidad que no tiene asignada.',
+            ], 403);
+        }
+
         try {
             $transfer = DB::transaction(function () use ($request) {
                 $requestedAt = Carbon::parse($request->input('request_date'));
@@ -537,6 +550,8 @@ class TransferController extends Controller
 
                 return $transfer;
             });
+
+            app(SystemNotificationService::class)->transferCreated($transfer->fresh(['unit']), $request->user());
 
             return response()->json([
                 'message' => 'Solicitud de transferencia registrada correctamente.',
@@ -934,6 +949,8 @@ class TransferController extends Controller
                 ]);
             });
 
+            app(SystemNotificationService::class)->transferCompleted($transfer->fresh(), $request->user());
+
             return response()->json([
                 'message' => 'Transferencia completada correctamente.',
             ]);
@@ -975,6 +992,12 @@ class TransferController extends Controller
         string $eventType = 'status',
         bool $requireMessage = false
     ): JsonResponse {
+        if (!$this->canUgdaManage($request)) {
+            return response()->json([
+                'message' => 'Solo UGDA puede realizar esta accion.',
+            ], 403);
+        }
+
         $rules = $requireMessage ? ['message' => ['sometimes', 'nullable', 'string', 'max:1000'], 'reason' => ['sometimes', 'nullable', 'string', 'max:1000']] : [];
         $validator = Validator::make($request->all(), $rules);
 
@@ -1013,6 +1036,16 @@ class TransferController extends Controller
                     'occurred_at' => now(),
                 ]);
             });
+
+            $notificationService = app(SystemNotificationService::class);
+            $freshTransfer = $transfer->fresh();
+
+            match ($statusCode) {
+                'transfer_status_observed' => $notificationService->transferObserved($freshTransfer, $request->user(), $description),
+                'transfer_status_denied' => $notificationService->transferDeniedByUgda($freshTransfer, $request->user(), $description),
+                'transfer_status_scheduled' => $notificationService->transferScheduled($freshTransfer, $request->user()),
+                default => null,
+            };
 
             return response()->json([
                 'message' => 'Estado de la transferencia actualizado correctamente.',

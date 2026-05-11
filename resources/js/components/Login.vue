@@ -9,9 +9,16 @@ const toast = useToast();
 const step = ref(1);
 const loading = ref(false);
 const showPassword = ref(false);
+const showTemporaryPassword = ref(false);
+const showNewPassword = ref(false);
+const showNewPasswordConfirmation = ref(false);
+const twoFactorMethod = ref('email');
 
 const email = ref('');
 const password = ref('');
+const temporaryPassword = ref('');
+const newPassword = ref('');
+const newPasswordConfirmation = ref('');
 const digits = ref(['', '', '', '', '', '']);
 const inputs = ref([]);
 
@@ -23,7 +30,58 @@ const togglePasswordVisibility = () => {
     showPassword.value = !showPassword.value;
 };
 
+const resetOtp = () => {
+    digits.value = ['', '', '', '', '', ''];
+};
+
+const verificationSubtitle = () => {
+    if (twoFactorMethod.value === 'authenticator') {
+        return 'Ingresa el codigo generado por tu aplicacion autenticadora.';
+    }
+
+    return 'Ingresa el codigo enviado a tu correo electronico.';
+};
+
+const handleLoginResponse = (data) => {
+    if (data.redirect) {
+        window.location.href = data.redirect;
+        return;
+    }
+
+    if (data.must_change_password) {
+        step.value = 3;
+        temporaryPassword.value = password.value;
+        toast.add({
+            severity: 'warn',
+            summary: 'Cambio requerido',
+            detail: 'Actualiza tu contrasena temporal para continuar.',
+            life: 4000
+        });
+        return;
+    }
+
+    if (data.require_2fa) {
+        twoFactorMethod.value = data.two_factor_method || 'email';
+        step.value = 2;
+        resetOtp();
+
+        toast.add({
+            severity: 'success',
+            summary: twoFactorMethod.value === 'authenticator' ? 'Verificacion requerida' : 'Código enviado',
+            detail: twoFactorMethod.value === 'authenticator'
+                ? 'Abre Google Authenticator en tu teléfono para continuar.'
+                : 'Revisa tu correo electrónico para continuar.',
+            life: 4000
+        });
+
+        nextTick(() => {
+            focusOtpInput(0);
+        });
+    }
+};
+
 const handleLogin = async () => {
+    twoFactorMethod.value = 'email';
     loading.value = true;
 
     try {
@@ -32,19 +90,93 @@ const handleLogin = async () => {
             password: password.value
         });
 
-        if (response.data.require_2fa) {
-            step.value = 2;
+        if (response.data.redirect || response.data.must_change_password || response.data.require_2fa) {
+            handleLoginResponse(response.data);
+        }
+    } catch (error) {
+        handleErrors(error);
+    } finally {
+        loading.value = false;
+    }
+};
+
+const resendCode = async () => {
+    if (twoFactorMethod.value !== 'email') {
+        toast.add({
+            severity: 'warn',
+            summary: 'No disponible',
+            detail: 'Esta cuenta no usa verificación por correo.',
+            life: 4000
+        });
+        return;
+    }
+
+    if (!email.value || !password.value) {
+        toast.add({
+            severity: 'warn',
+            summary: 'Información incompleta',
+            detail: 'Debes iniciar sesión primero para reenviar el código.',
+            life: 4000
+        });
+        return;
+    }
+
+    loading.value = true;
+
+    try {
+        const response = await axios.post('/login-auth', {
+            email: email.value,
+            password: password.value
+        });
+
+        if (response.data.require_2fa && response.data.two_factor_method === 'email') {
+            handleLoginResponse(response.data);
             toast.add({
                 severity: 'success',
-                summary: 'Código enviado',
-                detail: 'Revisa tu correo electrónico para continuar.',
+                summary: 'Código reenviado',
+                detail: 'Revisa tu correo electrónico nuevamente para obtener el nuevo código.',
                 life: 4000
             });
-
-            nextTick(() => {
-                focusOtpInput(0);
-            });
         }
+    } catch (error) {
+        handleErrors(error);
+    } finally {
+        loading.value = false;
+    }
+};
+
+const handleTemporaryPasswordChange = async () => {
+    if (!temporaryPassword.value || !newPassword.value || !newPasswordConfirmation.value) {
+        toast.add({
+            severity: 'warn',
+            summary: 'Campos incompletos',
+            detail: 'Completa la contrasena temporal y la nueva contrasena.',
+            life: 3500
+        });
+        return;
+    }
+
+    loading.value = true;
+
+    try {
+        const response = await axios.post('/login-change-password', {
+            email: email.value,
+            current_password: temporaryPassword.value,
+            password: newPassword.value,
+            password_confirmation: newPasswordConfirmation.value
+        });
+
+        toast.add({
+            severity: 'success',
+            summary: 'Contrasena actualizada',
+            detail: 'Continua con la verificacion de acceso.',
+            life: 3000
+        });
+
+        password.value = newPassword.value;
+        newPassword.value = '';
+        newPasswordConfirmation.value = '';
+        handleLoginResponse(response.data);
     } catch (error) {
         handleErrors(error);
     } finally {
@@ -88,10 +220,12 @@ const handleVerifyCode = async () => {
             toast.add({
                 severity: 'error',
                 summary: 'Código inválido',
-                detail: 'El código es incorrecto o expiró.',
+                detail: twoFactorMethod.value === 'authenticator'
+                    ? 'Inserta el código desde Google Authenticator; el código de correo no funcionará.'
+                    : 'El código es incorrecto o expiró.',
                 life: 4000
             });
-            digits.value = ['', '', '', '', '', ''];
+            resetOtp();
             focusOtpInput(0);
         } else {
             handleErrors(error);
@@ -136,6 +270,15 @@ const handleErrors = (error) => {
     if (error.response) {
         if (error.response.status === 422) {
             const errors = error.response.data.errors;
+            if (!errors) {
+                toast.add({
+                    severity: 'warn',
+                    summary: 'Atencion',
+                    detail: error.response.data.message || 'Revise la informacion ingresada.',
+                    life: 4000
+                });
+                return;
+            }
             Object.keys(errors).forEach((key) => {
                 toast.add({
                     severity: 'warn',
@@ -176,7 +319,10 @@ const handleErrors = (error) => {
 
 const goBack = () => {
     step.value = 1;
-    digits.value = ['', '', '', '', '', ''];
+    twoFactorMethod.value = 'email';
+    resetOtp();
+    newPassword.value = '';
+    newPasswordConfirmation.value = '';
 };
 </script>
 
@@ -206,6 +352,7 @@ const goBack = () => {
                         <span class="login-brand__title">Sistema de Gestión Documental</span>
                         <span class="login-brand__subtitle">Universidad de El Salvador</span>
                     </div>
+
                 </div>
 
                 <button type="button" class="login-help-button">Ayuda</button>
@@ -330,16 +477,23 @@ const goBack = () => {
                         </div>
                     </div>
 
-                    <div v-else class="login-step">
+                    <div v-else-if="step === 2" class="login-step">
                         <div class="login-step__brand">
                             <img src="/images/Logo-UES-Blue.png" alt="Universidad de El Salvador"
                                 class="login-step__logo" onerror="this.style.display='none'" />
                             <h2 class="login-step__title">Verificación de acceso</h2>
-                            <p class="login-step__subtitle">
-                                Ingresa el código enviado a
-                                <br />
-                                <strong>{{ email }}</strong>
-                            </p>
+                        <p class="login-step__subtitle">
+                            {{ verificationSubtitle() }}
+                        </p>
+                        <p class="login-step__subtitle">
+                            Método de verificación: <strong>{{ twoFactorMethod === 'authenticator' ? 'Google Authenticator' : 'Correo electrónico' }}</strong>
+                        </p>
+                        <p class="login-step__subtitle" v-if="twoFactorMethod === 'email'">
+                            Se envió un código a <strong>{{ email }}</strong>. Usa ese código aquí.
+                        </p>
+                        <p class="login-step__subtitle" v-else>
+                            Abre Google Authenticator en tu teléfono y copia el código de 6 dígitos.
+                        </p>
                         </div>
 
                         <div class="login-code-grid">
@@ -362,6 +516,9 @@ const goBack = () => {
                             </span>
                         </Button>
 
+                        <Button label="Reenviar código" class="login-secondary-button w-full justify-content-center"
+                            severity="secondary" outlined @click="resendCode" v-if="twoFactorMethod === 'email'" />
+
                         <Button label="Volver" class="login-secondary-button w-full justify-content-center"
                             severity="secondary" outlined @click="goBack" />
 
@@ -370,6 +527,74 @@ const goBack = () => {
                             <br />
                             Facultad de Ingeniería y Arquitectura - Todos los derechos reservados
                         </div>
+                    </div>
+
+                    <div v-else class="login-step">
+                        <div class="login-step__brand">
+                            <img src="/images/Logo-UES-Blue.png" alt="Universidad de El Salvador"
+                                class="login-step__logo" onerror="this.style.display='none'" />
+                            <h2 class="login-step__title">Cambiar contrasena temporal</h2>
+                            <p class="login-step__subtitle">
+                                Antes de continuar, crea una contrasena propia para
+                                <br />
+                                <strong>{{ email }}</strong>
+                            </p>
+                        </div>
+
+                        <div class="login-field">
+                            <label class="login-field__label">Contrasena temporal</label>
+                            <div class="login-field__shell">
+                                <i class="pi pi-key login-field__icon"></i>
+                                <input v-model="temporaryPassword"
+                                    :type="showTemporaryPassword && temporaryPassword.length > 0 ? 'text' : 'password'"
+                                    autocomplete="current-password" class="login-field__input login-password-input"
+                                    placeholder="Contrasena recibida" @keyup.enter="handleTemporaryPasswordChange" />
+                                <button v-if="temporaryPassword.length > 0" type="button" class="login-password-toggle"
+                                    :aria-label="showTemporaryPassword ? 'Ocultar contrasena' : 'Mostrar contrasena'"
+                                    @mousedown.prevent="showTemporaryPassword = !showTemporaryPassword">
+                                    <i :class="showTemporaryPassword ? 'pi pi-eye-slash' : 'pi pi-eye'"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="login-field">
+                            <label class="login-field__label">Nueva contrasena</label>
+                            <div class="login-field__shell">
+                                <i class="pi pi-lock login-field__icon"></i>
+                                <input v-model="newPassword"
+                                    :type="showNewPassword && newPassword.length > 0 ? 'text' : 'password'"
+                                    autocomplete="new-password" class="login-field__input login-password-input"
+                                    placeholder="Minimo 8 caracteres" @keyup.enter="handleTemporaryPasswordChange" />
+                                <button v-if="newPassword.length > 0" type="button" class="login-password-toggle"
+                                    :aria-label="showNewPassword ? 'Ocultar contrasena' : 'Mostrar contrasena'"
+                                    @mousedown.prevent="showNewPassword = !showNewPassword">
+                                    <i :class="showNewPassword ? 'pi pi-eye-slash' : 'pi pi-eye'"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="login-field">
+                            <label class="login-field__label">Confirmar nueva contrasena</label>
+                            <div class="login-field__shell">
+                                <i class="pi pi-lock login-field__icon"></i>
+                                <input v-model="newPasswordConfirmation"
+                                    :type="showNewPasswordConfirmation && newPasswordConfirmation.length > 0 ? 'text' : 'password'"
+                                    autocomplete="new-password" class="login-field__input login-password-input"
+                                    placeholder="Repite la nueva contrasena" @keyup.enter="handleTemporaryPasswordChange" />
+                                <button v-if="newPasswordConfirmation.length > 0" type="button" class="login-password-toggle"
+                                    :aria-label="showNewPasswordConfirmation ? 'Ocultar contrasena' : 'Mostrar contrasena'"
+                                    @mousedown.prevent="showNewPasswordConfirmation = !showNewPasswordConfirmation">
+                                    <i :class="showNewPasswordConfirmation ? 'pi pi-eye-slash' : 'pi pi-eye'"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <Button label="Actualizar y continuar" icon="pi pi-check"
+                            class="login-primary-button w-full justify-content-center"
+                            :loading="loading" @click="handleTemporaryPasswordChange" />
+
+                        <Button label="Volver" class="login-secondary-button w-full justify-content-center"
+                            severity="secondary" outlined @click="goBack" />
                     </div>
                 </div>
             </section>

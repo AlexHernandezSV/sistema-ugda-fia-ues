@@ -11,19 +11,27 @@ use Illuminate\Support\Collection;
 
 class RequestCatalog
 {
-    public static function listings(): array
+    public static function listings(?User $viewer = null): array
     {
-        $transfers = Transfer::query()
+        $transferQuery = Transfer::query()
             ->with(['requester.person', 'unit', 'authorizationStatus', 'workflowStatus'])
-            ->orderByDesc('requested_at')
+            ->orderByDesc('requested_at');
+
+        self::scopeToVisibleUnits($transferQuery, $viewer);
+
+        $transfers = $transferQuery
             ->get()
             ->map(fn (Transfer $transfer) => self::mapTransferListing($transfer))
             ->values()
             ->all();
 
-        $loans = Loan::query()
+        $loanQuery = Loan::query()
             ->with(['requester.person', 'unit', 'authorizationStatus', 'workflowStatus', 'searchStatus'])
-            ->orderByDesc('requested_at')
+            ->orderByDesc('requested_at');
+
+        self::scopeToVisibleUnits($loanQuery, $viewer);
+
+        $loans = $loanQuery
             ->get()
             ->map(fn (Loan $loan) => self::mapLoanListing($loan))
             ->values()
@@ -60,6 +68,10 @@ class RequestCatalog
             ->first();
 
         if ($transfer === null) {
+            return null;
+        }
+
+        if (!self::viewerCanAccessRequestUnit($viewer, $transfer->unit_id)) {
             return null;
         }
 
@@ -139,7 +151,7 @@ class RequestCatalog
                     'scheduledAt' => self::formatDateTime($latestSchedule->occurred_at),
                 ]
                 : null,
-            'processCard' => $isScheduled
+            'processCard' => $isScheduled && self::viewerCanManageUgda($viewer)
                 ? [
                     'title' => 'Proceso de Transferencia',
                     'description' => 'Asigne ubicaciones fisicas a las cajas de documentos para su resguardo en UGDA',
@@ -197,7 +209,7 @@ class RequestCatalog
         ];
     }
 
-    public static function loanDetail(string $number): ?array
+    public static function loanDetail(string $number, ?User $viewer = null): ?array
     {
         $loan = Loan::query()
             ->with([
@@ -225,11 +237,27 @@ class RequestCatalog
             return null;
         }
 
+        if (!self::viewerCanAccessRequestUnit($viewer, $loan->unit_id)) {
+            return null;
+        }
+
         $observations = $loan->events->where('event_type', 'observation')->sortBy('occurred_at')->values();
         $latestDecision = $loan->events->where('event_type', 'decision')->sortByDesc('occurred_at')->first();
         $workflowCode = $loan->workflowStatus?->code;
+        $authCode = $loan->authorizationStatus?->code;
         $searchCode = $loan->searchStatus?->code;
-        $isManage = $loan->view_mode === 'manage';
+        $canManageUgda = self::viewerCanManageUgda($viewer);
+        $isManage = $loan->view_mode === 'manage'
+            && $canManageUgda
+            && $authCode === 'loan_auth_authorized';
+        $viewerProfile = $viewer?->activeProfile()?->name;
+        $viewerUnitIds = $viewer
+            ? $viewer->units()->pluck('units.id')->all()
+            : [];
+        $isUnitDirectorReview = $authCode === 'loan_auth_pending'
+            && $workflowCode === 'loan_status_pending'
+            && $viewerProfile === 'Director/Jefe de Unidad'
+            && in_array($loan->unit_id, $viewerUnitIds, true);
 
         return [
             'number' => $loan->number,
@@ -240,22 +268,29 @@ class RequestCatalog
             'auth' => $loan->authorizationStatus?->label ?? 'Pendiente',
             'status' => $loan->workflowStatus?->label ?? 'Pendiente',
             'search' => $loan->searchStatus?->label ? str_replace('Busqueda: ', '', $loan->searchStatus->label) : '-',
-            'pageTitle' => $isManage ? 'Gestionar Prestamo Documental' : 'Prestamo #' . $loan->number,
-            'pageSubtitle' => $isManage
+            'pageTitle' => $isUnitDirectorReview ? 'Revisar Solicitud de Prestamo' : ($isManage ? 'Gestionar Prestamo Documental' : 'Prestamo #' . $loan->number),
+            'pageSubtitle' => $isUnitDirectorReview
                 ? 'Solicitud #' . $loan->number . ' - ' . ($loan->unit?->name ?? 'Sin unidad')
-                : 'Detalle de la solicitud',
-            'mode' => $isManage ? 'manage' : 'detail',
-            'generalSectionTitle' => $isManage ? 'Datos Generales' : 'Informacion General',
+                : ($isManage
+                ? 'Solicitud #' . $loan->number . ' - ' . ($loan->unit?->name ?? 'Sin unidad')
+                : 'Detalle de la solicitud'),
+            'mode' => $isUnitDirectorReview ? 'unitAuthorization' : ($isManage ? 'manage' : 'detail'),
+            'generalSectionTitle' => ($isManage || $isUnitDirectorReview) ? 'Datos Generales' : 'Informacion General',
             'documentsSectionTitle' => $workflowCode === 'loan_status_loaned' ? 'Documentos Prestados' : 'Documentos Solicitados',
             'authorizedBy' => self::userDisplayName($loan->authorizedBy),
             'authorizedAt' => self::formatDateTime($loan->authorized_at),
             'chips' => self::loanChips($loan),
-            'workflowNotice' => $isManage && $workflowCode === 'loan_status_pending'
+            'workflowNotice' => $isUnitDirectorReview
+                ? [
+                    'title' => 'Solicitud de prestamo pendiente de autorizacion',
+                    'description' => 'Revise los documentos solicitados antes de tomar una decision.',
+                ]
+                : ($isManage && $workflowCode === 'loan_status_pending'
                 ? [
                     'title' => 'Solicitud de prestamo pendiente de gestion',
                     'description' => 'Esta solicitud ha sido autorizada por el Director y requiere su gestion.',
                 ]
-                : null,
+                : null),
             'observationsRegistered' => $observations->isNotEmpty()
                 ? [
                     'count' => $observations->count(),
@@ -274,7 +309,7 @@ class RequestCatalog
                     'description' => 'Los documentos estan siendo localizados en el archivo',
                 ]
                 : null,
-            'searchCompleted' => $isManage && $searchCode === 'loan_search_completed' && $workflowCode === 'loan_status_authorized'
+            'searchCompleted' => $isManage && in_array($searchCode, ['loan_search_completed', 'loan_search_not_found'], true) && $workflowCode === 'loan_status_authorized'
                 ? self::buildLoanSearchCompleted($loan)
                 : null,
             'loanSummary' => $workflowCode === 'loan_status_loaned'
@@ -284,23 +319,27 @@ class RequestCatalog
                 ? self::buildLoanReturnSummary($loan)
                 : null,
             'decisionCard' => $latestDecision ? self::mapLoanDecisionCard($latestDecision) : null,
-            'documentGroups' => self::mapLoanDocumentGroups($loan),
-            'actions' => self::loanActions($loan),
-            'loanRegistration' => self::buildLoanRegistrationConfig($loan),
-            'returnRegistration' => self::buildReturnRegistrationConfig($loan),
+            'documentGroups' => $searchCode === 'loan_search_not_found' ? [] : self::mapLoanDocumentGroups($loan),
+            'actions' => $isUnitDirectorReview ? self::loanUnitAuthorizationActions() : ($isManage ? self::loanActions($loan) : []),
+            'loanRegistration' => $isManage ? self::buildLoanRegistrationConfig($loan) : null,
+            'returnRegistration' => $isManage ? self::buildReturnRegistrationConfig($loan) : null,
             'history' => self::mapHistory($loan->events),
         ];
     }
 
-    public static function transferDocumentDownload(string $number, string $code): ?array
+    public static function transferDocumentDownload(string $number, string $code, ?User $viewer = null): ?array
     {
         $document = TransferDocument::query()
             ->where('code', $code)
             ->whereHas('box.transfer', fn ($query) => $query->where('code', $number))
-            ->with('box')
+            ->with('box.transfer')
             ->first();
 
         if ($document === null || empty($document->digital_file_name)) {
+            return null;
+        }
+
+        if (!self::viewerCanAccessRequestUnit($viewer, $document->box?->transfer?->unit_id)) {
             return null;
         }
 
@@ -323,8 +362,9 @@ class RequestCatalog
         $activeUnit = $user->units()->wherePivot('is_active', true)->first() ?? $user->units()->first();
         $activeUnitName = $activeUnit?->name;
 
-        $transfers = collect(self::listings()['transfers'])->map(fn ($item) => ['type' => 'Transferencia'] + $item);
-        $loans = collect(self::listings()['loans'])->map(fn ($item) => ['type' => 'Prestamo'] + $item);
+        $listings = self::listings($user);
+        $transfers = collect($listings['transfers'])->map(fn ($item) => ['type' => 'Transferencia'] + $item);
+        $loans = collect($listings['loans'])->map(fn ($item) => ['type' => 'Prestamo'] + $item);
         $all = $transfers->concat($loans)->values();
 
         $alerts = match ($profile) {
@@ -542,14 +582,19 @@ class RequestCatalog
             ])
             ->values()
             ->all();
+        $isNotFound = $loan->searchStatus?->code === 'loan_search_not_found';
 
         return [
-            'title' => 'Busqueda Finalizada',
-            'description' => $groups ? 'Algunos documentos fueron encontrados' : 'No se encontraron documentos disponibles',
+            'title' => $isNotFound ? 'Busqueda No encontrados' : 'Busqueda Finalizada',
+            'description' => $isNotFound
+                ? 'Los documentos solicitados no fueron encontrados'
+                : ($groups ? 'Algunos documentos fueron encontrados' : 'No se encontraron documentos disponibles'),
             'completedBy' => self::userDisplayName($loan->searchCompletedBy),
             'completedAt' => self::formatDateTime($loan->search_completed_at),
-            'comments' => $loan->search_comments,
+            'comments' => $isNotFound ? $loan->search_comments : ($loan->search_comments ?: 'Sin comentarios adicionales.'),
             'groups' => $groups,
+            'result' => $isNotFound ? 'not_found' : 'completed',
+            'tone' => $isNotFound ? 'danger' : 'warning',
         ];
     }
 
@@ -687,6 +732,12 @@ class RequestCatalog
             ];
         }
 
+        if ($searchCode === 'loan_search_not_found') {
+            return [
+                ['key' => 'back', 'label' => 'Volver', 'icon' => null, 'variant' => 'secondary'],
+            ];
+        }
+
         if ($workflowCode === 'loan_status_authorized' && $searchCode === 'loan_search_completed') {
             return [
                 ['key' => 'registerLoan', 'label' => 'Registrar prestamo', 'icon' => 'pi pi-box', 'variant' => 'success'],
@@ -702,6 +753,15 @@ class RequestCatalog
         }
 
         return [
+            ['key' => 'back', 'label' => 'Volver', 'icon' => null, 'variant' => 'secondary'],
+        ];
+    }
+
+    private static function loanUnitAuthorizationActions(): array
+    {
+        return [
+            ['key' => 'authorizeUnit', 'label' => 'Autorizar prestamo', 'icon' => 'pi pi-check-circle', 'variant' => 'success'],
+            ['key' => 'denyUnit', 'label' => 'Denegar prestamo', 'icon' => 'pi pi-times-circle', 'variant' => 'danger'],
             ['key' => 'back', 'label' => 'Volver', 'icon' => null, 'variant' => 'secondary'],
         ];
     }
@@ -844,6 +904,42 @@ class RequestCatalog
         return $viewer->units()
             ->where('units.code', 'UGDA')
             ->exists();
+    }
+
+    private static function viewerUnitIds(?User $viewer): array
+    {
+        return $viewer
+            ? $viewer->units()->pluck('units.id')->map(fn ($id) => (int) $id)->all()
+            : [];
+    }
+
+    private static function scopeToVisibleUnits($query, ?User $viewer): void
+    {
+        if (self::viewerCanManageUgda($viewer)) {
+            return;
+        }
+
+        $unitIds = self::viewerUnitIds($viewer);
+
+        if ($unitIds === []) {
+            $query->whereRaw('1 = 0');
+            return;
+        }
+
+        $query->whereIn('unit_id', $unitIds);
+    }
+
+    private static function viewerCanAccessRequestUnit(?User $viewer, ?int $unitId): bool
+    {
+        if (self::viewerCanManageUgda($viewer)) {
+            return true;
+        }
+
+        if ($unitId === null) {
+            return false;
+        }
+
+        return in_array((int) $unitId, self::viewerUnitIds($viewer), true);
     }
 
     private static function viewerCanCorrectObservedTransfer(?User $viewer, Transfer $transfer): bool

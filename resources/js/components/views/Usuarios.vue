@@ -10,6 +10,7 @@ const unitsList = ref([]);
 const profilesList = ref([]);
 const loading = ref(true);
 const isSaving = ref(false);
+const isResettingPassword = ref(false);
 
 const rowsPerPageOptions = ref([5, 10, 25, 50]);
 const filters = ref({
@@ -21,6 +22,9 @@ const selectedUnitId = ref(null);
 const displayModal = ref(false);
 const modalHeader = ref('');
 const isEditing = ref(false);
+const resetPasswordModal = ref(false);
+const selectedUserForReset = ref(null);
+const adminPasswordForReset = ref('');
 
 // --- ERRORES DE VALIDACIÓN ---
 const emailError = ref(''); 
@@ -60,6 +64,10 @@ const fetchData = async () => {
         unitsList.value = unitsRes.data.map(u => ({ label: u.name, value: u.id }));
         profilesList.value = profilesRes.data.map(profile => ({ label: profile.name, value: profile.name }));
     } catch (error) {
+        if ([401, 419].includes(error.response?.status)) {
+            return;
+        }
+
         toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar los datos', life: 3000 });
     } finally {
         loading.value = false;
@@ -167,6 +175,12 @@ const openEditModal = (user) => {
     displayModal.value = true;
 };
 
+const openResetPasswordModal = (user) => {
+    selectedUserForReset.value = user;
+    adminPasswordForReset.value = '';
+    resetPasswordModal.value = true;
+};
+
 const addUnitToForm = () => {
     if (!selectedUnitId.value) {
         return;
@@ -237,6 +251,40 @@ const saveUser = async () => {
         }
     } finally {
         isSaving.value = false;
+    }
+};
+
+const resetUserPassword = async () => {
+    if (!selectedUserForReset.value || !adminPasswordForReset.value) {
+        toast.add({
+            severity: 'warn',
+            summary: 'Atencion',
+            detail: 'Ingrese su contrasena para confirmar.',
+            life: 3000
+        });
+        return;
+    }
+
+    isResettingPassword.value = true;
+
+    try {
+        await axios.post(`/api/users/${selectedUserForReset.value.id}/reset-password`, {
+            admin_password: adminPasswordForReset.value
+        });
+        toast.add({
+            severity: 'success',
+            summary: 'Contrasena enviada',
+            detail: 'Se envio una contrasena temporal al correo del usuario.',
+            life: 3500
+        });
+        resetPasswordModal.value = false;
+        adminPasswordForReset.value = '';
+        selectedUserForReset.value = null;
+    } catch (error) {
+        const detail = error.response?.data?.message || 'No se pudo restablecer la contrasena.';
+        toast.add({ severity: 'error', summary: 'Error', detail, life: 4000 });
+    } finally {
+        isResettingPassword.value = false;
     }
 };
 
@@ -315,7 +363,10 @@ const clearFilter = () => {
 
                 <Column header="Acciones" style="width: 10%; text-align: center" headerClass="bg-primary-custom text-white">
                     <template #body="slotProps">
-                        <Button icon="pi pi-pencil" text rounded severity="secondary" class="text-gray-600 hover:text-blue-600" @click="openEditModal(slotProps.data)" />
+                        <div class="usuarios-actions">
+                            <Button icon="pi pi-key" text rounded severity="secondary" class="text-gray-600 hover:text-blue-600" title="Restablecer contrasena" @click="openResetPasswordModal(slotProps.data)" />
+                            <Button icon="pi pi-pencil" text rounded severity="secondary" class="text-gray-600 hover:text-blue-600" title="Editar usuario" @click="openEditModal(slotProps.data)" />
+                        </div>
                     </template>
                 </Column>
             </DataTable>
@@ -457,6 +508,48 @@ const clearFilter = () => {
                 </div>
             </template>
         </Dialog>
+
+        <Dialog
+            v-model:visible="resetPasswordModal"
+            :modal="true"
+            :draggable="false"
+            header="Restablecer contrasena"
+            :style="{ width: '520px' }"
+            class="p-fluid blue-header-dialog"
+        >
+            <div class="reset-password-content">
+                <div class="reset-password-icon">
+                    <i class="pi pi-key"></i>
+                </div>
+                <div>
+                    <h3>Enviar contrasena temporal</h3>
+                    <p>
+                        Se generara una contrasena temporal para
+                        <strong>{{ selectedUserForReset?.email }}</strong>.
+                        Al iniciar sesion, el usuario debera cambiarla.
+                    </p>
+                </div>
+            </div>
+
+            <div class="field mt-3">
+                <label class="font-medium" style="color: #1560bd;">Su contrasena *</label>
+                <InputText
+                    v-model="adminPasswordForReset"
+                    type="password"
+                    autocomplete="current-password"
+                    class="w-full bg-gray-50"
+                    placeholder="Confirme su contrasena de administrador"
+                    @keyup.enter="resetUserPassword"
+                />
+            </div>
+
+            <template #footer>
+                <div class="flex justify-content-between gap-3 mt-2 w-full reset-password-footer">
+                    <Button label="Cancelar" severity="secondary" outlined class="flex-1" :disabled="isResettingPassword" @click="resetPasswordModal = false" />
+                    <Button label="Enviar temporal" icon="pi pi-send" class="flex-1 border-none" style="background-color: #1560bd;" :loading="isResettingPassword" @click="resetUserPassword" />
+                </div>
+            </template>
+        </Dialog>
 </template>
 
 <style> 
@@ -529,6 +622,45 @@ const clearFilter = () => {
     margin-left: auto;
 }
 
+.usuarios-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+}
+
+.reset-password-content {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 1rem;
+    align-items: flex-start;
+    padding: 0.25rem 0;
+}
+
+.reset-password-content h3 {
+    margin: 0 0 0.35rem;
+    color: #111827;
+    font-size: 1rem;
+}
+
+.reset-password-content p {
+    margin: 0;
+    color: #526173;
+    line-height: 1.6;
+}
+
+.reset-password-icon {
+    width: 2.8rem;
+    height: 2.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    background: #e8f2ff;
+    color: #1560bd;
+    flex: 0 0 auto;
+}
+
 @media (max-width: 991px) {
     .filters-toolbar__actions {
         display: grid;
@@ -547,6 +679,16 @@ const clearFilter = () => {
     .user-units-selector-button {
         width: 3rem;
         min-width: 3rem;
+    }
+}
+
+@media (max-width: 640px) {
+    .reset-password-content {
+        grid-template-columns: 1fr;
+    }
+
+    .reset-password-footer {
+        flex-direction: column;
     }
 }
 
