@@ -93,6 +93,10 @@ const fetchSeries = async () => {
         const response = await axios.get('/api/documentary-series');
         seriesList.value = Array.isArray(response.data) ? response.data : [];
     } catch (error) {
+        if ([401, 419].includes(error.response?.status)) {
+            return;
+        }
+
         toast.add({
             severity: 'error',
             summary: 'Error',

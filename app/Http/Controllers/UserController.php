@@ -3,8 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Mail\UserCredentialsMail;
+use App\Mail\TemporaryPasswordMail;
 use App\Models\Profile;
 use App\Models\User;
+use App\Services\UserActivityLogger;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -14,6 +17,10 @@ use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
+    public function __construct(private readonly UserActivityLogger $activityLogger)
+    {
+    }
+
     public function index()
     {
         $users = User::with([
@@ -61,6 +68,9 @@ class UserController extends Controller
                 'email' => $request->email,
                 'password' => Hash::make($randomPassword),
                 'is_active' => true,
+                'two_factor_method' => 'email',
+                'must_change_password' => true,
+                'temporary_password_expires_at' => Carbon::now()->addDays(7),
             ]);
 
             $user->person()->updateOrCreate(
@@ -143,6 +153,57 @@ class UserController extends Controller
         return response()->json(['message' => 'Usuario actualizado correctamente']);
     }
 
+    public function resetPassword(Request $request, $id)
+    {
+        $request->validate([
+            'admin_password' => ['required'],
+        ], [
+            'admin_password.required' => 'Ingrese su contrasena para confirmar el restablecimiento.',
+        ]);
+
+        if (!Hash::check($request->admin_password, $request->user()->password)) {
+            return response()->json(['message' => 'La contrasena del administrador no es correcta.'], 422);
+        }
+
+        $user = User::with('person')->findOrFail($id);
+        $temporaryPassword = Str::password(12, true, true, false, false);
+        $expiresAt = Carbon::now()->addDays(2);
+
+        $user->update([
+            'password' => Hash::make($temporaryPassword),
+            'must_change_password' => true,
+            'temporary_password_expires_at' => $expiresAt,
+            'password_changed_at' => null,
+            'two_factor_method' => 'email',
+        ]);
+
+        $data = [
+            'name' => $this->userDisplayName($user),
+            'email' => $user->email,
+            'password' => $temporaryPassword,
+            'expires_at' => $expiresAt->format('d/m/Y H:i'),
+        ];
+
+        try {
+            Mail::to($user->email)->send(new TemporaryPasswordMail($data));
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'La contrasena fue restablecida, pero no se pudo enviar el correo: ' . $e->getMessage(),
+            ], 500);
+        }
+
+        $this->activityLogger->log(
+            $user,
+            $request->user(),
+            'temporary_password_reset',
+            'Contrasena temporal generada',
+            'Un administrador restablecio la contrasena y envio una temporal por correo.',
+            $request
+        );
+
+        return response()->json(['message' => 'Contrasena temporal enviada al correo del usuario.']);
+    }
+
     public function destroy($id)
     {
         $user = User::findOrFail($id);
@@ -197,6 +258,13 @@ class UserController extends Controller
                 'deleted_at' => null,
             ]
         );
+    }
+
+    private function userDisplayName(User $user): string
+    {
+        $person = $user->person;
+
+        return trim(($person?->first_name ?? '') . ' ' . ($person?->first_last_name ?? '')) ?: $user->email;
     }
 
     private function mapUserForResponse(User $user): array

@@ -40,6 +40,10 @@ const fetchUnits = async () => {
         const response = await axios.get('/api/units');
         units.value = response.data;
     } catch (error) {
+        if ([401, 419].includes(error.response?.status)) {
+            return;
+        }
+
         toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar los datos', life: 3000 });
     } finally {
         loading.value = false;

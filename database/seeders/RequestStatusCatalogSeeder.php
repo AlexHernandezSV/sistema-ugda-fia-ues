@@ -32,6 +32,7 @@ class RequestStatusCatalogSeeder extends Seeder
             ['request_type' => 'loan', 'category' => 'workflow', 'code' => 'loan_status_cancelled', 'label' => 'Cancelada', 'tone' => 'warning', 'sort_order' => 70],
             ['request_type' => 'loan', 'category' => 'search', 'code' => 'loan_search_in_progress', 'label' => 'Busqueda: En proceso', 'tone' => 'info', 'sort_order' => 10],
             ['request_type' => 'loan', 'category' => 'search', 'code' => 'loan_search_completed', 'label' => 'Busqueda: Finalizada', 'tone' => 'success', 'sort_order' => 20],
+            ['request_type' => 'loan', 'category' => 'search', 'code' => 'loan_search_not_found', 'label' => 'Busqueda: No encontrados', 'tone' => 'danger', 'sort_order' => 30],
         ];
 
         foreach ($statuses as $status) {

@@ -13,6 +13,10 @@ const loading = ref(true);
 const loanModalVisible = ref(false);
 const returnModalVisible = ref(false);
 const decisionModalVisible = ref(false);
+const searchStartModalVisible = ref(false);
+const finishSearchModalVisible = ref(false);
+const searchStartSubmitting = ref(false);
+const finishSearchSubmitting = ref(false);
 const decisionSubmitting = ref(false);
 const currentDecisionAction = ref(null);
 
@@ -35,7 +39,18 @@ const decisionForm = reactive({
     comments: '',
 });
 
+const finishSearchForm = reactive({
+    result: 'all',
+    comments: '',
+    selectedIds: [],
+});
+
 const goBack = () => {
+    if (loan.value?.mode === 'unitAuthorization') {
+        router.push('/solicitudes/prestamos/pendientes');
+        return;
+    }
+
     router.push({
         path: '/solicitudes',
         query: { tab: 'prestamos' },
@@ -60,6 +75,12 @@ const resetReturnForm = () => {
 const resetDecisionForm = () => {
     decisionForm.comments = '';
     currentDecisionAction.value = null;
+};
+
+const resetFinishSearchForm = () => {
+    finishSearchForm.result = 'all';
+    finishSearchForm.comments = '';
+    finishSearchForm.selectedIds = searchResultDocuments.value.map((document) => document.id);
 };
 
 const toneClass = (tone) => {
@@ -167,25 +188,24 @@ const handleAction = async (action) => {
         case 'authorize':
             openDecisionModal('authorize');
             break;
+        case 'authorizeUnit':
+            openDecisionModal('authorizeUnit');
+            break;
         case 'startSearch':
-            await postAction(`/api/loans/${loan.value.number}/search/start`, {}, 'Busqueda iniciada.');
+            searchStartModalVisible.value = true;
             break;
-        case 'finishSearch': {
-            const comments = window.prompt('Ingrese un comentario de la busqueda finalizada:', loan.value?.searchCompleted?.comments ?? '') ?? '';
-            const documentIds = (loan.value?.documentGroups ?? [])
-                .flatMap((group) => group.items ?? [])
-                .map((item) => item.id);
-            await postAction(`/api/loans/${loan.value.number}/search/finish`, {
-                comments,
-                document_ids: documentIds,
-            }, 'Busqueda finalizada.');
+        case 'finishSearch':
+            resetFinishSearchForm();
+            finishSearchModalVisible.value = true;
             break;
-        }
         case 'observe':
             openDecisionModal('observe');
             break;
         case 'deny':
             openDecisionModal('deny');
+            break;
+        case 'denyUnit':
+            openDecisionModal('denyUnit');
             break;
         case 'registerLoan':
             resetLoanForm();
@@ -198,13 +218,103 @@ const handleAction = async (action) => {
     }
 };
 
+const toggleFinishSearchDocument = (id) => {
+    if (finishSearchForm.selectedIds.includes(id)) {
+        finishSearchForm.selectedIds = finishSearchForm.selectedIds.filter((item) => item !== id);
+        return;
+    }
+
+    finishSearchForm.selectedIds = [...finishSearchForm.selectedIds, id];
+};
+
+const submitStartSearch = async () => {
+    if (!loan.value) {
+        return;
+    }
+
+    searchStartSubmitting.value = true;
+
+    try {
+        const { data } = await axios.post(`/api/loans/${loan.value.number}/search/start`, {});
+        toast.add({
+            severity: 'success',
+            summary: 'Busqueda iniciada',
+            detail: data.message || 'Busqueda iniciada correctamente.',
+            life: 2800,
+        });
+        searchStartModalVisible.value = false;
+        await fetchDetail();
+    } catch (error) {
+        showError(error.response?.data?.message || 'No se pudo iniciar la busqueda.');
+    } finally {
+        searchStartSubmitting.value = false;
+    }
+};
+
+const submitFinishSearch = async () => {
+    if (!loan.value) {
+        return;
+    }
+
+    let documentIds = [];
+
+    if (finishSearchForm.result === 'all') {
+        documentIds = searchResultDocuments.value.map((document) => document.id);
+    } else if (finishSearchForm.result === 'partial') {
+        documentIds = [...finishSearchForm.selectedIds];
+
+        if (documentIds.length === 0) {
+            showError('Seleccione al menos un documento encontrado o cambie el resultado de la busqueda.');
+            return;
+        }
+    }
+
+    finishSearchSubmitting.value = true;
+
+    try {
+        const { data } = await axios.post(`/api/loans/${loan.value.number}/search/finish`, {
+            comments: finishSearchForm.comments,
+            document_ids: documentIds,
+        });
+
+        toast.add({
+            severity: 'success',
+            summary: 'Busqueda finalizada',
+            detail: data.message || 'Busqueda finalizada correctamente.',
+            life: 3000,
+        });
+
+        finishSearchModalVisible.value = false;
+        resetFinishSearchForm();
+        await fetchDetail();
+    } catch (error) {
+        showError(error.response?.data?.message || 'No se pudo finalizar la busqueda.');
+    } finally {
+        finishSearchSubmitting.value = false;
+    }
+};
+
 const decisionModalConfig = computed(() => {
     switch (currentDecisionAction.value) {
         case 'authorize':
             return {
                 icon: 'pi pi-check-circle',
                 title: 'Autorizar Prestamo',
-                subtitle: 'Se iniciara el proceso de busqueda de documentos',
+                subtitle: loan.value?.mode === 'unitAuthorization'
+                    ? 'La solicitud sera enviada a la UGDA para su gestion'
+                    : 'Se iniciara el proceso de busqueda de documentos',
+                label: 'Comentarios (opcional)',
+                placeholder: 'Agregue comentarios sobre la autorizacion...',
+                confirmLabel: 'Autorizar',
+                cancelLabel: 'Cancelar',
+                tone: 'success',
+                required: false,
+            };
+        case 'authorizeUnit':
+            return {
+                icon: 'pi pi-check-circle',
+                title: 'Autorizar Prestamo',
+                subtitle: 'La solicitud sera enviada a la UGDA para su gestion',
                 label: 'Comentarios (opcional)',
                 placeholder: 'Agregue comentarios sobre la autorizacion...',
                 confirmLabel: 'Autorizar',
@@ -225,6 +335,18 @@ const decisionModalConfig = computed(() => {
                 required: true,
             };
         case 'deny':
+            return {
+                icon: 'pi pi-times-circle',
+                title: 'Denegar Prestamo',
+                subtitle: 'Debe proporcionar un motivo para denegar esta solicitud',
+                label: 'Motivo de denegacion',
+                placeholder: 'Describa el motivo por el cual se deniega este prestamo...',
+                confirmLabel: 'Denegar',
+                cancelLabel: 'Cancelar',
+                tone: 'danger',
+                required: true,
+            };
+        case 'denyUnit':
             return {
                 icon: 'pi pi-times-circle',
                 title: 'Denegar Prestamo',
@@ -267,6 +389,11 @@ const submitDecisionAction = async () => {
             payload = { comments };
             successMessage = 'Prestamo autorizado.';
             break;
+        case 'authorizeUnit':
+            endpoint = `/api/loans/${loan.value.number}/unit-authorize`;
+            payload = { comments };
+            successMessage = 'Prestamo autorizado.';
+            break;
         case 'observe':
             endpoint = `/api/loans/${loan.value.number}/observe`;
             payload = { message: comments };
@@ -274,6 +401,11 @@ const submitDecisionAction = async () => {
             break;
         case 'deny':
             endpoint = `/api/loans/${loan.value.number}/deny`;
+            payload = { reason: comments };
+            successMessage = 'Prestamo denegado.';
+            break;
+        case 'denyUnit':
+            endpoint = `/api/loans/${loan.value.number}/unit-deny`;
             payload = { reason: comments };
             successMessage = 'Prestamo denegado.';
             break;
@@ -388,10 +520,16 @@ const fetchDetail = async () => {
 };
 
 const isManageMode = computed(() => loan.value?.mode === 'manage');
+const showsActions = computed(() => ['manage', 'unitAuthorization'].includes(loan.value?.mode));
 const pageTitle = computed(() => loan.value?.pageTitle ?? (loan.value ? `Prestamo #${loan.value.number}` : 'Prestamo'));
 const pageSubtitle = computed(() => loan.value?.pageSubtitle ?? 'Detalle de la solicitud');
 const loanRegistrationDocuments = computed(() => loan.value?.loanRegistration?.documents ?? []);
 const returnRegistrationDocuments = computed(() => loan.value?.returnRegistration?.documents ?? []);
+const searchResultDocuments = computed(() => (loan.value?.documentGroups ?? [])
+    .flatMap((group) => (group.items ?? []).map((item) => ({
+        ...item,
+        groupTitle: group.title,
+    }))));
 
 onMounted(fetchDetail);
 </script>
@@ -459,9 +597,22 @@ onMounted(fetchDetail);
             </div>
         </div>
 
-        <div v-if="loan.searchCompleted" class="detalle-banner detalle-banner--warning">
+        <div
+            v-if="loan.searchCompleted"
+            :class="[
+                'detalle-banner',
+                'detalle-search-completed',
+                loan.searchCompleted.tone === 'danger' ? 'detalle-banner--danger' : 'detalle-banner--warning',
+                loan.searchCompleted.tone === 'danger' ? 'detalle-search-completed--danger' : ''
+            ]"
+        >
             <div class="detalle-banner__head">
-                <div class="detalle-banner__icon detalle-banner__icon--warning">
+                <div
+                    :class="[
+                        'detalle-banner__icon',
+                        loan.searchCompleted.tone === 'danger' ? 'detalle-banner__icon--danger' : 'detalle-banner__icon--warning'
+                    ]"
+                >
                     <i class="pi pi-search"></i>
                 </div>
                 <div>
@@ -470,7 +621,7 @@ onMounted(fetchDetail);
                 </div>
             </div>
 
-            <div class="detalle-banner__panel">
+            <div class="detalle-banner__panel detalle-search-completed__panel">
                 <div class="grid">
                     <div class="col-12 md:col-6">
                         <div class="detalle-small-label">Completado por:</div>
@@ -482,31 +633,35 @@ onMounted(fetchDetail);
                     </div>
                 </div>
 
-                <div class="detalle-divider"></div>
+                <template v-if="loan.searchCompleted.comments">
+                    <div class="detalle-divider"></div>
 
-                <div class="detalle-small-label mb-2">Comentarios:</div>
-                <p class="m-0 detalle-note-text">{{ loan.searchCompleted.comments }}</p>
+                    <div class="detalle-small-label mb-2">Comentarios:</div>
+                    <p class="m-0 detalle-note-text">{{ loan.searchCompleted.comments }}</p>
+                </template>
 
-                <div class="detalle-divider"></div>
+                <template v-if="(loan.searchCompleted.groups?.length ?? 0) > 0">
+                    <div class="detalle-divider"></div>
 
-                <div class="font-semibold text-900 mb-3">Documentos encontrados:</div>
-                <div class="flex flex-column gap-3">
-                    <div v-for="group in loan.searchCompleted.groups" :key="group.title" class="detalle-summary-findings">
-                        <div class="detalle-summary-findings__title">
-                            <i class="pi pi-file"></i>
-                            <span>{{ group.title }}</span>
-                        </div>
-                        <div v-for="item in group.items" :key="`${group.title}-${item.title}`" class="detalle-summary-findings__item">
-                            <i class="pi pi-check-circle"></i>
-                            <span class="font-semibold">{{ item.title }}</span>
-                            <span>{{ item.meta }}</span>
+                    <div class="detalle-search-completed__documents-title">Documentos encontrados:</div>
+                    <div class="flex flex-column gap-3">
+                        <div v-for="group in loan.searchCompleted.groups" :key="group.title" class="detalle-summary-findings">
+                            <div class="detalle-summary-findings__title">
+                                <i class="pi pi-file"></i>
+                                <span>{{ group.title }}</span>
+                            </div>
+                            <div v-for="item in group.items" :key="`${group.title}-${item.title}`" class="detalle-summary-findings__item">
+                                <i class="pi pi-check-circle"></i>
+                                <span class="font-semibold">{{ item.title }}</span>
+                                <span>{{ item.meta }}</span>
+                            </div>
                         </div>
                     </div>
-                </div>
+                </template>
             </div>
         </div>
 
-        <div v-if="loan.loanSummary" class="detalle-banner detalle-banner--success">
+        <div v-if="loan.loanSummary" class="detalle-banner detalle-banner--success detalle-loan-summary-banner">
             <div class="detalle-banner__head">
                 <div class="detalle-banner__icon detalle-banner__icon--success">
                     <i class="pi pi-box"></i>
@@ -716,7 +871,7 @@ onMounted(fetchDetail);
             <template v-if="isManageMode">
                 <div class="detalle-panel__header">{{ loan.documentsSectionTitle }}</div>
                 <div class="detalle-panel__body">
-                    <div class="flex flex-column gap-4">
+                    <div v-if="(loan.documentGroups?.length ?? 0) > 0" class="flex flex-column gap-4">
                         <div v-for="group in loan.documentGroups" :key="group.title">
                             <h4 class="detalle-group-title">{{ group.title }}</h4>
                             <div class="flex flex-column gap-3">
@@ -762,13 +917,16 @@ onMounted(fetchDetail);
                             </div>
                         </div>
                     </div>
+                    <div v-else class="detalle-empty-documents">
+                        No hay documentos agregados a esta solicitud
+                    </div>
                 </div>
             </template>
 
             <template v-else>
                 <h3 class="m-0 text-900 text-2xl font-bold mb-4">{{ loan.documentsSectionTitle }}</h3>
 
-                <div class="flex flex-column gap-4">
+                <div v-if="(loan.documentGroups?.length ?? 0) > 0" class="flex flex-column gap-4">
                     <div v-for="group in loan.documentGroups" :key="group.title">
                         <h4 class="detalle-group-title">{{ group.title }}</h4>
                         <div class="flex flex-column gap-3">
@@ -790,7 +948,7 @@ onMounted(fetchDetail);
                                         </template>
                                         <template v-else>
                                             <div class="detalle-document-card__meta">Año: {{ item.year }}</div>
-                                            <div class="detalle-document-card__meta">Unidad Productora: {{ item.producerUnit }}</div>
+                                            <div class="detalle-document-card__meta">Unidad Productora: {{ item.unit || 'No especificada' }}</div>
                                         </template>
                                     </div>
 
@@ -814,10 +972,13 @@ onMounted(fetchDetail);
                         </div>
                     </div>
                 </div>
+                <div v-else class="detalle-empty-documents">
+                    No hay documentos agregados a esta solicitud
+                </div>
             </template>
         </div>
 
-        <div v-if="isManageMode && (loan.actions?.length ?? 0) > 0" class="detalle-actions">
+        <div v-if="showsActions && (loan.actions?.length ?? 0) > 0" class="detalle-actions">
             <button
                 v-for="action in loan.actions"
                 :key="action.key"
@@ -830,7 +991,7 @@ onMounted(fetchDetail);
             </button>
         </div>
 
-        <div v-if="!isManageMode && (loan.history?.length ?? 0) > 0" class="surface-card shadow-1 border-round-xl p-4">
+        <div v-if="(loan.history?.length ?? 0) > 0" class="surface-card shadow-1 border-round-xl p-4">
             <h3 class="m-0 text-900 text-2xl font-bold mb-4">Historial de Estados</h3>
 
             <div class="detalle-history">
@@ -850,6 +1011,51 @@ onMounted(fetchDetail);
             </div>
         </div>
     </div>
+
+    <Dialog
+        v-model:visible="searchStartModalVisible"
+        modal
+        :draggable="false"
+        :closable="false"
+        :showHeader="false"
+        :style="{ width: 'min(560px, 94vw)' }"
+        :contentStyle="{ padding: '0', overflow: 'hidden' }"
+    >
+        <div class="detalle-decision-modal">
+            <div class="detalle-decision-modal__body">
+                <div class="detalle-decision-modal__icon detalle-decision-modal__icon--primary">
+                    <i class="pi pi-search"></i>
+                </div>
+
+                <h2 class="detalle-decision-modal__title detalle-decision-modal__title--primary m-0">
+                    Iniciar Busqueda de Documentos
+                </h2>
+
+                <p class="detalle-decision-modal__subtitle m-0">
+                    Se marcara esta solicitud como "Busqueda en proceso" mientras localiza los documentos solicitados en el archivo.
+                </p>
+
+                <div class="detalle-decision-modal__actions">
+                    <button
+                        type="button"
+                        class="detalle-decision-modal__button detalle-decision-modal__button--cancel-primary"
+                        :disabled="searchStartSubmitting"
+                        @click="searchStartModalVisible = false"
+                    >
+                        Cancelar
+                    </button>
+                    <button
+                        type="button"
+                        class="detalle-decision-modal__button detalle-decision-modal__button--primary"
+                        :disabled="searchStartSubmitting"
+                        @click="submitStartSearch"
+                    >
+                        {{ searchStartSubmitting ? 'Procesando...' : 'Iniciar Busqueda' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </Dialog>
 
     <Dialog
         v-model:visible="decisionModalVisible"
@@ -918,6 +1124,105 @@ onMounted(fetchDetail);
     </Dialog>
 
     <Dialog
+        v-model:visible="finishSearchModalVisible"
+        modal
+        :draggable="false"
+        :closable="false"
+        :showHeader="false"
+        :style="{ width: 'min(940px, 94vw)' }"
+        :contentStyle="{ padding: '0', overflow: 'hidden' }"
+    >
+        <div class="detalle-form-modal">
+            <div class="detalle-form-modal__header detalle-form-modal__header--primary">
+                <div class="detalle-form-modal__icon">
+                    <i class="pi pi-check-circle"></i>
+                </div>
+                <div>
+                    <h2 class="m-0 text-xl font-bold">Finalizar Busqueda de Documentos</h2>
+                    <p class="m-0 mt-2">Indique el resultado de la busqueda de documentos</p>
+                </div>
+            </div>
+
+            <div class="detalle-form-modal__body">
+                <div class="mb-3">
+                    <label class="detalle-form-label">Resultado de la busqueda <span>*</span></label>
+                    <select v-model="finishSearchForm.result" class="detalle-input">
+                        <option value="all">Todos los documentos fueron encontrados</option>
+                        <option value="partial">Solo algunos documentos fueron encontrados</option>
+                        <option value="none">No se encontraron documentos disponibles</option>
+                    </select>
+                </div>
+
+                <div v-if="finishSearchForm.result === 'partial'" class="detalle-form-section detalle-form-section--primary mb-3">
+                    <div class="flex align-items-start gap-3 mb-3">
+                        <div class="detalle-form-section__icon detalle-form-section__icon--primary">
+                            <i class="pi pi-file-check"></i>
+                        </div>
+                        <div>
+                            <div class="detalle-form-section__title">Documentos encontrados</div>
+                            <div class="detalle-form-section__text">Seleccione los documentos que si fueron localizados.</div>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-column gap-3">
+                        <label
+                            v-for="document in searchResultDocuments"
+                            :key="document.id"
+                            class="detalle-select-card"
+                        >
+                            <input
+                                type="checkbox"
+                                class="detalle-select-card__checkbox"
+                                :checked="finishSearchForm.selectedIds.includes(document.id)"
+                                @change="toggleFinishSearchDocument(document.id)"
+                            />
+                            <div class="detalle-select-card__content">
+                                <div class="detalle-document-card__title">{{ document.title }}</div>
+                                <div class="detalle-select-card__meta">
+                                    <span>{{ document.groupTitle }}</span>
+                                    <span v-if="document.series">Serie: {{ document.series }}</span>
+                                    <span v-if="document.box">Caja: {{ document.box }}</span>
+                                    <span v-if="document.year">Año: {{ document.year }}</span>
+                                </div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="detalle-form-label">Comentarios (opcional)</label>
+                    <textarea
+                        v-model="finishSearchForm.comments"
+                        class="detalle-textarea"
+                        rows="5"
+                        placeholder="Agregue comentarios sobre el resultado de la busqueda..."
+                    ></textarea>
+                </div>
+            </div>
+
+            <div class="detalle-form-modal__footer">
+                <button
+                    type="button"
+                    class="detalle-action detalle-action--secondary"
+                    :disabled="finishSearchSubmitting"
+                    @click="finishSearchModalVisible = false"
+                >
+                    Cancelar
+                </button>
+                <button
+                    type="button"
+                    class="detalle-action detalle-action--primary"
+                    :disabled="finishSearchSubmitting"
+                    @click="submitFinishSearch"
+                >
+                    <i class="pi pi-check-circle"></i>
+                    <span>{{ finishSearchSubmitting ? 'Procesando...' : 'Finalizar Busqueda' }}</span>
+                </button>
+            </div>
+        </div>
+    </Dialog>
+
+    <Dialog
         v-model:visible="loanModalVisible"
         modal
         :draggable="false"
@@ -938,15 +1243,14 @@ onMounted(fetchDetail);
             </div>
 
             <div class="detalle-form-modal__body">
-                <div class="detalle-form-section detalle-form-section--success">
-                    <div class="flex flex-column md:flex-row md:justify-content-between gap-3 mb-4">
-                        <div class="flex align-items-center gap-3">
+                <div class="detalle-form-section detalle-form-section--success detalle-loan-selection">
+                    <div class="detalle-loan-selection__top">
+                        <div class="detalle-loan-selection__heading">
                             <div class="detalle-form-section__icon detalle-form-section__icon--success">
                                 <i class="pi pi-file"></i>
                             </div>
                             <div>
                                 <div class="detalle-form-section__title">{{ loan.loanRegistration?.helperTitle }}</div>
-                                <div class="detalle-form-section__text">{{ loan.loanRegistration?.helperText }}</div>
                             </div>
                         </div>
                         <button type="button" class="detalle-mini-action detalle-mini-action--success" @click="toggleLoanDocuments">
@@ -954,13 +1258,22 @@ onMounted(fetchDetail);
                         </button>
                     </div>
 
-                    <div class="font-semibold text-900 mb-3">{{ loan.loanRegistration?.documentsTitle }}</div>
+                    <div class="detalle-form-section__text detalle-loan-selection__help">{{ loan.loanRegistration?.helperText }}</div>
+
+                    <div class="detalle-loan-selection__group-title">
+                        <i class="pi pi-file"></i>
+                        <span>{{ loan.loanRegistration?.documentsTitle }}</span>
+                    </div>
 
                     <div class="flex flex-column gap-3">
                         <label
                             v-for="document in loanRegistrationDocuments"
                             :key="document.id"
-                            class="detalle-select-card"
+                            :class="[
+                                'detalle-select-card',
+                                'detalle-select-card--loan',
+                                loanForm.selectedIds.includes(document.id) ? 'detalle-select-card--selected' : ''
+                            ]"
                         >
                             <input
                                 :checked="loanForm.selectedIds.includes(document.id)"
@@ -969,11 +1282,11 @@ onMounted(fetchDetail);
                                 @change="toggleLoanDocument(document.id)"
                             />
                             <div class="detalle-select-card__content">
-                                <div class="detalle-document-card__title mb-2">{{ document.title }}</div>
+                                <div class="detalle-document-card__title detalle-select-card__title">{{ document.title }}</div>
                                 <div class="detalle-select-card__meta">
-                                    <span><strong>Serie:</strong> {{ document.series }}</span>
-                                    <span><strong>Caja:</strong> {{ document.box }}</span>
-                                    <span><strong>Año:</strong> {{ document.year }}</span>
+                                    <span><strong>Serie:</strong> {{ document.series || '-' }}</span>
+                                    <span><strong>Caja:</strong> {{ document.box || '-' }}</span>
+                                    <span><strong>Año:</strong> {{ document.year || '-' }}</span>
                                     <span :class="documentTypeClass(document.documentTypeColor)">{{ document.documentType }}</span>
                                 </div>
                             </div>
@@ -1197,6 +1510,11 @@ onMounted(fetchDetail);
     color: #56b657;
 }
 
+.detalle-decision-modal__icon--primary {
+    background: #e8f2ff;
+    color: #2f6fae;
+}
+
 .detalle-decision-modal__icon--warning {
     background: #fff3e3;
     color: #f0a53a;
@@ -1214,6 +1532,10 @@ onMounted(fetchDetail);
 
 .detalle-decision-modal__title--success {
     color: #56b657;
+}
+
+.detalle-decision-modal__title--primary {
+    color: #2f6fae;
 }
 
 .detalle-decision-modal__title--warning {
@@ -1302,6 +1624,11 @@ onMounted(fetchDetail);
     color: #ffffff;
 }
 
+.detalle-decision-modal__button--primary {
+    background: #2f6fae;
+    color: #ffffff;
+}
+
 .detalle-decision-modal__button--warning {
     background: #f7d18a;
     color: #ffffff;
@@ -1319,6 +1646,11 @@ onMounted(fetchDetail);
 .detalle-decision-modal__button--cancel-success {
     border-color: #7a8ea5;
     color: #64748b;
+}
+
+.detalle-decision-modal__button--cancel-primary {
+    border-color: #2f6fae;
+    color: #2f6fae;
 }
 
 .detalle-decision-modal__button--cancel-warning {
@@ -1403,6 +1735,85 @@ onMounted(fetchDetail);
     border: 1px solid #f7b5b5;
 }
 
+.detalle-search-completed {
+    color: #7a4d0b;
+}
+
+.detalle-search-completed .detalle-banner__head {
+    margin-bottom: 0.75rem;
+}
+
+.detalle-search-completed .detalle-banner__title {
+    color: #6f4300;
+    font-size: 1.15rem;
+}
+
+.detalle-search-completed .detalle-banner__text {
+    color: #7a4d0b;
+}
+
+.detalle-search-completed__panel {
+    background: transparent;
+    border-top: 1px solid rgba(154, 103, 0, 0.18);
+    border-radius: 0;
+    padding: 0.85rem 0 0;
+}
+
+.detalle-search-completed .detalle-small-label {
+    color: #7a4d0b;
+    font-weight: 700;
+}
+
+.detalle-search-completed .detalle-small-value {
+    color: #7a4d0b;
+    font-weight: 500;
+}
+
+.detalle-search-completed .detalle-divider {
+    border-top-color: rgba(154, 103, 0, 0.18);
+}
+
+.detalle-search-completed .detalle-note-text {
+    color: #7a4d0b;
+    font-style: italic;
+}
+
+.detalle-search-completed__documents-title {
+    color: #7a4d0b;
+    font-weight: 800;
+    margin-bottom: 0.85rem;
+}
+
+.detalle-search-completed .detalle-summary-findings {
+    background: rgba(255, 253, 243, 0.68);
+    border-color: rgba(246, 173, 60, 0.55);
+}
+
+.detalle-search-completed .detalle-summary-findings__title {
+    color: #8a5800;
+}
+
+.detalle-search-completed .detalle-summary-findings__item {
+    color: #7a4d0b;
+}
+
+.detalle-search-completed--danger {
+    color: #8a0f1d;
+}
+
+.detalle-search-completed--danger .detalle-banner__title,
+.detalle-search-completed--danger .detalle-banner__text,
+.detalle-search-completed--danger .detalle-small-label,
+.detalle-search-completed--danger .detalle-small-value,
+.detalle-search-completed--danger .detalle-note-text {
+    color: #8a0f1d;
+}
+
+.detalle-search-completed--danger .detalle-search-completed__panel,
+.detalle-search-completed--danger .detalle-divider {
+    border-top-color: rgba(185, 28, 28, 0.18);
+}
+
 .detalle-banner__reason {
     border-top: 1px solid #f7b5b5;
     padding-top: 1rem;
@@ -1428,7 +1839,7 @@ onMounted(fetchDetail);
 }
 
 .detalle-note-text {
-    color: #7c5d15;
+    color: #9a6700;
     line-height: 1.6;
 }
 
@@ -1468,6 +1879,52 @@ onMounted(fetchDetail);
     background: #ffffff;
     border-radius: 0.9rem;
     padding: 0.9rem 1rem;
+}
+
+.detalle-loan-summary-banner .detalle-banner__title {
+    color: #004d2a;
+}
+
+.detalle-loan-summary-banner .detalle-banner__text {
+    color: #164e37;
+}
+
+.detalle-loan-summary-banner .detalle-banner__panel {
+    border-radius: 0.95rem;
+}
+
+.detalle-loan-summary-banner .detalle-small-label,
+.detalle-loan-summary-banner .detalle-small-label .pi {
+    color: #006b3d;
+}
+
+.detalle-loan-summary-banner .detalle-small-value {
+    color: #004d2a;
+}
+
+.detalle-loan-summary-banner .detalle-divider {
+    border-top-color: #cfe1d8;
+}
+
+.detalle-loan-summary-banner .detalle-loan-summary-group__title,
+.detalle-loan-summary-banner .detalle-loan-summary-group__title .pi,
+.detalle-loan-summary-banner .detalle-note-text {
+    color: #006b3d;
+}
+
+.detalle-loan-summary-banner .detalle-loan-summary-group__item {
+    color: #334155;
+}
+
+.detalle-loan-summary-banner .detalle-loan-summary-group__item .font-semibold {
+    color: #004d2a;
+}
+
+.detalle-loan-summary-banner .detalle-document-type--warning {
+    background: #fee2e2;
+    border-radius: 999px;
+    color: #dc2626;
+    padding: 0.12rem 0.45rem;
 }
 
 .detalle-observation-card {
@@ -1601,6 +2058,16 @@ onMounted(fetchDetail);
     margin: 0 0 1rem;
 }
 
+.detalle-empty-documents {
+    min-height: 7rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #475569;
+    text-align: center;
+    padding: 1.5rem;
+}
+
 .detalle-document-card {
     border: 1px solid #d7dde6;
     border-radius: 1rem;
@@ -1659,7 +2126,7 @@ onMounted(fetchDetail);
 }
 
 .detalle-document-type--warning {
-    color: #ea580c;
+    color: #9a6700;
 }
 
 .detalle-document-type--success {
@@ -1682,10 +2149,13 @@ onMounted(fetchDetail);
     display: inline-flex;
     align-items: center;
     gap: 0.65rem;
+    justify-content: center;
+    white-space: nowrap;
+    min-height: 3.15rem;
 }
 
 .detalle-action--primary {
-    background: #0ea5c6;
+    background: #2f6fae;
     color: #ffffff;
 }
 
@@ -1769,6 +2239,14 @@ onMounted(fetchDetail);
     background: #d7dde6;
 }
 
+.detalle-form-modal {
+    display: flex;
+    flex-direction: column;
+    max-height: min(92vh, 860px);
+    overflow: hidden;
+    background: #ffffff;
+}
+
 .detalle-form-modal__header {
     padding: 1.3rem 1.5rem;
     color: #ffffff;
@@ -1779,6 +2257,10 @@ onMounted(fetchDetail);
 
 .detalle-form-modal__header--success {
     background: #28b04b;
+}
+
+.detalle-form-modal__header--primary {
+    background: #2f6fae;
 }
 
 .detalle-form-modal__header--muted {
@@ -1799,14 +2281,18 @@ onMounted(fetchDetail);
 
 .detalle-form-modal__body {
     padding: 1.4rem 1.5rem;
+    overflow-y: auto;
+    min-height: 0;
 }
 
 .detalle-form-modal__footer {
     display: flex;
     justify-content: flex-end;
     gap: 0.85rem;
-    padding: 1rem 1.5rem 1.3rem;
+    padding: 1rem 1.5rem 1.45rem;
     border-top: 1px solid #e2e8f0;
+    flex-shrink: 0;
+    background: #ffffff;
 }
 
 .detalle-form-section {
@@ -1816,8 +2302,13 @@ onMounted(fetchDetail);
 }
 
 .detalle-form-section--success {
-    border-color: #7ad49f;
+    border-color: #28b04b;
     background: #f6fffa;
+}
+
+.detalle-form-section--primary {
+    border-color: #9cc4f0;
+    background: #f5f9ff;
 }
 
 .detalle-form-section--muted {
@@ -1840,6 +2331,10 @@ onMounted(fetchDetail);
     background: #28b04b;
 }
 
+.detalle-form-section__icon--primary {
+    background: #2f6fae;
+}
+
 .detalle-form-section__icon--muted {
     background: #6b7280;
 }
@@ -1858,10 +2353,12 @@ onMounted(fetchDetail);
 .detalle-mini-action {
     border: none;
     border-radius: 0.85rem;
-    padding: 0.75rem 1rem;
+    padding: 0.8rem 1.05rem;
     color: #ffffff;
     font-weight: 700;
     cursor: pointer;
+    white-space: nowrap;
+    min-height: 2.75rem;
 }
 
 .detalle-mini-action--success {
@@ -1875,28 +2372,47 @@ onMounted(fetchDetail);
 .detalle-select-card {
     border: 1px solid #d7dde6;
     border-radius: 0.95rem;
-    padding: 0.95rem 1rem;
+    padding: 0.9rem 1rem;
     display: flex;
     align-items: flex-start;
     gap: 0.9rem;
     cursor: pointer;
+    background: #ffffff;
+}
+
+.detalle-select-card--loan {
+    border-color: #d5deea;
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.02);
+}
+
+.detalle-select-card--loan.detalle-select-card--selected {
+    border-color: #c8d5e4;
+    background: #ffffff;
 }
 
 .detalle-select-card__checkbox {
-    width: 1.3rem;
-    height: 1.3rem;
-    margin-top: 0.15rem;
+    width: 1.25rem;
+    height: 1.25rem;
+    margin-top: 0.05rem;
+    accent-color: #1d79d3;
 }
 
 .detalle-select-card__content {
     flex: 1;
+    min-width: 0;
+}
+
+.detalle-select-card__title {
+    margin-bottom: 0.45rem;
 }
 
 .detalle-select-card__meta {
     display: flex;
-    gap: 1rem;
+    gap: 1.15rem;
     flex-wrap: wrap;
     color: #64748b;
+    align-items: center;
+    font-size: 0.92rem;
 }
 
 .detalle-select-summary {
@@ -1904,6 +2420,45 @@ onMounted(fetchDetail);
     border-radius: 0.9rem;
     padding: 0.9rem 1rem;
     color: #334155;
+    background: #ffffff;
+}
+
+.detalle-loan-selection {
+    padding: 1rem;
+}
+
+.detalle-loan-selection__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.9rem;
+}
+
+.detalle-loan-selection__heading {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    min-width: 0;
+}
+
+.detalle-loan-selection__help {
+    margin: 0 0 1rem;
+    color: #0f5132;
+}
+
+.detalle-loan-selection__group-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #0f172a;
+    font-weight: 700;
+    margin-bottom: 0.85rem;
+}
+
+.detalle-loan-selection__group-title .pi {
+    color: #2f6fae;
+    font-size: 0.95rem;
 }
 
 .detalle-form-label {
@@ -1985,6 +2540,19 @@ onMounted(fetchDetail);
     .detalle-form-modal__header,
     .detalle-select-card {
         flex-direction: column;
+    }
+
+    .detalle-loan-selection__top,
+    .detalle-loan-selection__heading {
+        align-items: flex-start;
+    }
+
+    .detalle-loan-selection__top {
+        flex-direction: column;
+    }
+
+    .detalle-loan-selection__top .detalle-mini-action {
+        width: 100%;
     }
 
     .detalle-select-card__checkbox {

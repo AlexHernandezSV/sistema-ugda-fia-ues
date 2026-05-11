@@ -10,9 +10,13 @@ import Usuarios from './components/views/Usuarios.vue'; // <--- NUEVO IMPORT
 import SeriesDocumentales from './components/views/SeriesDocumentales.vue';
 import Solicitudes from './components/views/Solicitudes.vue';
 import NuevaSolicitud from './components/views/NuevaSolicitud.vue';
+import SolicitudPrestamo from './components/views/SolicitudPrestamo.vue';
+import PrestamosPendientesAutorizacion from './components/views/PrestamosPendientesAutorizacion.vue';
 import DetalleTransferencia from './components/views/DetalleTransferencia.vue';
 import DetallePrestamo from './components/views/DetallePrestamo.vue';
 import Reportes from './components/views/Reportes.vue';
+import Notificaciones from './components/views/Notificaciones.vue';
+import MiPerfil from './components/views/MiPerfil.vue';
 
 const normalizeValue = (value) => String(value ?? '').trim().toLowerCase();
 
@@ -72,11 +76,21 @@ const routes = [
         component: Reportes
     },
 
-    // Comodín: Si escriben cualquier cosa rara, redirigir al login
-    { 
-        path: '/:pathMatch(.*)*', 
-        redirect: '/login' 
+    {
+        path: '/notificaciones',
+        name: 'notificaciones',
+        meta: { title: 'Notificaciones' },
+        component: Notificaciones
     },
+
+    {
+        path: '/mi-perfil',
+        name: 'mi-perfil',
+        meta: { title: 'Mi Perfil' },
+        component: MiPerfil
+    },
+
+    // Comodín: Si escriben cualquier cosa rara, redirigir al login
     // ... dentro del array de routes ...
     { path: '/solicitudes',
         name: 'solicitudes',
@@ -88,6 +102,18 @@ const routes = [
         name: 'solicitudes-crear',
         meta: { title: 'Nueva Transferencia Documental', permission: 'endpoint.api.documentary-series.read' },
         component: NuevaSolicitud 
+    },
+
+    { path: '/solicitudes/prestamos/crear',
+        name: 'solicitudes-prestamos-crear',
+        meta: { title: 'Solicitud de Prestamo', allowedProfiles: ['Unidad Solicitante'] },
+        component: SolicitudPrestamo
+    },
+
+    { path: '/solicitudes/prestamos/pendientes',
+        name: 'solicitudes-prestamos-pendientes',
+        meta: { title: 'Prestamos Pendientes', allowedProfiles: ['Director/Jefe de Unidad'] },
+        component: PrestamosPendientesAutorizacion
     },
 
     { path: '/solicitudes/transferencias/:number/editar',
@@ -108,6 +134,10 @@ const routes = [
         component: DetallePrestamo
     },
 
+    {
+        path: '/:pathMatch(.*)*',
+        redirect: '/login'
+    },
 
 ];
 
@@ -122,7 +152,7 @@ router.beforeEach(async (to) => {
     }
 
     try {
-        const user = await getCurrentUser();
+        const user = await getCurrentUser({ force: true });
         const permissions = user?.permissions ?? [];
         const profileName = user?.role ?? user?.profile?.name ?? '';
         const hasPermission = to.meta?.permission ? permissions.includes(to.meta.permission) : false;

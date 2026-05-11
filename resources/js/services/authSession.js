@@ -37,6 +37,8 @@ const storeUser = (user) => {
     window.localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
 };
 
+const isExpiredSession = (error) => [401, 419].includes(error?.response?.status);
+
 export const getCachedUser = () => {
     if (cachedUser) {
         return cachedUser;
@@ -77,6 +79,13 @@ export const getCurrentUser = async ({ force = false } = {}) => {
             cachedUser = data;
             storeUser(data);
             return data;
+        })
+        .catch((error) => {
+            if (isExpiredSession(error)) {
+                clearCachedUser();
+            }
+
+            throw error;
         })
         .finally(() => {
             pendingUserRequest = null;

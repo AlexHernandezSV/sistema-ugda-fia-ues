@@ -8,10 +8,10 @@ use Throwable;
 
 class RequestCatalogController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         try {
-            return response()->json(RequestCatalog::listings());
+            return response()->json(RequestCatalog::listings($request->user()));
         } catch (Throwable $exception) {
             report($exception);
 
@@ -42,10 +42,10 @@ class RequestCatalogController extends Controller
         }
     }
 
-    public function showLoan(string $number)
+    public function showLoan(Request $request, string $number)
     {
         try {
-            $detail = RequestCatalog::loanDetail($number);
+            $detail = RequestCatalog::loanDetail($number, $request->user());
 
             if ($detail === null) {
                 return response()->json([
@@ -63,10 +63,10 @@ class RequestCatalogController extends Controller
         }
     }
 
-    public function downloadTransferDocument(string $number, string $code)
+    public function downloadTransferDocument(Request $request, string $number, string $code)
     {
         try {
-            $document = RequestCatalog::transferDocumentDownload($number, $code);
+            $document = RequestCatalog::transferDocumentDownload($number, $code, $request->user());
 
             if ($document === null) {
                 return response()->json([
