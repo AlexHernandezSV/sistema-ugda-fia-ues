@@ -90,7 +90,7 @@ class SystemNotificationService
             'type' => 'transfer_observed',
             'title' => 'Transferencia observada',
             'short_message' => 'Transferencia #' . $transfer->code . ' necesita correcciones.',
-            'body' => 'UGDA registro una observacion para la transferencia. Revise el detalle y reenvie la correccion cuando este lista. Observacion: ' . $message,
+            'body' => 'UGDA registro una observación para la transferencia. Revise el detalle y reenvie la corrección cuando este lista. Observación: ' . $message,
             'tone' => 'warning',
             'action_url' => '/solicitudes/transferencias/' . $transfer->code,
             'reference_type' => 'transfer',
@@ -104,13 +104,30 @@ class SystemNotificationService
         $this->transferCreated($transfer, $actor);
     }
 
+    public function transferCorrectionSubmitted(Transfer $transfer, User $actor): void
+    {
+        $transfer->loadMissing('unit');
+
+        $this->notifyUsers($this->ugdaUsers(), $actor, [
+            'type' => 'transfer_correction_submitted',
+            'title' => 'Transferencia subsanada',
+            'short_message' => 'Transferencia #' . $transfer->code . ' fue reenviada con correcciones.',
+            'body' => 'La unidad ' . ($transfer->unit?->name ?? 'solicitante') . ' corrigio observaciones de revision fisica. UGDA debe iniciar una nueva revision para validar los cambios.',
+            'tone' => 'info',
+            'action_url' => '/solicitudes/transferencias/' . $transfer->code,
+            'reference_type' => 'transfer',
+            'reference_id' => $transfer->id,
+            'reference_number' => $transfer->code,
+        ]);
+    }
+
     public function transferScheduled(Transfer $transfer, User $actor): void
     {
         $this->notifyUsers([$transfer->user_id], $actor, [
             'type' => 'transfer_scheduled',
             'title' => 'Transferencia agendada',
             'short_message' => 'Transferencia #' . $transfer->code . ' fue agendada.',
-            'body' => 'UGDA agendo la entrega fisica de la transferencia. Revise el detalle para preparar la documentacion correspondiente.',
+            'body' => 'UGDA agendo la entrega fisica de la transferencia. Revise el detalle para preparar la documentación correspondiente.',
             'tone' => 'info',
             'action_url' => '/solicitudes/transferencias/' . $transfer->code,
             'reference_type' => 'transfer',
@@ -140,7 +157,7 @@ class SystemNotificationService
             'type' => 'transfer_denied_by_ugda',
             'title' => 'Transferencia denegada por UGDA',
             'short_message' => 'Transferencia #' . $transfer->code . ' fue denegada.',
-            'body' => 'UGDA denego la transferencia documental. Motivo: ' . $reason,
+            'body' => 'UGDA denegó la transferencia documental. Motivo: ' . $reason,
             'tone' => 'danger',
             'action_url' => '/solicitudes/transferencias/' . $transfer->code,
             'reference_type' => 'transfer',
@@ -167,7 +184,7 @@ class SystemNotificationService
                 'type' => 'loan_observed',
                 'title' => 'Prestamo observado',
                 'short_message' => 'Prestamo #' . $loan->number . ' necesita revision.',
-                'body' => 'UGDA registro una observacion en la solicitud de prestamo: ' . $description,
+                'body' => 'UGDA registro una observación en la solicitud de prestamo: ' . $description,
                 'tone' => 'warning',
                 'action_url' => '/solicitudes/prestamos/' . $loan->number,
                 'reference_type' => 'loan',

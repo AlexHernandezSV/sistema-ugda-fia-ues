@@ -327,7 +327,7 @@ const decisionModalConfig = computed(() => {
                 icon: 'pi pi-eye',
                 title: 'Observar Solicitud',
                 subtitle: 'La solicitud regresara al solicitante para correcciones',
-                label: 'Observacion',
+                label: 'Observación',
                 placeholder: 'Describa que correcciones se requieren...',
                 confirmLabel: 'Observar',
                 cancelLabel: 'Cancelar',
@@ -339,7 +339,7 @@ const decisionModalConfig = computed(() => {
                 icon: 'pi pi-times-circle',
                 title: 'Denegar Prestamo',
                 subtitle: 'Debe proporcionar un motivo para denegar esta solicitud',
-                label: 'Motivo de denegacion',
+                label: 'Motivo de denegación',
                 placeholder: 'Describa el motivo por el cual se deniega este prestamo...',
                 confirmLabel: 'Denegar',
                 cancelLabel: 'Cancelar',
@@ -351,7 +351,7 @@ const decisionModalConfig = computed(() => {
                 icon: 'pi pi-times-circle',
                 title: 'Denegar Prestamo',
                 subtitle: 'Debe proporcionar un motivo para denegar esta solicitud',
-                label: 'Motivo de denegacion',
+                label: 'Motivo de denegación',
                 placeholder: 'Describa el motivo por el cual se deniega este prestamo...',
                 confirmLabel: 'Denegar',
                 cancelLabel: 'Cancelar',
@@ -374,7 +374,7 @@ const submitDecisionAction = async () => {
 
     if (config.required && comments === '') {
         showError(currentDecisionAction.value === 'observe'
-            ? 'Debe ingresar la observacion de la solicitud.'
+            ? 'Debe ingresar la observación de la solicitud.'
             : 'Debe ingresar el motivo de rechazo.');
         return;
     }
@@ -778,12 +778,13 @@ onMounted(fetchDetail);
         </div>
 
         <div v-if="isManageMode" class="detalle-panel">
-            <div class="detalle-panel__header">{{ loan.generalSectionTitle }}</div>
-            <div class="detalle-panel__body">
-                <div class="flex flex-column md:flex-row md:justify-content-end gap-2 mb-4">
+            <div class="detalle-panel__header detalle-panel__header--split">
+                <span>{{ loan.generalSectionTitle }}</span>
+                <div class="detalle-panel__chips">
                     <span v-for="chip in loan.chips" :key="chip.label" :class="toneClass(chip.tone)">{{ chip.label }}</span>
                 </div>
-
+            </div>
+            <div class="detalle-panel__body">
                 <div class="grid">
                     <div class="col-12 md:col-6">
                         <div class="flex flex-column gap-4">
@@ -965,7 +966,7 @@ onMounted(fetchDetail);
                                             <span :class="documentTypeClass(item.documentTypeColor)">{{ item.documentType }}</span>
                                         </div>
 
-                                        <div v-if="group.kind === 'additional' && item.note" class="detalle-document-card__note"><span class="font-semibold">Observacion:</span> {{ item.note }}</div>
+                                        <div v-if="group.kind === 'additional' && item.note" class="detalle-document-card__note"><span class="font-semibold">Observación:</span> {{ item.note }}</div>
                                     </div>
                                 </div>
                             </div>
@@ -1987,15 +1988,30 @@ onMounted(fetchDetail);
 }
 
 .detalle-panel__header {
-    background: #2f6f9f;
-    color: #ffffff;
-    font-size: 1.15rem;
-    font-weight: 700;
-    padding: 1rem 1.3rem;
+    background: #ffffff;
+    color: #0f172a;
+    font-size: 1.25rem;
+    font-weight: 600;
+    padding: 1.75rem 2rem 0;
+}
+
+.detalle-panel__header--split {
+    align-items: center;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+}
+
+.detalle-panel__chips {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.7rem;
+    justify-content: flex-end;
 }
 
 .detalle-panel__body {
-    padding: 1.4rem 1.5rem 1.5rem;
+    padding: 1.4rem 2rem 2rem;
 }
 
 .detalle-label {
@@ -2497,6 +2513,7 @@ onMounted(fetchDetail);
         font-size: 1.8rem;
     }
 
+    .detalle-panel__header,
     .detalle-panel__body,
     .detalle-banner,
     .detalle-form-modal__body,
@@ -2504,6 +2521,15 @@ onMounted(fetchDetail);
     .detalle-form-modal__header {
         padding-left: 1rem;
         padding-right: 1rem;
+    }
+
+    .detalle-panel__header--split {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .detalle-panel__chips {
+        justify-content: flex-start;
     }
 
     .detalle-action {

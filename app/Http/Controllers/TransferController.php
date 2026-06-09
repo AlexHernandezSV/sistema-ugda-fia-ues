@@ -59,7 +59,7 @@ class TransferController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'file' => ['required', 'file', 'mimes:xlsx', 'max:5120'],
-            'current_box_series' => ['nullable', 'string', 'max:255'],
+            'current_box_series' => ['nullable', 'string', 'max:2000'],
         ]);
 
         if ($validator->fails()) {
@@ -213,7 +213,7 @@ class TransferController extends Controller
 
         if ($validator->fails()) {
             return response()->json([
-                'message' => 'Debe proporcionar un motivo de denegacion.',
+                'message' => 'Debe proporcionar un motivo de denegación.',
                 'errors' => $validator->errors(),
             ], 422);
         }
@@ -263,7 +263,7 @@ class TransferController extends Controller
                     'title' => 'Denegado por jefatura',
                     'description' => $reason,
                     'context' => [
-                        'reason_label' => 'Motivo de denegacion:',
+                        'reason_label' => 'Motivo de denegación:',
                         'reason' => $reason,
                         'decision_scope' => 'unit',
                     ],
@@ -303,9 +303,9 @@ class TransferController extends Controller
                 ], 403);
             }
 
-            if ($transfer->workflowStatus?->code !== 'transfer_status_observed') {
+            if (!in_array($transfer->workflowStatus?->code, ['transfer_status_observed', 'transfer_status_physical_observed'], true)) {
                 return response()->json([
-                    'message' => 'Esta transferencia no esta en estado observado.',
+                    'message' => 'Esta transferencia no esta en un estado observable para correccion.',
                 ], 422);
             }
 
@@ -374,18 +374,19 @@ class TransferController extends Controller
             'unit_id' => ['required', 'exists:units,id'],
             'description' => ['nullable', 'string', 'max:1000'],
             'boxes' => ['required', 'array', 'min:1'],
-            'boxes.*.series' => ['required', 'string', 'max:255'],
+            'boxes.*.series' => ['required', 'string', 'max:2000'],
             'boxes.*.year_start' => ['required', 'integer', 'min:1900', 'max:2100'],
             'boxes.*.year_end' => ['required', 'integer', 'min:1900', 'max:2100'],
             'boxes.*.box_number' => ['required', 'integer', 'min:1'],
             'boxes.*.documents_list' => ['required', 'array', 'min:1'],
-            'boxes.*.documents_list.*.series' => ['nullable', 'string', 'max:255'],
+            'boxes.*.documents_list.*.series' => ['nullable', 'string', 'max:2000'],
             'boxes.*.documents_list.*.name' => ['required', 'string', 'max:255'],
             'boxes.*.documents_list.*.code' => ['nullable', 'string', 'max:120'],
             'boxes.*.documents_list.*.date' => ['nullable', 'string', 'max:50'],
             'boxes.*.documents_list.*.pages' => ['nullable', 'string', 'max:50'],
             'boxes.*.documents_list.*.support' => ['required', 'string', 'max:30'],
             'boxes.*.documents_list.*.file_name' => ['nullable', 'string', 'max:255'],
+            'correction_notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
         if ($validator->fails()) {
@@ -417,30 +418,44 @@ class TransferController extends Controller
                 ], 403);
             }
 
-            if ($transfer->workflowStatus?->code !== 'transfer_status_observed') {
+            $previousWorkflowCode = $transfer->workflowStatus?->code;
+
+            if (!in_array($previousWorkflowCode, ['transfer_status_observed', 'transfer_status_physical_observed'], true)) {
                 return response()->json([
-                    'message' => 'Esta transferencia no esta en estado observado.',
+                    'message' => 'Esta transferencia no esta en un estado observable para correccion.',
                 ], 422);
             }
 
-            DB::transaction(function () use ($request, $transfer) {
+            if ($previousWorkflowCode === 'transfer_status_physical_observed' && blank($request->input('correction_notes'))) {
+                return response()->json([
+                    'message' => 'Debe indicar como fueron atendidas las observaciones de revision fisica.',
+                ], 422);
+            }
+
+            DB::transaction(function () use ($request, $transfer, $previousWorkflowCode) {
                 $requestedAt = Carbon::parse($request->input('request_date'));
-                $authPending = RequestStatusCatalog::query()->where('code', 'transfer_auth_pending')->value('id');
-                $statusPending = RequestStatusCatalog::query()->where('code', 'transfer_status_pending')->value('id');
+                $correctionNotes = trim($request->string('correction_notes')->toString());
+                $isPhysicalCorrection = $previousWorkflowCode === 'transfer_status_physical_observed';
+                $authStatus = $isPhysicalCorrection
+                    ? RequestStatusCatalog::query()->where('code', 'transfer_auth_authorized')->value('id')
+                    : RequestStatusCatalog::query()->where('code', 'transfer_auth_pending')->value('id');
+                $workflowStatus = $isPhysicalCorrection
+                    ? RequestStatusCatalog::query()->where('code', 'transfer_status_subsanated')->value('id')
+                    : RequestStatusCatalog::query()->where('code', 'transfer_status_pending')->value('id');
 
                 $transfer->update([
                     'unit_id' => (int) $request->input('unit_id'),
                     'request_date' => $requestedAt->toDateString(),
                     'requested_at' => $requestedAt,
-                    'status' => 'Enviada',
-                    'authorization_status_id' => $authPending,
-                    'workflow_status_id' => $statusPending,
-                    'authorized_by_user_id' => null,
-                    'authorized_at' => null,
+                    'status' => $isPhysicalCorrection ? 'Aprobada' : 'Enviada',
+                    'authorization_status_id' => $authStatus,
+                    'workflow_status_id' => $workflowStatus,
+                    'authorized_by_user_id' => $isPhysicalCorrection ? $transfer->authorized_by_user_id : null,
+                    'authorized_at' => $isPhysicalCorrection ? $transfer->authorized_at : null,
                     'completed_by_user_id' => null,
                     'completed_at' => null,
-                    'scheduled_for' => null,
-                    'view_mode' => 'detail',
+                    'scheduled_for' => $isPhysicalCorrection ? $transfer->scheduled_for : null,
+                    'view_mode' => $isPhysicalCorrection ? 'review' : 'detail',
                     'box_display_state' => 'collapsed',
                     'show_print_card' => false,
                     'description' => $request->input('description'),
@@ -453,22 +468,31 @@ class TransferController extends Controller
                 $this->syncTransferBoxes($transfer, $request->input('boxes', []));
 
                 $transfer->events()->create([
-                    'status_catalog_id' => $statusPending,
+                    'status_catalog_id' => $workflowStatus,
                     'actor_user_id' => $request->user()->id,
                     'event_type' => 'status',
-                    'title' => 'Corregido y reenviado',
-                    'description' => 'Solicitud corregida por la unidad solicitante y reenviada a jefatura para autorizacion.',
+                    'title' => $isPhysicalCorrection ? 'Subsanada' : 'Corregido y reenviado',
+                    'description' => $isPhysicalCorrection
+                        ? 'Solicitud corregida por la unidad solicitante y reenviada a UGDA para validar las correcciones.'
+                        : 'Solicitud corregida por la unidad solicitante y reenviada a jefatura para autorizacion.',
                     'context' => [
-                        'previous_status' => 'transfer_status_observed',
+                        'previous_status' => $previousWorkflowCode,
+                        'correction_notes' => $correctionNotes !== '' ? $correctionNotes : null,
                     ],
                     'occurred_at' => now(),
                 ]);
             });
 
-            app(SystemNotificationService::class)->transferResubmitted($transfer->fresh(['unit']), $request->user());
+            if ($previousWorkflowCode === 'transfer_status_physical_observed') {
+                app(SystemNotificationService::class)->transferCorrectionSubmitted($transfer->fresh(['unit']), $request->user());
+            } else {
+                app(SystemNotificationService::class)->transferResubmitted($transfer->fresh(['unit']), $request->user());
+            }
 
             return response()->json([
-                'message' => 'Solicitud corregida y reenviada a jefatura.',
+                'message' => $previousWorkflowCode === 'transfer_status_physical_observed'
+                    ? 'Solicitud corregida y reenviada a UGDA para revision.'
+                    : 'Solicitud corregida y reenviada a jefatura.',
                 'number' => $transfer->code,
             ]);
         } catch (Throwable $exception) {
@@ -488,12 +512,12 @@ class TransferController extends Controller
             'unit_id' => ['required', 'exists:units,id'],
             'description' => ['nullable', 'string', 'max:1000'],
             'boxes' => ['required', 'array', 'min:1'],
-            'boxes.*.series' => ['required', 'string', 'max:255'],
+            'boxes.*.series' => ['required', 'string', 'max:2000'],
             'boxes.*.year_start' => ['required', 'integer', 'min:1900', 'max:2100'],
             'boxes.*.year_end' => ['required', 'integer', 'min:1900', 'max:2100'],
             'boxes.*.box_number' => ['required', 'integer', 'min:1'],
             'boxes.*.documents_list' => ['required', 'array', 'min:1'],
-            'boxes.*.documents_list.*.series' => ['nullable', 'string', 'max:255'],
+            'boxes.*.documents_list.*.series' => ['nullable', 'string', 'max:2000'],
             'boxes.*.documents_list.*.name' => ['required', 'string', 'max:255'],
             'boxes.*.documents_list.*.code' => ['nullable', 'string', 'max:120'],
             'boxes.*.documents_list.*.date' => ['nullable', 'string', 'max:50'],
@@ -841,17 +865,84 @@ class TransferController extends Controller
 
         $comments = trim($request->string('comments')->toString());
 
+        $scheduledFor = Carbon::parse($request->input('scheduled_for'));
+
         return $this->changeWorkflow($request, $number, 'transfer_status_scheduled', 'Agendado', $comments !== ''
             ? 'Transferencia autorizada para entrega fisica. Comentario: ' . $comments
             : 'Transferencia autorizada para entrega fisica', [
-            'scheduled_for' => Carbon::parse($request->input('scheduled_for'))->format('d/m/Y H:i'),
+            'scheduled_for' => $scheduledFor->format('d/m/Y') . ' a las ' . $scheduledFor->format('h:i a'),
             'comments' => $comments !== '' ? $comments : null,
         ], [
-            'scheduled_for' => Carbon::parse($request->input('scheduled_for')),
+            'scheduled_for' => $scheduledFor,
             'view_mode' => 'detail',
             'show_print_card' => true,
             'box_display_state' => 'first',
         ]);
+    }
+
+    public function startPhysicalReview(Request $request, string $number): JsonResponse
+    {
+        try {
+            $transfer = Transfer::query()
+                ->with(['workflowStatus'])
+                ->where('code', $number)
+                ->first();
+
+            if ($transfer === null) {
+                return response()->json(['message' => 'Transferencia no encontrada.'], 404);
+            }
+
+            if (!$this->canUgdaManage($request)) {
+                return response()->json([
+                    'message' => 'Solo UGDA puede iniciar la revision fisica.',
+                ], 403);
+            }
+
+            $currentWorkflow = $transfer->workflowStatus?->code;
+
+            if (!in_array($currentWorkflow, ['transfer_status_scheduled', 'transfer_status_subsanated'], true)) {
+                return response()->json([
+                    'message' => 'La transferencia debe estar agendada o subsanada para iniciar la revision fisica.',
+                ], 422);
+            }
+
+            $statusPhysicalReview = RequestStatusCatalog::query()
+                ->where('code', 'transfer_status_physical_review')
+                ->value('id');
+
+            DB::transaction(function () use ($request, $transfer, $statusPhysicalReview, $currentWorkflow) {
+                $transfer->update([
+                    'workflow_status_id' => $statusPhysicalReview,
+                    'view_mode' => 'review',
+                    'show_print_card' => false,
+                    'box_display_state' => 'first',
+                ]);
+
+                $transfer->events()->create([
+                    'status_catalog_id' => $statusPhysicalReview,
+                    'actor_user_id' => $request->user()->id,
+                    'event_type' => 'status',
+                    'title' => 'En Revision',
+                    'description' => $currentWorkflow === 'transfer_status_subsanated'
+                        ? 'UGDA inicio una nueva revision fisica para validar las correcciones de la unidad solicitante.'
+                        : 'UGDA inicio la revision fisica de la documentación.',
+                    'context' => [
+                        'previous_status' => $currentWorkflow,
+                    ],
+                    'occurred_at' => now(),
+                ]);
+            });
+
+            return response()->json([
+                'message' => 'Revision fisica iniciada correctamente.',
+            ]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudo iniciar la revision fisica.',
+            ], 500);
+        }
     }
 
     public function completeLocations(Request $request, string $number): JsonResponse
@@ -888,9 +979,9 @@ class TransferController extends Controller
                 ], 403);
             }
 
-            if ($transfer->workflowStatus?->code !== 'transfer_status_scheduled') {
+            if ($transfer->workflowStatus?->code !== 'transfer_status_physical_review') {
                 return response()->json([
-                    'message' => 'La transferencia debe estar agendada para asignar ubicaciones fisicas.',
+                    'message' => 'La transferencia debe estar en revision fisica para asignar ubicaciones.',
                 ], 422);
             }
 
@@ -910,12 +1001,7 @@ class TransferController extends Controller
             DB::transaction(function () use ($request, $transfer, $locations) {
                 foreach ($transfer->boxes as $box) {
                     $location = $locations->get($box->box_number);
-                    $locationCode = collect([
-                        $location['aisle'],
-                        $location['shelf'],
-                        $location['level'],
-                        $location['position'],
-                    ])->filter()->implode(' / ');
+                    $locationCode = $this->buildPhysicalLocationCode($location);
 
                     $box->update([
                         'location_code' => $locationCode,
@@ -965,7 +1051,116 @@ class TransferController extends Controller
 
     public function observe(Request $request, string $number): JsonResponse
     {
-        return $this->changeWorkflow($request, $number, 'transfer_status_observed', 'Observacion UGDA', $request->input('message', ''), null, [], 'observation', true);
+        return $this->changeWorkflow($request, $number, 'transfer_status_observed', 'Observación UGDA', $request->input('message', ''), null, [], 'observation', true);
+    }
+
+    public function observeReview(Request $request, string $number): JsonResponse
+    {
+        $message = trim($request->string('message')->toString());
+
+        if ($message === '') {
+            return response()->json([
+                'message' => 'Debe ingresar la observacion de la transferencia.',
+            ], 422);
+        }
+
+        try {
+            $transfer = Transfer::query()
+                ->with(['workflowStatus'])
+                ->where('code', $number)
+                ->first();
+
+            if ($transfer === null) {
+                return response()->json(['message' => 'Transferencia no encontrada.'], 404);
+            }
+
+            $workflowCode = $transfer->workflowStatus?->code;
+
+            if (in_array($workflowCode, ['transfer_status_physical_review', 'transfer_status_physical_observed'], true)) {
+                if (!$this->canUgdaManage($request)) {
+                    return response()->json([
+                        'message' => 'Solo UGDA puede registrar observaciones de revision fisica.',
+                    ], 403);
+                }
+
+                $statusObserved = RequestStatusCatalog::query()
+                    ->where('code', 'transfer_status_physical_observed')
+                    ->value('id');
+
+                DB::transaction(function () use ($request, $transfer, $workflowCode, $statusObserved, $message) {
+                    $transfer->update([
+                        'workflow_status_id' => $statusObserved,
+                        'view_mode' => 'detail',
+                        'show_print_card' => false,
+                        'box_display_state' => 'collapsed',
+                    ]);
+
+                    $transfer->events()->create([
+                        'status_catalog_id' => $statusObserved,
+                        'actor_user_id' => $request->user()->id,
+                        'event_type' => 'observation',
+                        'title' => 'Observacion de revision fisica',
+                        'description' => $message,
+                        'context' => [
+                            'observation_scope' => 'physical_review',
+                            'previous_status' => $workflowCode,
+                        ],
+                        'occurred_at' => now(),
+                    ]);
+                });
+
+                app(SystemNotificationService::class)->transferObserved($transfer->fresh(), $request->user(), $message);
+
+                return response()->json([
+                    'message' => 'Observacion de revision fisica registrada correctamente.',
+                ]);
+            }
+
+            return $this->changeWorkflow($request, $number, 'transfer_status_observed', 'Observacion UGDA', $message, null, [], 'observation', true);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudo registrar la observacion de la transferencia.',
+            ], 500);
+        }
+    }
+
+    private function buildPhysicalLocationCode(array $location): string
+    {
+        $aisle = $this->extractAisleCode((string) ($location['aisle'] ?? 'A'));
+        $shelf = $this->extractNumericLocationCode((string) ($location['shelf'] ?? '1'), true);
+        $level = $this->extractNumericLocationCode((string) ($location['level'] ?? '1'), false);
+        $position = $this->extractNumericLocationCode((string) ($location['position'] ?? '1'), true);
+
+        return $aisle . '-' . $shelf . '-' . $level . '-' . $position;
+    }
+
+    private function extractAisleCode(string $value): string
+    {
+        $normalized = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+        $text = strtoupper($normalized !== false ? $normalized : $value);
+
+        if (preg_match_all('/\b([A-Z])\b/', $text, $matches) && count($matches[1]) > 0) {
+            return end($matches[1]);
+        }
+
+        if (preg_match('/[A-Z]/', $text, $match)) {
+            return $match[0];
+        }
+
+        return 'A';
+    }
+
+    private function extractNumericLocationCode(string $value, bool $pad): string
+    {
+        if (preg_match('/\d+/', $value, $match)) {
+            $number = (int) $match[0];
+
+            return $pad ? str_pad((string) $number, 2, '0', STR_PAD_LEFT) : (string) $number;
+        }
+
+        return $pad ? '01' : '1';
     }
 
     public function deny(Request $request, string $number): JsonResponse
@@ -1047,8 +1242,17 @@ class TransferController extends Controller
                 default => null,
             };
 
+            $message = 'Estado de la transferencia actualizado correctamente.';
+
+            if ($statusCode === 'transfer_status_scheduled') {
+                $scheduledFor = $context['scheduled_for'] ?? null;
+                $message = 'La transferencia #' . $transfer->code . ' ha sido agendada'
+                    . ($scheduledFor ? ' para el ' . $scheduledFor : '')
+                    . '.';
+            }
+
             return response()->json([
-                'message' => 'Estado de la transferencia actualizado correctamente.',
+                'message' => $message,
             ]);
         } catch (Throwable $exception) {
             report($exception);

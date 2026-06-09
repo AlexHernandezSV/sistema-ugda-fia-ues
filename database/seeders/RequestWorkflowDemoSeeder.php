@@ -206,8 +206,8 @@ class RequestWorkflowDemoSeeder extends Seeder
                 'show_print_card' => false,
                 'description' => 'Transferencia documental correspondiente a expedientes administrativos y academicos del periodo 2024-2025.',
                 'boxes' => [
-                    $this->transferBoxPayload('001', 'Caja #001 -', '01/01/2024 - 31/12/2024', null, null, null, 'Documentacion administrativa', 2024, 2024, [
-                        $this->transferDocPayload('DOC-001', 'Documentacion administrativa', 'Administracion', 'Fisico', '2024', '45 pags', null),
+                    $this->transferBoxPayload('001', 'Caja #001 -', '01/01/2024 - 31/12/2024', null, null, null, 'Documentación administrativa', 2024, 2024, [
+                        $this->transferDocPayload('DOC-001', 'Documentación administrativa', 'Administracion', 'Fisico', '2024', '45 pags', null),
                     ]),
                     $this->transferBoxPayload('002', 'Caja #002 -', '01/01/2024 - 30/06/2024', null, null, null, 'Correspondencia institucional', 2024, 2024, [
                         $this->transferDocPayload('DOC-002', 'Correspondencia institucional', 'Correspondencia', 'Fisico', '2024', '38 pags', null),
@@ -229,14 +229,14 @@ class RequestWorkflowDemoSeeder extends Seeder
                 'show_print_card' => false,
                 'description' => 'Transferencia documental correspondiente a expedientes administrativos y academicos del periodo 2024-2025.',
                 'boxes' => [
-                    $this->transferBoxPayload('001', 'Caja #001 -', '01/01/2024 - 31/12/2024', null, null, null, 'Documentacion administrativa', 2024, 2024, [
-                        $this->transferDocPayload('DOC-003', 'Documentacion administrativa', 'Administracion', 'Fisico', '2024', '28 pags', null),
+                    $this->transferBoxPayload('001', 'Caja #001 -', '01/01/2024 - 31/12/2024', null, null, null, 'Documentación administrativa', 2024, 2024, [
+                        $this->transferDocPayload('DOC-003', 'Documentación administrativa', 'Administracion', 'Fisico', '2024', '28 pags', null),
                     ]),
                 ],
                 'events' => [
-                    $this->eventPayload('decision', 'Denegado', 'Solicitud denegada. Motivo: La documentacion presentada no cumple con los requisitos minimos establecidos en el reglamento de archivo institucional.', '11/04/2025 09:00', 'jose_antonio_mendez', 'transfer_auth_denied', [
-                        'reason_label' => 'Motivo de denegacion:',
-                        'reason' => 'La documentacion presentada no cumple con los requisitos minimos establecidos en el reglamento de archivo institucional.',
+                    $this->eventPayload('decision', 'Denegado', 'Solicitud denegada. Motivo: La documentación presentada no cumple con los requisitos minimos establecidos en el reglamento de archivo institucional.', '11/04/2025 09:00', 'jose_antonio_mendez', 'transfer_auth_denied', [
+                        'reason_label' => 'Motivo de denegación:',
+                        'reason' => 'La documentación presentada no cumple con los requisitos minimos establecidos en el reglamento de archivo institucional.',
                         'decision_scope' => 'unit',
                     ]),
                     $this->eventPayload('status', 'Creado', 'Solicitud de transferencia creada', '10/04/2025 15:30', 'patricia_morales', null),
@@ -272,8 +272,8 @@ class RequestWorkflowDemoSeeder extends Seeder
                     ]),
                 ],
                 'events' => [
-                    $this->eventPayload('observation', 'Observacion UGDA', 'Se requiere completar el inventario de documentos. Faltan las fichas descriptivas de las series documentales y el formato de transferencia no esta firmado por el jefe de la unidad productora.', '05/02/2026 14:20', 'carlos_rodriguez_ugda'),
-                    $this->eventPayload('observation', 'Observacion UGDA', 'Actualizacion: Se necesita adjuntar la resolucion de eliminacion de documentos segun normativa vigente. Los documentos marcados como "Para eliminar" deben contar con la aprobacion correspondiente.', '08/02/2026 09:15', 'carlos_rodriguez_ugda'),
+                    $this->eventPayload('observation', 'Observación UGDA', 'Se requiere completar el inventario de documentos. Faltan las fichas descriptivas de las series documentales y el formato de transferencia no esta firmado por el jefe de la unidad productora.', '05/02/2026 14:20', 'carlos_rodriguez_ugda'),
+                    $this->eventPayload('observation', 'Observación UGDA', 'Actualizacion: Se necesita adjuntar la resolucion de eliminacion de documentos segun normativa vigente. Los documentos marcados como "Para eliminar" deben contar con la aprobacion correspondiente.', '08/02/2026 09:15', 'carlos_rodriguez_ugda'),
                     $this->eventPayload('status', 'Autorizado', 'Solicitud autorizada por director de unidad.', '13/04/2025 10:00', 'francisco_alarcon', 'transfer_auth_authorized'),
                     $this->eventPayload('status', 'Creado', 'Solicitud creada y enviada por la unidad productora.', '12/04/2025 16:00', 'fernando_garcia', null),
                 ],
@@ -292,8 +292,8 @@ class RequestWorkflowDemoSeeder extends Seeder
                 'show_print_card' => false,
                 'description' => 'Transferencia documental correspondiente a expedientes administrativos y academicos del periodo 2024-2025.',
                 'boxes' => [
-                    $this->transferBoxPayload('001', 'Caja #001 -', '01/01/2024 - 31/12/2024', null, null, null, 'Documentacion administrativa', 2024, 2024, [
-                        $this->transferDocPayload('DOC-004', 'Documentacion administrativa', 'Administracion', 'Fisico', '2024', '32 pags', null),
+                    $this->transferBoxPayload('001', 'Caja #001 -', '01/01/2024 - 31/12/2024', null, null, null, 'Documentación administrativa', 2024, 2024, [
+                        $this->transferDocPayload('DOC-004', 'Documentación administrativa', 'Administracion', 'Fisico', '2024', '32 pags', null),
                     ]),
                 ],
                 'events' => [
@@ -422,7 +422,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 'authorized_at' => '16/02/2026 10:00',
                 'view_mode' => 'manage',
                 'documents' => [
-                    $this->loanDocPayload('system', 'Documentos del Sistema (1)', 'Contratos y Convenios 2021-2023', 'Documentacion Administrativa', 'CAJA-028', '2021-2023', null, 'Copia', 'info', null, null),
+                    $this->loanDocPayload('system', 'Documentos del Sistema (1)', 'Contratos y Convenios 2021-2023', 'Documentación Administrativa', 'CAJA-028', '2021-2023', null, 'Copia', 'info', null, null),
                     $this->loanDocPayload('additional', 'Documentos Adicionales (1)', 'Expedientes de Graduacion 2015', null, null, '2015', 'Escuela de Ingenieria Electrica', 'Original', 'warning', '3 cajas', 'Se transfirieron el 10 de marzo de 2022'),
                 ],
                 'events' => [
@@ -443,7 +443,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 ],
                 'events' => [
                     $this->loanEventPayload('decision', 'Denegado por Jefe/Director', 'Solicitud denegada por Arq. Ana Maria Hernandez. Motivo: Los documentos solicitados estan en proceso de revision legal y no pueden ser prestados en este momento.', '15/02/2026 09:30', 'ana_maria_hernandez', 'loan_auth_denied', [
-                        'reason_label' => 'Motivo de denegacion:',
+                        'reason_label' => 'Motivo de denegación:',
                         'reason' => 'Los documentos solicitados estan en proceso de revision legal y no pueden ser prestados en este momento.',
                         'decision_scope' => 'unit',
                     ]),
@@ -464,7 +464,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                     $this->loanDocPayload('system', 'Documentos del Sistema (1)', 'Proyectos de Investigacion 2020', 'Investigacion y Desarrollo', 'CAJA-042', '2020', null, 'Copia', 'info', null, null),
                 ],
                 'events' => [
-                    $this->loanEventPayload('observation', 'Observacion UGDA', 'Se requiere especificar con mayor precision el ano de los documentos solicitados. Algunos expedientes abarcan multiples anos.', '15/02/2026 10:30', 'carlos_rodriguez_ugda'),
+                    $this->loanEventPayload('observation', 'Observación UGDA', 'Se requiere especificar con mayor precision el ano de los documentos solicitados. Algunos expedientes abarcan multiples anos.', '15/02/2026 10:30', 'carlos_rodriguez_ugda'),
                     $this->loanEventPayload('status', 'Autorizado Jefe/Director', 'Solicitud autorizada por Ing. Maria Elena Guardado', '14/02/2026 08:00', 'maria_elena_guardado', 'loan_auth_authorized'),
                     $this->loanEventPayload('status', 'Creado', 'Solicitud de prestamo creada por Ing. Roberto Antonio Flores', '13/02/2026 16:45', 'roberto_flores', null),
                 ],
@@ -565,7 +565,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 'search_comments' => 'Todos los documentos solicitados fueron encontrados.',
                 'view_mode' => 'manage',
                 'documents' => [
-                    $this->loanDocPayload('system', 'Documentos del Sistema (1)', 'Contratos y Convenios 2021-2023', 'Documentacion Administrativa', 'CAJA-028', '2021-2023', null, 'Original', 'warning', null, null, true, true),
+                    $this->loanDocPayload('system', 'Documentos del Sistema (1)', 'Contratos y Convenios 2021-2023', 'Documentación Administrativa', 'CAJA-028', '2021-2023', null, 'Original', 'warning', null, null, true, true),
                 ],
                 'events' => [
                     $this->loanEventPayload('status', 'Prestado', 'Documentos entregados a Arq. Luis Fernando Ramirez. Fecha de devolucion: 15/02/2026', '12/02/2026 11:15', 'carlos_rodriguez_ugda', 'loan_status_loaned'),
@@ -642,7 +642,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 'authorized_at' => '04/02/2026 08:30',
                 'view_mode' => 'detail',
                 'documents' => [
-                    $this->loanDocPayload('additional', 'Documentos Adicionales (1)', 'Documentos historicos de sistemas', null, null, '2005-2010', 'Escuela de Ingenieria de Sistemas', 'Original', 'warning', '4 cajas', 'Documentacion historica del desarrollo de sistemas institucionales'),
+                    $this->loanDocPayload('additional', 'Documentos Adicionales (1)', 'Documentos historicos de sistemas', null, null, '2005-2010', 'Escuela de Ingenieria de Sistemas', 'Original', 'warning', '4 cajas', 'Documentación historica del desarrollo de sistemas institucionales'),
                 ],
                 'events' => [
                     $this->loanEventPayload('status', 'Autorizado Jefe/Director', 'Solicitud autorizada por Ing. Maria Elena Guardado', '04/02/2026 08:30', 'maria_elena_guardado', 'loan_auth_authorized'),
@@ -687,7 +687,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 ],
                 'events' => [
                     $this->loanEventPayload('decision', 'Denegado por Jefe/Director', 'Solicitud denegada por Dr. Francisco Armando Alarcon Sandoval. Motivo: Los documentos solicitados estan en proceso de revision legal y no pueden ser prestados en este momento.', '18/04/2025 16:30', 'francisco_alarcon', 'loan_auth_denied', [
-                        'reason_label' => 'Motivo de denegacion:',
+                        'reason_label' => 'Motivo de denegación:',
                         'reason' => 'Los documentos solicitados estan en proceso de revision legal y no pueden ser prestados en este momento.',
                         'decision_scope' => 'unit',
                     ]),

@@ -122,6 +122,12 @@ const routes = [
         component: NuevaSolicitud
     },
 
+    { path: '/solicitudes/transferencias/:number/proceso',
+        name: 'solicitudes-transferencia-proceso',
+        meta: { title: 'Proceso de Transferencia', allowedProfiles: ['Usuario UGDA'] },
+        component: DetalleTransferencia
+    },
+
     { path: '/solicitudes/transferencias/:number',
         name: 'solicitudes-transferencia-detalle',
         meta: { title: 'Detalle de Transferencia' },

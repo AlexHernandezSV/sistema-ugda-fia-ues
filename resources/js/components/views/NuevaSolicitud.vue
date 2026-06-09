@@ -18,7 +18,7 @@ const headerForm = ref({
 });
 
 const batchForm = ref({
-    series: null,
+    series: [],
     year_start: null,
     year_end: null,
     quantity: '',
@@ -26,6 +26,7 @@ const batchForm = ref({
 
 const boxesList = ref([]);
 const editObservations = ref([]);
+const correctionNotes = ref('');
 const seriesOptions = ref([]);
 const unitsList = ref([]);
 const supportOptions = ref(['Físico', 'Digital', 'Mixto']);
@@ -34,6 +35,7 @@ const isSubmitting = ref(false);
 
 const isModalOpen = ref(false);
 const isImportModalOpen = ref(false);
+const isConfirmModalOpen = ref(false);
 const currentBoxIndex = ref(null);
 const currentBoxData = ref({});
 const tempDocuments = ref([]);
@@ -54,7 +56,15 @@ const totalBoxes = computed(() => boxesList.value.length);
 const isEditMode = computed(() => route.name === 'solicitudes-transferencia-editar');
 const editNumber = computed(() => route.params.number);
 const pageTitle = computed(() => isEditMode.value ? 'Editar Solicitud de Transferencia' : 'Solicitud de Transferencia');
-const submitLabel = computed(() => isEditMode.value ? 'Guardar correcciones' : 'Enviar solicitud');
+const submitLabel = computed(() => isEditMode.value ? 'Reenviar solicitud corregida' : 'Enviar solicitud');
+const confirmTitle = computed(() => isEditMode.value ? 'Confirmar Reenvío de Solicitud' : 'Confirmar Envio de Solicitud');
+const confirmSubtitle = computed(() => isEditMode.value
+    ? 'Revise el resumen antes de reenviar la transferencia'
+    : 'Revise el resumen antes de enviar la transferencia');
+const confirmButtonLabel = computed(() => isEditMode.value ? 'Confirmar y Reenviar' : 'Confirmar y Enviar');
+const selectedUnitLabel = computed(() => unitsList.value.find((unit) => unit.value === headerForm.value.unit_id)?.label ?? 'No indicada');
+const totalDocuments = computed(() => boxesList.value.reduce((total, box) => total + Number(box.documents_count || 0), 0));
+const totalSeries = computed(() => new Set(boxesList.value.flatMap((box) => getBoxSeriesLabels(box))).size);
 
 const requiresDigitalFileInput = computed(() => docForm.value.support === 'Digital' || docForm.value.support === 'Mixto');
 
@@ -98,6 +108,17 @@ const getYearString = (value) => {
 
     return year;
 };
+
+const splitSeriesLabel = (value) => String(value ?? '')
+    .split(';')
+    .map((series) => series.trim())
+    .filter(Boolean);
+
+const getBoxSeriesLabels = (box) => (
+    Array.isArray(box.series_list) && box.series_list.length > 0
+        ? box.series_list
+        : splitSeriesLabel(box.series)
+);
 
 const resetDocumentForm = (defaultSeries = null) => {
     docForm.value = {
@@ -168,7 +189,10 @@ onMounted(async () => {
             headerForm.value.user_name = editTransfer.responsible || headerForm.value.user_name;
             headerForm.value.description = editTransfer.description ?? '';
             boxesList.value = Array.isArray(transferRes.data.boxes)
-                ? transferRes.data.boxes
+                ? transferRes.data.boxes.map((box) => ({
+                    ...box,
+                    series_list: getBoxSeriesLabels(box),
+                }))
                 : [];
             editObservations.value = Array.isArray(transferRes.data.observations)
                 ? transferRes.data.observations
@@ -188,12 +212,14 @@ onMounted(async () => {
 });
 
 const addBatch = () => {
-    const selectedSeries = batchForm.value.series;
+    const selectedSeries = Array.isArray(batchForm.value.series)
+        ? batchForm.value.series.filter(Boolean)
+        : [];
     const startYear = getYearString(batchForm.value.year_start);
     const endYear = getYearString(batchForm.value.year_end);
     const quantity = Number(batchForm.value.quantity);
 
-    if (!selectedSeries || !startYear || !endYear || !quantity) {
+    if (selectedSeries.length === 0 || !startYear || !endYear || !quantity) {
         showError('Complete los datos del detalle de documentos.');
         return;
     }
@@ -217,20 +243,23 @@ const addBatch = () => {
         ? Math.max(...boxesList.value.map((box) => Number(box.box_number))) + 1
         : 1;
 
-    for (let index = 0; index < quantity; index += 1) {
-        boxesList.value.push({
-            id_temp: `${Date.now()}-${index}`,
-            series: selectedSeries.label,
-            year_start: startYear,
-            year_end: endYear,
-            box_number: nextBoxNumber + index,
-            documents_count: 0,
-            documents_list: [],
-        });
-    }
+    const selectedSeriesLabel = selectedSeries.map((series) => series.label).join('; ');
+    const selectedSeriesLabels = selectedSeries.map((series) => series.label);
+    const newBoxes = Array.from({ length: quantity }, (_, index) => ({
+        id_temp: `${Date.now()}-${index}`,
+        series: selectedSeriesLabel,
+        series_list: selectedSeriesLabels,
+        year_start: startYear,
+        year_end: endYear,
+        box_number: nextBoxNumber + index,
+        documents_count: 0,
+        documents_list: [],
+    }));
+
+    boxesList.value.push(...newBoxes);
 
     batchForm.value = {
-        series: null,
+        series: [],
         year_start: null,
         year_end: null,
         quantity: '',
@@ -239,7 +268,7 @@ const addBatch = () => {
     toast.add({
         severity: 'success',
         summary: 'Cajas agregadas',
-        detail: `${quantity} caja(s) agregada(s) a la solicitud.`,
+        detail: `${newBoxes.length} caja(s) agregada(s) a la solicitud.`,
         life: 2600,
     });
 };
@@ -252,7 +281,8 @@ const openDocsModal = (index) => {
     currentBoxIndex.value = index;
     currentBoxData.value = boxesList.value[index];
     tempDocuments.value = JSON.parse(JSON.stringify(boxesList.value[index].documents_list || []));
-    const defaultSeries = seriesOptions.value.find((option) => option.label === currentBoxData.value.series) ?? null;
+    const firstSeries = getBoxSeriesLabels(currentBoxData.value)[0] ?? currentBoxData.value.series;
+    const defaultSeries = seriesOptions.value.find((option) => option.label === firstSeries) ?? null;
     resetDocumentForm(defaultSeries);
     isModalOpen.value = true;
 };
@@ -427,20 +457,41 @@ const saveBoxChanges = () => {
     isModalOpen.value = false;
 };
 
-const submitTransfer = async () => {
+const validateTransferDraft = () => {
     if (!headerForm.value.code || !formatDateForApi(headerForm.value.request_date) || !headerForm.value.unit_id) {
         showError('Complete los datos generales de la solicitud.');
-        return;
+        return false;
     }
 
     if (boxesList.value.length === 0) {
         showError('Debe agregar al menos una caja a la solicitud.');
-        return;
+        return false;
+    }
+
+    if (isEditMode.value && String(correctionNotes.value ?? '').trim() === '') {
+        showError('Debe indicar como fueron atendidas las observaciones de revision fisica.');
+        return false;
     }
 
     const emptyBoxes = boxesList.value.filter((box) => box.documents_count === 0);
     if (emptyBoxes.length > 0) {
         showError('Cada caja debe tener al menos un documento en su inventario.');
+        return false;
+    }
+
+    return true;
+};
+
+const openSubmitConfirmation = () => {
+    if (!validateTransferDraft()) {
+        return;
+    }
+
+    isConfirmModalOpen.value = true;
+};
+
+const submitTransfer = async () => {
+    if (!validateTransferDraft()) {
         return;
     }
 
@@ -453,6 +504,7 @@ const submitTransfer = async () => {
             unit_id: headerForm.value.unit_id,
             description: String(headerForm.value.description ?? '').trim() || null,
             boxes: boxesList.value,
+            correction_notes: isEditMode.value ? String(correctionNotes.value ?? '').trim() : null,
         };
 
         const { data } = isEditMode.value
@@ -461,12 +513,14 @@ const submitTransfer = async () => {
 
         toast.add({
             severity: 'success',
-            summary: isEditMode.value ? 'Solicitud corregida' : 'Solicitud enviada',
+            summary: isEditMode.value ? 'Solicitud corregida exitosamente' : 'Solicitud creada exitosamente',
             detail: isEditMode.value
-                ? 'La solicitud fue reenviada con autorizacion Pendiente y estado Pendiente.'
-                : 'La solicitud fue enviada con autorizacion Pendiente y estado Pendiente.',
+                ? `La solicitud #${data.number} ha sido corregida y reenviada a UGDA para revision.`
+                : `La solicitud #${data.number} ha sido creada y enviada para autorizacion.`,
             life: 3200,
         });
+
+        isConfirmModalOpen.value = false;
 
         router.push({
             path: `/solicitudes/transferencias/${data.number}`,
@@ -510,6 +564,17 @@ const goBack = () => {
                 </div>
                 <p>{{ item.message }}</p>
             </article>
+
+            <div class="transfer-request__correction-notes">
+                <label for="correctionNotes">Aclaraciones a la UGDA <span>*</span></label>
+                <p>Indique como fueron atendidas las observaciones de revisión física. Este texto será visible para UGDA al validar las correcciones.</p>
+                <textarea
+                    id="correctionNotes"
+                    v-model="correctionNotes"
+                    rows="5"
+                    placeholder="Describa las correcciones realizadas y aclaraciones pertinentes para UGDA..."
+                ></textarea>
+            </div>
         </section>
 
         <div class="transfer-request__card">
@@ -577,15 +642,18 @@ const goBack = () => {
 
                 <div class="transfer-request__detail-grid">
                     <div class="transfer-request__field">
-                        <label for="transferSeries">Serie / Subserie <span>*</span></label>
-                        <Dropdown
+                        <label for="transferSeries">Series / Subseries <span>*</span></label>
+                        <MultiSelect
                             id="transferSeries"
                             v-model="batchForm.series"
                             :options="seriesOptions"
                             :disabled="isLoading"
                             optionLabel="label"
-                            placeholder="Seleccionar"
+                            placeholder="Seleccionar series o subseries"
+                            display="chip"
                             filter
+                            :maxSelectedLabels="4"
+                            selectedItemsLabel="{0} series seleccionadas"
                             fluid
                         />
                     </div>
@@ -648,29 +716,45 @@ const goBack = () => {
                 </div>
 
                 <DataTable v-else :value="boxesList" class="transfer-request__table" size="small" stripedRows>
-                    <Column field="box_number" header="Caja" style="width: 6rem">
-                        <template #body="{ data }">#{{ String(data.box_number).padStart(3, '0') }}</template>
+                    <Column header="N°" style="width: 4rem">
+                        <template #body="{ index }">{{ index + 1 }}</template>
                     </Column>
-                    <Column field="series" header="Serie / Subserie"></Column>
-                    <Column header="Periodo" style="width: 12rem">
-                        <template #body="{ data }">{{ data.year_start }} - {{ data.year_end }}</template>
-                    </Column>
-                    <Column header="Inventario" style="width: 12rem">
-                        <template #body="{ data, index }">
-                            <Button
-                                :label="`${data.documents_count} documento(s)`"
-                                :icon="data.documents_count > 0 ? 'pi pi-check-circle' : 'pi pi-list'"
-                                :severity="data.documents_count > 0 ? 'success' : 'secondary'"
-                                outlined
-                                size="small"
-                                class="w-full"
-                                @click="openDocsModal(index)"
-                            />
+                    <Column header="Serie / Subserie">
+                        <template #body="{ data }">
+                            <div class="transfer-request__series-chips">
+                                <span
+                                    v-for="series in getBoxSeriesLabels(data)"
+                                    :key="series"
+                                    class="transfer-request__series-chip"
+                                >
+                                    {{ series }}
+                                </span>
+                            </div>
                         </template>
                     </Column>
-                    <Column header="" style="width: 4rem">
+                    <Column field="year_start" header="Fecha inicial" style="width: 9rem"></Column>
+                    <Column field="year_end" header="Fecha final" style="width: 9rem"></Column>
+                    <Column header="N° de caja" style="width: 8rem">
+                        <template #body="{ data }">{{ data.box_number }}</template>
+                    </Column>
+                    <Column header="Documentos" style="width: 10rem">
+                        <template #body="{ data }">
+                            <span class="transfer-request__docs-chip">{{ data.documents_count }} doc(s)</span>
+                        </template>
+                    </Column>
+                    <Column header="Acciones" style="width: 9rem">
                         <template #body="{ index }">
-                            <Button icon="pi pi-trash" text rounded severity="danger" aria-label="Eliminar caja" @click="removeBox(index)" />
+                            <div class="transfer-request__row-actions">
+                            <Button
+                                icon="pi pi-cog"
+                                text
+                                rounded
+                                size="small"
+                                aria-label="Administrar documentos"
+                                @click="openDocsModal(index)"
+                            />
+                            <Button icon="pi pi-trash" text rounded severity="danger" size="small" aria-label="Eliminar caja" @click="removeBox(index)" />
+                            </div>
                         </template>
                     </Column>
                 </DataTable>
@@ -681,12 +765,113 @@ const goBack = () => {
                         class="transfer-request__submit"
                         :loading="isSubmitting"
                         :disabled="isLoading"
-                        @click="submitTransfer"
+                        @click="openSubmitConfirmation"
                     />
                     <Button label="Cancelar" outlined class="transfer-request__cancel" :disabled="isSubmitting" @click="goBack" />
                 </div>
             </div>
         </div>
+
+        <Dialog
+            v-model:visible="isConfirmModalOpen"
+            modal
+            :draggable="false"
+            class="transfer-confirm-dialog"
+            :style="{ width: 'min(768px, 94vw)' }"
+        >
+            <template #header>
+                <div class="transfer-confirm__header">
+                    <h2>{{ confirmTitle }}</h2>
+                    <p>{{ confirmSubtitle }}</p>
+                </div>
+            </template>
+
+            <div class="transfer-confirm">
+                <section class="transfer-confirm__notice">
+                    <i class="pi pi-info-circle"></i>
+                    <span>
+                        {{ isEditMode ? 'Al confirmar, esta solicitud corregida será reenviada a UGDA para su revisión.' : 'Al confirmar, esta solicitud sera enviada al Director/Jefe de la unidad para su autorizacion.' }}
+                    </span>
+                </section>
+
+                <section v-if="isEditMode" class="transfer-confirm__correction">
+                    <strong>Aclaraciones a la UGDA:</strong>
+                    <p>{{ correctionNotes }}</p>
+                </section>
+
+                <section class="transfer-confirm__card">
+                    <h3>Datos Generales</h3>
+                    <div class="transfer-confirm__divider"></div>
+                    <div class="transfer-confirm__general-grid">
+                        <div>
+                            <span>Unidad Productora</span>
+                            <strong>{{ selectedUnitLabel }}</strong>
+                        </div>
+                        <div>
+                            <span>Responsable</span>
+                            <strong>{{ headerForm.user_name || 'No indicado' }}</strong>
+                        </div>
+                        <div>
+                            <span>Fecha de solicitud</span>
+                            <strong>{{ formatDateForApi(headerForm.request_date) }}</strong>
+                        </div>
+                        <div>
+                            <span>N° de transferencia</span>
+                            <strong>{{ headerForm.code }}</strong>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="transfer-confirm__card">
+                    <h3>Resumen de Transferencia</h3>
+                    <div class="transfer-confirm__divider"></div>
+
+                    <div class="transfer-confirm__metrics">
+                        <div>
+                            <span>Total de Cajas</span>
+                            <strong>{{ totalBoxes }}</strong>
+                        </div>
+                        <div>
+                            <span>Total de Documentos</span>
+                            <strong>{{ totalDocuments }}</strong>
+                        </div>
+                        <div>
+                            <span>Series Documentales</span>
+                            <strong>{{ totalSeries }}</strong>
+                        </div>
+                    </div>
+
+                    <div class="transfer-confirm__boxes">
+                        <article v-for="box in boxesList" :key="box.id_temp" class="transfer-confirm__box">
+                            <div class="transfer-confirm__box-main">
+                                <span class="transfer-confirm__box-badge">Caja #{{ String(box.box_number).padStart(3, '0') }}</span>
+                                <strong class="transfer-confirm__box-series-text">
+                                    {{ getBoxSeriesLabels(box).join('; ') }}
+                                </strong>
+                                <p>Periodo: <strong>{{ box.year_start }} - {{ box.year_end }}</strong></p>
+                            </div>
+                            <strong class="transfer-confirm__box-docs">{{ box.documents_count }} documento(s)</strong>
+                        </article>
+                    </div>
+                </section>
+            </div>
+
+            <template #footer>
+                <Button
+                    label="Cancelar"
+                    outlined
+                    class="transfer-docs__cancel"
+                    :disabled="isSubmitting"
+                    @click="isConfirmModalOpen = false"
+                />
+                <Button
+                    :label="confirmButtonLabel"
+                    class="transfer-confirm__save"
+                    :loading="isSubmitting"
+                    @click="submitTransfer"
+                />
+            </template>
+        </Dialog>
 
         <Dialog v-model:visible="isModalOpen" modal :draggable="false" class="transfer-docs-dialog" :style="{ width: 'min(1024px, 94vw)' }">
             <template #header>
@@ -1018,6 +1203,42 @@ const goBack = () => {
     margin-bottom: 0.75rem;
 }
 
+.transfer-request__correction-notes {
+    background: #ffffff;
+    border: 1px solid #f3d27a;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.transfer-request__correction-notes label {
+    color: #7a4b00;
+    display: block;
+    font-weight: 800;
+    margin-bottom: 0.55rem;
+}
+
+.transfer-request__correction-notes label span {
+    color: #ef4444;
+}
+
+.transfer-request__correction-notes p {
+    color: #7a4b00;
+    font-size: 0.88rem;
+    margin-bottom: 0.8rem;
+}
+
+.transfer-request__correction-notes textarea {
+    border: 1px solid #f6ad3c;
+    border-radius: 8px;
+    color: #111827;
+    font: inherit;
+    min-height: 7rem;
+    outline: none;
+    padding: 1rem;
+    resize: vertical;
+    width: 100%;
+}
+
 .transfer-request__card {
     background: #ffffff;
     border-radius: 8px;
@@ -1074,11 +1295,30 @@ const goBack = () => {
 
 .transfer-request__field :deep(.p-inputtext),
 .transfer-request__field :deep(.p-select),
+.transfer-request__field :deep(.p-multiselect),
 .transfer-request__field :deep(.p-datepicker-input) {
     border-color: #d7dde5;
     border-radius: 6px;
     min-height: 3.15rem;
     width: 100%;
+}
+
+.transfer-request__field :deep(.p-multiselect-label) {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    min-height: 3rem;
+    white-space: normal;
+}
+
+.transfer-request__field :deep(.p-multiselect-token) {
+    max-width: 100%;
+}
+
+.transfer-request__field :deep(.p-multiselect-token-label) {
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .transfer-request__field textarea {
@@ -1141,6 +1381,45 @@ const goBack = () => {
     min-width: 720px;
 }
 
+.transfer-request__table :deep(.p-datatable-thead > tr > th) {
+    background: #2d6f9f;
+    color: #ffffff;
+    font-weight: 800;
+}
+
+.transfer-request__series-chips {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.transfer-request__series-chip,
+.transfer-request__docs-chip {
+    background: #f4f7fb;
+    border-radius: 6px;
+    color: #123354;
+    display: inline-flex;
+    font-size: 0.82rem;
+    line-height: 1.2;
+    padding: 0.35rem 0.55rem;
+}
+
+.transfer-request__docs-chip {
+    background: #eef7ff;
+    border-radius: 999px;
+    color: #1f5f8e;
+    font-weight: 700;
+    justify-content: center;
+    min-width: 4.25rem;
+}
+
+.transfer-request__row-actions {
+    align-items: center;
+    display: flex;
+    gap: 0.45rem;
+}
+
 .transfer-request__actions {
     display: flex;
     gap: 1rem;
@@ -1194,6 +1473,225 @@ const goBack = () => {
     color: #e6f2fb;
     font-size: 0.9rem;
     margin-top: 0.55rem;
+}
+
+:global(.transfer-confirm-dialog.p-dialog) {
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+:global(.transfer-confirm-dialog .p-dialog-header) {
+    background: #56b657;
+    border-bottom: 0;
+    color: #ffffff;
+    padding: 1.25rem 1.5rem;
+}
+
+:global(.transfer-confirm-dialog .p-dialog-header-close) {
+    color: #ffffff;
+}
+
+:global(.transfer-confirm-dialog .p-dialog-content) {
+    max-height: min(66vh, 620px);
+    overflow-y: auto;
+    padding: 1.5rem;
+}
+
+:global(.transfer-confirm-dialog .p-dialog-footer) {
+    border-top: 1px solid #dbe3ed;
+    padding: 1rem 1.5rem;
+}
+
+.transfer-confirm__header h2,
+.transfer-confirm__header p {
+    margin: 0;
+}
+
+.transfer-confirm__header h2 {
+    color: #ffffff;
+    font-size: 1.3rem;
+    font-weight: 800;
+}
+
+.transfer-confirm__header p {
+    color: #e6f2fb;
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+}
+
+.transfer-confirm {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.transfer-confirm__notice {
+    align-items: center;
+    background: #d5f2f7;
+    border-left: 4px solid #16a3b6;
+    border-radius: 8px;
+    color: #155e6f;
+    display: flex;
+    font-weight: 700;
+    gap: 0.85rem;
+    padding: 1rem 1.15rem;
+}
+
+.transfer-confirm__notice i {
+    font-size: 1.15rem;
+}
+
+.transfer-confirm__correction {
+    background: #dbeafe;
+    border-left: 4px solid #1d4ed8;
+    border-radius: 8px;
+    color: #123c84;
+    padding: 1rem 1.15rem;
+}
+
+.transfer-confirm__correction strong {
+    display: block;
+    margin-bottom: 0.45rem;
+}
+
+.transfer-confirm__correction p {
+    margin: 0;
+}
+
+.transfer-confirm__card {
+    background: #ffffff;
+    border: 1px solid #dbe3ed;
+    border-radius: 8px;
+    padding: 1.35rem 1.5rem;
+}
+
+.transfer-confirm__card:first-of-type {
+    background: #f8fafc;
+    border-color: transparent;
+}
+
+.transfer-confirm__card h3 {
+    color: #111827;
+    font-size: 1rem;
+    font-weight: 800;
+    margin: 0;
+}
+
+.transfer-confirm__divider {
+    border-top: 1px solid #dbe3ed;
+    margin: 0.8rem 0 1.1rem;
+}
+
+.transfer-confirm__general-grid {
+    display: grid;
+    gap: 1.25rem 1.5rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.transfer-confirm__general-grid span,
+.transfer-confirm__metrics span {
+    color: #64748b;
+    display: block;
+    font-size: 0.82rem;
+    margin-bottom: 0.45rem;
+}
+
+.transfer-confirm__general-grid strong {
+    color: #111827;
+    display: block;
+    overflow-wrap: anywhere;
+}
+
+.transfer-confirm__metrics {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-bottom: 1.3rem;
+}
+
+.transfer-confirm__metrics > div {
+    background: #eef6fd;
+    border-radius: 8px;
+    padding: 1rem;
+    text-align: center;
+}
+
+.transfer-confirm__metrics strong {
+    color: #56b657;
+    display: block;
+    font-size: 1.9rem;
+    line-height: 1;
+}
+
+.transfer-confirm__boxes {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
+.transfer-confirm__box {
+    align-items: center;
+    border: 1px solid #dbe3ed;
+    border-radius: 8px;
+    display: flex;
+    gap: 1.25rem;
+    justify-content: space-between;
+    padding: 1rem 1.1rem;
+}
+
+.transfer-confirm__box-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.transfer-confirm__box-badge {
+    background: #56b657;
+    border-radius: 999px;
+    color: #ffffff;
+    display: inline-flex;
+    flex-shrink: 0;
+    font-size: 0.82rem;
+    font-weight: 800;
+    padding: 0.35rem 0.75rem;
+}
+
+.transfer-confirm__box-series-text {
+    color: #111827;
+    display: block;
+    font-size: 1rem;
+    font-weight: 800;
+    line-height: 1.12;
+    margin-top: 0.75rem;
+    overflow-wrap: anywhere;
+}
+
+.transfer-confirm__box p {
+    color: #64748b;
+    margin: 0.35rem 0 0;
+}
+
+.transfer-confirm__box p strong {
+    color: #111827;
+}
+
+.transfer-confirm__box-docs {
+    color: #56b657;
+    flex-shrink: 0;
+    line-height: 1.5;
+    text-align: center;
+    width: 7rem;
+}
+
+.transfer-confirm__save {
+    background: #56b657;
+    border-color: #56b657;
+    min-width: 15.5rem;
+}
+
+.transfer-confirm__save:hover,
+.transfer-confirm__save:focus {
+    background: #49a64b;
+    border-color: #49a64b;
 }
 
 :global(.transfer-docs-dialog.p-dialog),
@@ -1565,9 +2063,26 @@ const goBack = () => {
 
     .transfer-request__grid,
     .transfer-request__detail-grid,
+    .transfer-confirm__general-grid,
+    .transfer-confirm__metrics,
     .transfer-docs__form,
     .transfer-docs__item-grid {
         grid-template-columns: 1fr;
+    }
+
+    .transfer-confirm__box {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .transfer-confirm__box-docs {
+        text-align: left;
+        width: auto;
+    }
+
+    .transfer-confirm__save {
+        min-width: 0;
+        width: 100%;
     }
 
     .transfer-docs__form-title {

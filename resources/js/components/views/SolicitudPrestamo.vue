@@ -323,7 +323,7 @@ onMounted(fetchCatalog);
                         <i class="pi pi-box"></i>
                         <strong>Agregar documentos a la solicitud</strong>
                     </div>
-                    <p>Complete la informacion del documento que desea solicitar:</p>
+                    <p>Complete la información del documento que desea solicitar:</p>
 
                     <div class="grid">
                         <div class="col-12">
@@ -347,7 +347,7 @@ onMounted(fetchCatalog);
                             <Dropdown v-model="additionalForm.documentType" :options="['Copia', 'Original']" class="w-full mt-2" />
                         </div>
                         <div class="col-12">
-                            <label class="prestamo-label">Observacion Adicional</label>
+                            <label class="prestamo-label">Observación Adicional</label>
                             <textarea v-model="additionalForm.observation" rows="4" class="prestamo-textarea mt-2" placeholder="Ej: Se transfirieron el 10 de marzo de 2022"></textarea>
                         </div>
                     </div>
@@ -431,7 +431,7 @@ onMounted(fetchCatalog);
                             <div v-for="document in additionalDocuments" :key="document.id">
                                 <strong>{{ document.name }}</strong>
                                 <span>Año: {{ document.year || 'N/D' }} - Cantidad: {{ document.quantity || 'N/D' }} - Tipo: {{ document.documentType }}</span>
-                                <em v-if="document.observation">Observacion: {{ document.observation }}</em>
+                                <em v-if="document.observation">Observación: {{ document.observation }}</em>
                             </div>
                         </div>
                     </div>

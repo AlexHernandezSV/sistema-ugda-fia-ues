@@ -148,8 +148,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/api/transfers/{number}/unit-authorize', [TransferController::class, 'authorizeByUnit']);
     Route::post('/api/transfers/{number}/unit-deny', [TransferController::class, 'denyByUnit']);
     Route::post('/api/transfers/{number}/schedule', [TransferController::class, 'schedule']);
+    Route::post('/api/transfers/{number}/start-physical-review', [TransferController::class, 'startPhysicalReview']);
     Route::post('/api/transfers/{number}/complete-locations', [TransferController::class, 'completeLocations']);
-    Route::post('/api/transfers/{number}/observe', [TransferController::class, 'observe']);
+    Route::post('/api/transfers/{number}/observe', [TransferController::class, 'observeReview']);
     Route::post('/api/transfers/{number}/deny', [TransferController::class, 'deny']);
     Route::get('/api/loans/create/catalog', [LoanController::class, 'createCatalog']);
     Route::get('/api/loans/pending-authorization', [LoanController::class, 'pendingAuthorization']);

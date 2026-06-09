@@ -336,7 +336,7 @@ class LoanController extends Controller
             description: 'Solicitud denegada por jefatura de unidad. Motivo: ' . $request->string('reason')->toString(),
             eventType: 'decision',
             context: [
-                'reason_label' => 'Motivo de denegacion:',
+                'reason_label' => 'Motivo de denegación:',
                 'reason' => $request->string('reason')->toString(),
                 'decision_scope' => 'unit',
             ],
@@ -351,7 +351,7 @@ class LoanController extends Controller
 
         if ($validator->fails()) {
             return response()->json([
-                'message' => 'Debe ingresar la observacion de la solicitud.',
+                'message' => 'Debe ingresar la observación de la solicitud.',
                 'errors' => $validator->errors(),
             ], 422);
         }
@@ -360,7 +360,7 @@ class LoanController extends Controller
             request: $request,
             number: $number,
             workflowCode: 'loan_status_observed',
-            eventTitle: 'Observacion UGDA',
+            eventTitle: 'Observación UGDA',
             description: $request->string('message')->toString(),
             eventType: 'observation'
         );

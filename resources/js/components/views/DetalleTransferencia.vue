@@ -24,6 +24,7 @@ const labelsBusy = ref(false);
 const decisionModalVisible = ref(false);
 const unitAuthorizeModalVisible = ref(false);
 const transferProcessModalVisible = ref(false);
+const transferConfirmModalVisible = ref(false);
 const decisionSubmitting = ref(false);
 const unitAuthorizeSubmitting = ref(false);
 const transferProcessSubmitting = ref(false);
@@ -100,9 +101,12 @@ const statusChipClass = (status) => {
         case 'Transferido':
         case 'Finalizada':
             return 'detalle-chip detalle-chip--success';
+        case 'Subsanada':
         case 'Agendado':
         case 'En proceso':
             return 'detalle-chip detalle-chip--info';
+        case 'En Revisión':
+        case 'Obs. en Revisión':
         case 'Observado':
         case 'Pendiente':
         case 'Cancelada':
@@ -163,7 +167,7 @@ const buildPeriodYearLabel = (period) => {
         return years[0];
     }
 
-    return `${years[0]}-${years[years.length - 1]}`;
+    return `${years[0]} - ${years[years.length - 1]}`;
 };
 
 const extractBoxContent = (box) => {
@@ -172,7 +176,7 @@ const extractBoxContent = (box) => {
     }
 
     const firstDocument = box.documents?.[0];
-    const contentLabel = firstDocument?.series || firstDocument?.name || `Documentacion de caja ${box.number}`;
+    const contentLabel = firstDocument?.series || firstDocument?.name || `Documentación de caja ${box.number}`;
     const periodLabel = buildPeriodYearLabel(box.period);
 
     return periodLabel ? `${contentLabel} - Periodo ${periodLabel}` : contentLabel;
@@ -211,7 +215,7 @@ const buildLabelPreviewItems = async (data) => {
         unit: data.unit,
         content: extractBoxContent(box),
         period: box.period,
-        locationCode: buildLocationCode(box, index),
+        locationCode: box.physicalLocation || buildLocationCode(box, index),
         labelCode: `${data.number}-${box.number}`,
         assignedBy,
         assignedAt: assignedDate,
@@ -237,6 +241,34 @@ const parsePhysicalLocation = (location) => {
     };
 };
 
+const locationSegmentCode = (value, fallback = '') => {
+    const text = String(value ?? '').trim();
+    const number = text.match(/\d+/)?.[0];
+
+    if (number) {
+        return String(Number(number)).padStart(2, '0');
+    }
+
+    const letter = text.match(/[A-Za-zÁÉÍÓÚÑ]/)?.[0] ?? fallback;
+    return letter.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+};
+
+const generatedBoxLocationCode = (box) => {
+    const location = boxLocations.value[box.number] ?? parsePhysicalLocation(box.physicalLocation);
+
+    if (!location.aisle || !location.shelf || !location.level || !location.position) {
+        return '';
+    }
+
+    const aisleCode = String(location.aisle).match(/\b([A-Za-zÁÉÍÓÚÑ])\b(?!.*\b[A-Za-zÁÉÍÓÚÑ]\b)/)?.[1]
+        ?? locationSegmentCode(location.aisle, 'A');
+    const shelfCode = locationSegmentCode(location.shelf, '01');
+    const levelCode = String(Number(locationSegmentCode(location.level, '1')) || 1);
+    const positionCode = locationSegmentCode(location.position, '01');
+
+    return `${aisleCode.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()}-${shelfCode}-${levelCode}-${positionCode}`;
+};
+
 const ensureBoxLocation = (box) => {
     if (!boxLocations.value[box.number]) {
         boxLocations.value[box.number] = parsePhysicalLocation(box.physicalLocation);
@@ -251,14 +283,46 @@ const isBoxLocated = (boxNumber) => {
     return Boolean(location.aisle && location.shelf && location.level && location.position);
 };
 
-const openTransferProcessModal = () => {
+const prepareTransferProcess = () => {
     const boxes = transfer.value?.boxes ?? [];
     boxLocations.value = boxes.reduce((acc, box) => ({
         ...acc,
         [box.number]: parsePhysicalLocation(box.physicalLocation),
     }), {});
     activeProcessBox.value = boxes[0]?.number ?? null;
+};
+
+const openTransferProcessModal = () => {
+    prepareTransferProcess();
     transferProcessModalVisible.value = true;
+};
+
+const startPhysicalReview = async () => {
+    if (!transfer.value?.number) {
+        return;
+    }
+
+    try {
+        const { data } = await axios.post(`/api/transfers/${transfer.value.number}/start-physical-review`);
+        toast.add({
+            severity: 'success',
+            summary: 'Revisión física iniciada',
+            detail: data.message || 'Revision fisica iniciada correctamente.',
+            life: 2800,
+        });
+        await fetchDetail();
+    } catch (error) {
+        showError(error.response?.data?.message || 'No se pudo iniciar la revision fisica.');
+    }
+};
+
+const handleProcessCardAction = () => {
+    if (transfer.value?.processCard?.action === 'startPhysicalReview') {
+        startPhysicalReview();
+        return;
+    }
+
+    openTransferProcessPage();
 };
 
 const closeTransferProcessModal = () => {
@@ -267,6 +331,43 @@ const closeTransferProcessModal = () => {
     }
 
     transferProcessModalVisible.value = false;
+};
+
+const openTransferProcessPage = () => {
+    if (!transfer.value?.number) {
+        return;
+    }
+
+    prepareTransferProcess();
+    router.push(`/solicitudes/transferencias/${transfer.value.number}/proceso`);
+};
+
+const goBackToTransferDetail = () => {
+    if (!transfer.value?.number) {
+        router.push('/solicitudes');
+        return;
+    }
+
+    router.push({
+        path: `/solicitudes/transferencias/${transfer.value.number}`,
+        query: { tab: 'transferencias' },
+    });
+};
+
+const openTransferConfirmModal = () => {
+    if (!canCompleteTransferProcess.value) {
+        return;
+    }
+
+    transferConfirmModalVisible.value = true;
+};
+
+const closeTransferConfirmModal = () => {
+    if (transferProcessSubmitting.value) {
+        return;
+    }
+
+    transferConfirmModalVisible.value = false;
 };
 
 const setLabelPreviewCard = (element, index) => {
@@ -654,7 +755,24 @@ const normalizeScheduledFor = (date, time) => {
     return `${year}-${month}-${day} ${trimmedTime}:00`;
 };
 
-const boxTitle = (box) => box.title || `Caja #${box.number}`;
+const displayBoxNumber = (box) => String(Number(box.number || 0) || box.number);
+
+const boxTitle = (box) => `Caja #${displayBoxNumber(box)}`;
+
+const boxSeriesList = (box) => {
+    if (Array.isArray(box.seriesList) && box.seriesList.length > 0) {
+        return box.seriesList;
+    }
+
+    return String(box.series ?? '')
+        .split(';')
+        .map((item) => item.trim())
+        .filter(Boolean);
+};
+
+const boxLocationLabel = (box) => labelPreviewItems.value.find(
+    (label) => String(label.boxNumber) === String(box.number),
+);
 
 const actionClass = (variant) => {
     switch (variant) {
@@ -689,7 +807,7 @@ const postTransferAction = async (url, payload, fallbackMessage) => {
 const transferSummary = computed(() => {
     const boxes = transfer.value?.boxes ?? [];
     const documents = boxes.flatMap((box) => box.documents ?? []);
-    const series = new Set(boxes.map((box) => box.series || box.title).filter(Boolean));
+    const series = new Set(boxes.flatMap((box) => boxSeriesList(box)).filter(Boolean));
 
     return {
         totalBoxes: boxes.length,
@@ -776,8 +894,14 @@ const completeTransferProcess = async () => {
             detail: data.message || 'Ubicaciones fisicas asignadas correctamente.',
             life: 3200,
         });
+        const transferNumber = transfer.value.number;
+        transferConfirmModalVisible.value = false;
         transferProcessModalVisible.value = false;
         await fetchDetail();
+        router.push({
+            path: `/solicitudes/transferencias/${transferNumber}`,
+            query: { tab: 'transferencias' },
+        });
     } catch (error) {
         showError(error.response?.data?.message || 'No se pudo completar el proceso de transferencia.');
     } finally {
@@ -796,6 +920,8 @@ const openDecisionModal = (actionKey) => {
 };
 
 const decisionModalConfig = computed(() => {
+    const isPhysicalObservation = ['En Revisión', 'Obs. en Revisión'].includes(transfer.value?.status);
+
     switch (currentDecisionAction.value) {
         case 'schedule':
             return {
@@ -809,12 +935,12 @@ const decisionModalConfig = computed(() => {
             };
         case 'observe':
             return {
-                icon: 'pi pi-eye',
-                title: 'Observar Transferencia',
-                subtitle: 'Debe proporcionar una observacion para esta transferencia',
-                label: 'Observacion',
-                placeholder: 'Describa la observacion para esta transferencia...',
-                confirmLabel: 'Observar',
+                icon: isPhysicalObservation ? 'pi pi-exclamation-triangle' : 'pi pi-eye',
+                title: isPhysicalObservation ? 'Observaciones de Revisión Física' : 'Observar Transferencia',
+                subtitle: 'Debe proporcionar una observación para esta transferencia',
+                label: 'Observación',
+                placeholder: 'Describa la observación para esta transferencia...',
+                confirmLabel: isPhysicalObservation ? 'Registrar observaciones' : 'Observar',
                 cancelLabel: 'Cancelar',
                 tone: 'warning',
                 required: true,
@@ -825,7 +951,7 @@ const decisionModalConfig = computed(() => {
                 icon: 'pi pi-times-circle',
                 title: currentDecisionAction.value === 'denyUnit' ? 'Denegar Transferencia por Jefatura' : 'Denegar Transferencia',
                 subtitle: 'Debe proporcionar un motivo para denegar esta transferencia',
-                label: 'Motivo de denegacion',
+                label: 'Motivo de denegación',
                 placeholder: 'Describa el motivo por el cual se deniega esta transferencia...',
                 confirmLabel: 'Denegar',
                 cancelLabel: 'Cancelar',
@@ -910,7 +1036,7 @@ const submitDecisionAction = async () => {
 
     if (config.required && currentDecisionAction.value !== 'schedule' && comments === '') {
         showError(currentDecisionAction.value === 'observe'
-            ? 'Debe ingresar la observacion de la transferencia.'
+            ? 'Debe ingresar la observación de la transferencia.'
             : 'Debe ingresar el motivo de rechazo.');
         return;
     }
@@ -918,6 +1044,7 @@ const submitDecisionAction = async () => {
     let endpoint = '';
     let payload = {};
     let successMessage = '';
+    let successSummary = 'Actualizado';
 
     switch (currentDecisionAction.value) {
         case 'schedule':
@@ -935,6 +1062,7 @@ const submitDecisionAction = async () => {
                 comments,
             };
             successMessage = 'Entrega programada.';
+            successSummary = 'Transferencia agendada exitosamente';
             break;
             }
         case 'observe':
@@ -962,7 +1090,7 @@ const submitDecisionAction = async () => {
         const { data } = await axios.post(endpoint, payload);
         toast.add({
             severity: 'success',
-            summary: 'Actualizado',
+            summary: successSummary,
             detail: data.message || successMessage,
             life: 2800,
         });
@@ -986,6 +1114,9 @@ const fetchDetail = async () => {
         expandedBoxes.value = buildExpandedState(boxes, data.boxDisplayState);
         allBoxesExpanded.value = boxes.length > 0 && boxes.every((box) => expandedBoxes.value[box.number]);
         labelPreviewItems.value = await buildLabelPreviewItems(data);
+        if (isProcessPage.value) {
+            prepareTransferProcess();
+        }
     } catch (error) {
         console.error('Error cargando detalle de transferencia:', error);
         router.push('/solicitudes');
@@ -995,6 +1126,8 @@ const fetchDetail = async () => {
 };
 
 const isReviewMode = computed(() => ['review', 'unitAuthorization'].includes(transfer.value?.mode));
+const isProcessPage = computed(() => route.name === 'solicitudes-transferencia-proceso');
+const showBoxLocationHeaders = computed(() => transfer.value?.auth === 'Autorizado' && transfer.value?.status === 'Transferido');
 const pageTitle = computed(() => transfer.value?.pageTitle ?? (transfer.value ? `Transferencia #${transfer.value.number}` : 'Transferencia'));
 const pageSubtitle = computed(() => transfer.value?.pageSubtitle ?? 'Detalle de la solicitud');
 const showHistory = computed(() => (transfer.value?.history?.length ?? 0) > 0);
@@ -1010,6 +1143,146 @@ onMounted(fetchDetail);
 
     <div v-if="loading" class="surface-card border-round-xl shadow-1 p-4 text-center text-gray-500">
         Cargando detalle de transferencia...
+    </div>
+
+    <div v-else-if="transfer && isProcessPage" class="detalle-process-page">
+        <header class="detalle-process-page__header">
+            <button type="button" class="detalle-back-button" :disabled="transferProcessSubmitting" @click="goBackToTransferDetail">
+                <i class="pi pi-arrow-left"></i>
+            </button>
+            <div>
+                <h1 class="detalle-title m-0">Proceso de Transferencia</h1>
+                <span class="detalle-subtitle">Asignación de ubicaciones físicas - Solicitud #{{ transfer.number }}</span>
+            </div>
+        </header>
+
+        <section class="detalle-process-modal__progress detalle-process-page__progress">
+            <div class="detalle-process-modal__progress-head">
+                <strong>Progreso de Asignación</strong>
+                <span>{{ locatedBoxesCount }} de {{ transfer.boxes?.length ?? 0 }} cajas ubicadas</span>
+            </div>
+            <div class="detalle-process-modal__progress-track">
+                <div class="detalle-process-modal__progress-bar" :style="{ width: `${locationProgress}%` }"></div>
+            </div>
+        </section>
+
+        <div class="detalle-process-page__grid">
+            <aside class="detalle-process-modal__info detalle-process-page__info">
+                <h3>Información de la Solicitud</h3>
+                <div>
+                    <span>N° de transferencia</span>
+                    <strong>{{ transfer.number }}</strong>
+                </div>
+                <div>
+                    <span>Unidad productora</span>
+                    <strong>{{ transfer.unit }}</strong>
+                </div>
+                <div>
+                    <span>Responsable</span>
+                    <strong>{{ transfer.responsible }}</strong>
+                </div>
+                <div>
+                    <span>Estado</span>
+                    <em>{{ transfer.status }}</em>
+                </div>
+                <hr />
+                <div>
+                    <span>Fecha de entrega programada</span>
+                    <strong>{{ transfer.scheduledSummary?.deliveryDate || 'Sin fecha' }}</strong>
+                </div>
+                <div>
+                    <span>Hora de entrega</span>
+                    <strong>{{ transfer.scheduledSummary?.deliveryTime || 'Sin hora' }}</strong>
+                </div>
+                <hr />
+                <div>
+                    <span>Total de cajas</span>
+                    <strong>{{ transfer.boxes?.length ?? 0 }} caja(s)</strong>
+                </div>
+            </aside>
+
+            <section class="detalle-process-modal__boxes detalle-process-page__boxes">
+                <article
+                    v-for="box in transfer.boxes ?? []"
+                    :key="`process-page-${box.number}`"
+                    :class="[
+                        'detalle-process-box',
+                        'detalle-process-page__box',
+                        {
+                            'detalle-process-box--active': activeProcessBox === box.number,
+                            'detalle-process-page__box--done': isBoxLocated(box.number),
+                        },
+                    ]"
+                >
+                    <button type="button" class="detalle-process-box__summary" @click="activeProcessBox = activeProcessBox === box.number ? null : box.number">
+                        <div class="detalle-process-box__summary-main">
+                            <div class="detalle-process-box__icon" :class="{ 'detalle-process-box__icon--done': isBoxLocated(box.number) }">
+                                <i class="pi pi-box"></i>
+                            </div>
+                            <div>
+                                <div class="detalle-process-box__title">
+                                    {{ boxTitle(box) }}
+                                    <span :class="isBoxLocated(box.number) ? 'detalle-process-box__status detalle-process-box__status--done' : 'detalle-process-box__status'">
+                                        <i :class="isBoxLocated(box.number) ? 'pi pi-check-circle' : 'pi pi-exclamation-circle'"></i>
+                                        {{ isBoxLocated(box.number) ? 'Ubicada' : 'Pendiente' }}
+                                    </span>
+                                </div>
+                                <p>{{ box.title }} - {{ box.period }}</p>
+                                <span v-if="isBoxLocated(box.number)" class="detalle-process-page__code-chip">
+                                    <i class="pi pi-map-marker"></i>
+                                    {{ generatedBoxLocationCode(box) }}
+                                </span>
+                            </div>
+                        </div>
+                        <i :class="activeProcessBox === box.number ? 'pi pi-chevron-up' : 'pi pi-chevron-down'"></i>
+                    </button>
+
+                    <div v-if="activeProcessBox === box.number" class="detalle-process-box__form">
+                        <h4><i class="pi pi-map-marker"></i> Asignar Ubicación Física</h4>
+                        <div class="detalle-process-box__fields">
+                            <label>
+                                <span>Pasillo/Área *</span>
+                                <Dropdown v-model="ensureBoxLocation(box).aisle" :options="aisleOptions" placeholder="Seleccionar" fluid />
+                            </label>
+                            <label>
+                                <span>Estante *</span>
+                                <Dropdown v-model="ensureBoxLocation(box).shelf" :options="shelfOptions" placeholder="Seleccionar" fluid />
+                            </label>
+                            <label>
+                                <span>Nivel *</span>
+                                <Dropdown v-model="ensureBoxLocation(box).level" :options="levelOptions" placeholder="Seleccionar" fluid />
+                            </label>
+                            <label>
+                                <span>Posición *</span>
+                                <Dropdown v-model="ensureBoxLocation(box).position" :options="positionOptions" placeholder="Seleccionar" fluid />
+                            </label>
+                        </div>
+                        <div v-if="isBoxLocated(box.number)" class="detalle-process-box__location-code">
+                            <i class="pi pi-check-circle"></i>
+                            <div>
+                                <span>Código de ubicación generado</span>
+                                <strong>{{ generatedBoxLocationCode(box) }}</strong>
+                                <small>Se guardara al completar la transferencia.</small>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+            </section>
+        </div>
+
+        <footer class="detalle-process-modal__footer detalle-process-page__footer">
+            <button type="button" class="detalle-process-modal__complete" :disabled="!canCompleteTransferProcess" @click="openTransferConfirmModal">
+                <i class="pi pi-save"></i>
+                Completar transferencia
+            </button>
+            <button type="button" class="detalle-process-modal__cancel" :disabled="transferProcessSubmitting" @click="goBackToTransferDetail">
+                Cancelar
+            </button>
+            <span class="detalle-process-modal__pending" :class="{ 'detalle-process-modal__pending--done': pendingBoxesCount === 0 }">
+                <i :class="pendingBoxesCount === 0 ? 'pi pi-check-circle' : 'pi pi-info-circle'"></i>
+                {{ pendingBoxesCount === 0 ? 'Todas las cajas ubicadas' : `${pendingBoxesCount} caja(s) pendiente(s)` }}
+            </span>
+        </footer>
     </div>
 
     <div v-else-if="transfer" class="flex flex-column gap-4">
@@ -1087,18 +1360,102 @@ onMounted(fetchDetail);
             </div>
         </div>
 
+        <div v-if="transfer.physicalObservations" class="detalle-banner detalle-banner--warning">
+            <div class="detalle-banner__head">
+                <div class="detalle-banner__icon detalle-banner__icon--warning">
+                    <i class="pi pi-exclamation-triangle"></i>
+                </div>
+                <div>
+                    <h2 class="detalle-banner__title m-0">{{ transfer.physicalObservations.title }}</h2>
+                    <p class="detalle-banner__text m-0">{{ transfer.physicalObservations.description }}</p>
+                    <p v-if="transfer.physicalObservations.instruction" class="detalle-banner__text detalle-banner__text--strong m-0">
+                        {{ transfer.physicalObservations.instruction }}
+                    </p>
+                </div>
+            </div>
+
+            <div class="flex flex-column gap-3">
+                <div v-for="item in transfer.physicalObservations.items" :key="`${item.actor}-${item.dateTime}-${item.message}`" class="detalle-observation-card">
+                    <div class="detalle-observation-card__meta">
+                        <i class="pi pi-user"></i>
+                        <span class="font-semibold">{{ item.actor }}</span>
+                        <span>{{ item.dateTime }}</span>
+                    </div>
+                    <p class="detalle-observation-card__message m-0">{{ item.message }}</p>
+                </div>
+            </div>
+
+            <div v-if="transfer.physicalObservations.canCorrect" class="detalle-banner__actions">
+                <Button
+                    :label="transfer.physicalObservations.actionLabel"
+                    icon="pi pi-pencil"
+                    class="detalle-banner__edit-button"
+                    @click="editObservedTransfer"
+                />
+            </div>
+        </div>
+
+        <div v-if="transfer.subsanationSummary" class="detalle-banner detalle-banner--blue">
+            <div class="detalle-banner__head">
+                <div class="detalle-banner__icon detalle-banner__icon--blue">
+                    <i class="pi pi-check-circle"></i>
+                </div>
+                <div>
+                    <h2 class="detalle-banner__title m-0">{{ transfer.subsanationSummary.title }}</h2>
+                    <p class="detalle-banner__text m-0">{{ transfer.subsanationSummary.description }}</p>
+                </div>
+            </div>
+
+            <div class="detalle-banner__panel">
+                <p class="m-0">{{ transfer.subsanationSummary.message }}</p>
+                <div class="detalle-banner__divider"></div>
+                <div class="font-semibold mb-2 text-900">{{ transfer.subsanationSummary.notesLabel }}</div>
+                <div class="detalle-banner__notes">{{ transfer.subsanationSummary.notes }}</div>
+            </div>
+        </div>
+
         <div v-if="transfer.processCard" class="surface-card shadow-1 border-round-xl detalle-process-card">
             <div class="detalle-process-card__content">
                 <div class="detalle-process-card__main">
                     <div class="detalle-process-card__icon">
-                        <i class="pi pi-box"></i>
+                        <i :class="transfer.processCard.icon || 'pi pi-box'"></i>
                     </div>
                     <div>
                         <h3>{{ transfer.processCard.title }}</h3>
                         <p>{{ transfer.processCard.description }}</p>
                     </div>
                 </div>
-                <Button :label="transfer.processCard.buttonLabel" icon="pi pi-box" class="detalle-process-card__button" @click="openTransferProcessModal" />
+                <Button :label="transfer.processCard.buttonLabel" :icon="transfer.processCard.icon || 'pi pi-box'" class="detalle-process-card__button" @click="handleProcessCardAction" />
+            </div>
+        </div>
+
+        <div v-if="transfer.physicalReviewCard" class="surface-card shadow-1 border-round-xl detalle-physical-review-card">
+            <div class="detalle-process-card__content">
+                <div class="detalle-process-card__main">
+                    <div class="detalle-process-card__icon detalle-process-card__icon--warning">
+                        <i class="pi pi-exclamation-triangle"></i>
+                    </div>
+                    <div>
+                        <h3>{{ transfer.physicalReviewCard.title }}</h3>
+                        <p>{{ transfer.physicalReviewCard.description }}</p>
+                    </div>
+                </div>
+                <div class="detalle-physical-review-card__actions">
+                    <Button
+                        :label="transfer.physicalReviewCard.observeLabel"
+                        icon="pi pi-exclamation-triangle"
+                        outlined
+                        class="detalle-physical-review-card__observe"
+                        @click="openDecisionModal('observe')"
+                    />
+                    <Button
+                        :label="transfer.physicalReviewCard.transferLabel"
+                        icon="pi pi-box"
+                        class="detalle-process-card__button"
+                        :disabled="!transfer.physicalReviewCard.canStartTransfer"
+                        @click="openTransferProcessPage"
+                    />
+                </div>
             </div>
         </div>
 
@@ -1210,13 +1567,14 @@ onMounted(fetchDetail);
 
         <template v-if="isReviewMode">
             <div class="detalle-panel">
-                <div class="detalle-panel__header">Datos Generales</div>
-                <div class="detalle-panel__body">
-                    <div class="flex flex-column md:flex-row md:justify-content-end gap-2 mb-4">
+                <div class="detalle-panel__header detalle-panel__header--split">
+                    <span>Datos Generales</span>
+                    <div class="detalle-panel__chips">
                         <span :class="authChipClass(transfer.auth)">{{ transfer.auth }}</span>
                         <span :class="statusChipClass(transfer.status)">{{ transfer.status }}</span>
                     </div>
-
+                </div>
+                <div class="detalle-panel__body">
                     <div class="grid">
                         <div class="col-12 md:col-6">
                             <div class="flex flex-column gap-4">
@@ -1272,7 +1630,20 @@ onMounted(fetchDetail);
                             <tbody>
                                 <tr v-for="row in transfer.documentSummary?.rows ?? []" :key="row.index">
                                     <td>{{ row.index }}</td>
-                                    <td>{{ row.series }}</td>
+                                    <td>
+                                        <div class="detalle-summary-series-row">
+                                            <span v-if="boxSeriesList(row).length > 1" class="detalle-summary-series-count">
+                                                Múltiples ({{ boxSeriesList(row).length }})
+                                            </span>
+                                            <span
+                                                v-for="series in boxSeriesList(row)"
+                                                :key="`${row.index}-${series}`"
+                                                class="detalle-summary-series-chip"
+                                            >
+                                                {{ series }}
+                                            </span>
+                                        </div>
+                                    </td>
                                     <td>{{ row.startYear }}</td>
                                     <td>{{ row.endYear }}</td>
                                     <td>{{ row.boxNumber }}</td>
@@ -1302,13 +1673,74 @@ onMounted(fetchDetail);
                                     </div>
                                     <div class="text-left min-w-0">
                                         <div class="detalle-box-card__title">{{ boxTitle(box) }}</div>
-                                        <div class="detalle-box-card__subtitle">Periodo: {{ box.period }} • {{ box.documentsCount }} documentos</div>
+                                        <div class="detalle-box-card__series-row">
+                                            <span v-if="boxSeriesList(box).length > 1" class="detalle-box-card__series-count">
+                                                Múltiples series ({{ boxSeriesList(box).length }})
+                                            </span>
+                                            <span
+                                                v-for="series in boxSeriesList(box)"
+                                                :key="`${box.number}-${series}`"
+                                                class="detalle-box-card__series-chip"
+                                            >
+                                                {{ series }}
+                                            </span>
+                                        </div>
+                                        <div class="detalle-box-card__subtitle">Periodo: {{ buildPeriodYearLabel(box.period) }} • {{ box.documentsCount }} documentos</div>
                                     </div>
                                 </div>
                                 <i :class="expandedBoxes[box.number] ? 'pi pi-chevron-up' : 'pi pi-chevron-down'"></i>
                             </button>
 
                             <div v-if="expandedBoxes[box.number]" class="detalle-box-card__content">
+                                <section v-if="showBoxLocationHeaders && boxLocationLabel(box)" class="detalle-box-location-header">
+                                    <div class="detalle-box-location-header__top">
+                                        <div>
+                                            <h3>UNIVERSIDAD DE EL SALVADOR</h3>
+                                            <p>Facultad de Ingeniería y Arquitectura - UGDA</p>
+                                        </div>
+                                        <div class="detalle-box-location-header__date">
+                                            <span>Fecha de transferencia</span>
+                                            <strong>{{ boxLocationLabel(box).transferDate }}</strong>
+                                        </div>
+                                    </div>
+
+                                    <div class="detalle-box-location-header__main">
+                                        <div class="detalle-box-location-header__qr">
+                                            <img :src="boxLocationLabel(box).qrDataUrl" :alt="`Código QR ${boxLocationLabel(box).labelCode}`" />
+                                            <span>Código: {{ boxLocationLabel(box).labelCode }}</span>
+                                        </div>
+                                        <div class="detalle-box-location-header__hero">
+                                            <div class="detalle-box-location-header__code">
+                                                <span>CÓDIGO DE UBICACIÓN</span>
+                                                <strong>{{ boxLocationLabel(box).locationCode }}</strong>
+                                            </div>
+                                            <div class="detalle-box-location-header__box-number">
+                                                <span>Número de caja</span>
+                                                <strong>{{ boxLocationLabel(box).boxLabel }}</strong>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="detalle-box-location-header__details">
+                                        <div>
+                                            <span>N. de transferencia</span>
+                                            <strong>{{ boxLocationLabel(box).transferNumber }}</strong>
+                                        </div>
+                                        <div>
+                                            <span>Unidad productora</span>
+                                            <strong>{{ boxLocationLabel(box).unit }}</strong>
+                                        </div>
+                                        <div>
+                                            <span>Contenido de la caja</span>
+                                            <strong>{{ boxLocationLabel(box).content }}</strong>
+                                        </div>
+                                    </div>
+
+                                    <div class="detalle-box-location-header__assigned">
+                                        Ubicación asignada por {{ boxLocationLabel(box).assignedBy }} el {{ boxLocationLabel(box).assignedAt }}
+                                    </div>
+                                </section>
+
                                 <div class="detalle-table-wrapper">
                                     <table class="detalle-documents-table">
                                         <thead>
@@ -1370,7 +1802,7 @@ onMounted(fetchDetail);
                         v-model="commentDraft"
                         rows="4"
                         class="detalle-textarea"
-                        placeholder="Agregue cualquier observacion o comentario sobre esta solicitud..."
+                        placeholder="Agregue cualquier observación o comentario sobre esta solicitud..."
                     ></textarea>
                 </div>
             </div>
@@ -1412,13 +1844,14 @@ onMounted(fetchDetail);
 
         <template v-else>
             <div class="detalle-panel">
-                <div class="detalle-panel__header">Información General</div>
+                <div class="detalle-panel__header detalle-panel__header--split">
+                    <span>Información General</span>
+                    <div class="detalle-panel__chips">
+                        <span :class="authChipClass(transfer.auth)">{{ transfer.auth }}</span>
+                        <span :class="statusChipClass(transfer.status)">{{ transfer.status }}</span>
+                    </div>
+                </div>
                 <div class="detalle-panel__body">
-                    <div class="flex flex-column md:flex-row md:justify-content-end gap-2 mb-4">
-                            <span :class="authChipClass(transfer.auth)">{{ transfer.auth }}</span>
-                            <span :class="statusChipClass(transfer.status)">{{ transfer.status }}</span>
-                        </div>
-
                 <div class="grid">
                     <div class="col-12 md:col-6">
                         <div class="flex flex-column gap-4">
@@ -1482,13 +1915,74 @@ onMounted(fetchDetail);
                                 </div>
                                 <div class="text-left min-w-0">
                                     <div class="detalle-box-card__title">{{ boxTitle(box) }}</div>
-                                    <div class="detalle-box-card__subtitle">Periodo: {{ box.period }} • {{ box.documentsCount }} documentos</div>
+                                    <div class="detalle-box-card__series-row">
+                                        <span v-if="boxSeriesList(box).length > 1" class="detalle-box-card__series-count">
+                                            Múltiples series ({{ boxSeriesList(box).length }})
+                                        </span>
+                                        <span
+                                            v-for="series in boxSeriesList(box)"
+                                            :key="`${box.number}-${series}`"
+                                            class="detalle-box-card__series-chip"
+                                        >
+                                            {{ series }}
+                                        </span>
+                                    </div>
+                                    <div class="detalle-box-card__subtitle">Periodo: {{ buildPeriodYearLabel(box.period) }} • {{ box.documentsCount }} documentos</div>
                                 </div>
                             </div>
                             <i :class="expandedBoxes[box.number] ? 'pi pi-chevron-up' : 'pi pi-chevron-down'"></i>
                         </button>
 
                         <div v-if="expandedBoxes[box.number]" class="detalle-box-card__content">
+                            <section v-if="showBoxLocationHeaders && boxLocationLabel(box)" class="detalle-box-location-header">
+                                <div class="detalle-box-location-header__top">
+                                    <div>
+                                        <h3>UNIVERSIDAD DE EL SALVADOR</h3>
+                                        <p>Facultad de Ingeniería y Arquitectura - UGDA</p>
+                                    </div>
+                                    <div class="detalle-box-location-header__date">
+                                        <span>Fecha de transferencia</span>
+                                        <strong>{{ boxLocationLabel(box).transferDate }}</strong>
+                                    </div>
+                                </div>
+
+                                <div class="detalle-box-location-header__main">
+                                    <div class="detalle-box-location-header__qr">
+                                        <img :src="boxLocationLabel(box).qrDataUrl" :alt="`Código QR ${boxLocationLabel(box).labelCode}`" />
+                                        <span>Código: {{ boxLocationLabel(box).labelCode }}</span>
+                                    </div>
+                                    <div class="detalle-box-location-header__hero">
+                                        <div class="detalle-box-location-header__code">
+                                            <span>CÓDIGO DE UBICACIÓN</span>
+                                            <strong>{{ boxLocationLabel(box).locationCode }}</strong>
+                                        </div>
+                                        <div class="detalle-box-location-header__box-number">
+                                            <span>Número de caja</span>
+                                            <strong>{{ boxLocationLabel(box).boxLabel }}</strong>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="detalle-box-location-header__details">
+                                    <div>
+                                        <span>N. de transferencia</span>
+                                        <strong>{{ boxLocationLabel(box).transferNumber }}</strong>
+                                    </div>
+                                    <div>
+                                        <span>Unidad productora</span>
+                                        <strong>{{ boxLocationLabel(box).unit }}</strong>
+                                    </div>
+                                    <div>
+                                        <span>Contenido de la caja</span>
+                                        <strong>{{ boxLocationLabel(box).content }}</strong>
+                                    </div>
+                                </div>
+
+                                <div class="detalle-box-location-header__assigned">
+                                    Ubicación asignada por {{ boxLocationLabel(box).assignedBy }} el {{ boxLocationLabel(box).assignedAt }}
+                                </div>
+                            </section>
+
                             <div class="detalle-table-wrapper">
                                 <table class="detalle-documents-table">
                                     <thead>
@@ -1745,12 +2239,26 @@ onMounted(fetchDetail);
 
                     <div class="detalle-unit-auth-modal__boxes">
                         <article v-for="box in transfer?.boxes ?? []" :key="`auth-${box.number}`" class="detalle-unit-auth-modal__box">
-                            <div>
-                                <span>Caja #{{ String(box.number).padStart(3, '0') }}</span>
-                                <strong>{{ box.series || box.title }}</strong>
-                                <small>Periodo: {{ box.period }}</small>
+                            <div class="detalle-unit-auth-modal__box-content">
+                                <div class="detalle-unit-auth-modal__box-series">
+                                    <span class="detalle-unit-auth-modal__box-badge">Caja #{{ displayBoxNumber(box) }}</span>
+                                    <span v-if="boxSeriesList(box).length > 1" class="detalle-unit-auth-modal__series-count">
+                                        Múltiples ({{ boxSeriesList(box).length }})
+                                    </span>
+                                    <span
+                                        v-for="series in boxSeriesList(box)"
+                                        :key="`auth-${box.number}-${series}`"
+                                        class="detalle-unit-auth-modal__series-chip"
+                                    >
+                                        {{ series }}
+                                    </span>
+                                </div>
+                                <small class="detalle-unit-auth-modal__box-period">Periodo: <strong>{{ buildPeriodYearLabel(box.period) }}</strong></small>
                             </div>
-                            <strong>{{ box.documentsCount }} documento(s)</strong>
+                            <strong class="detalle-unit-auth-modal__box-documents">
+                                {{ box.documentsCount }}<br>
+                                documento(s)
+                            </strong>
                         </article>
                     </div>
                 </section>
@@ -1881,6 +2389,14 @@ onMounted(fetchDetail);
                                         <Dropdown v-model="ensureBoxLocation(box).position" :options="positionOptions" placeholder="Seleccionar" fluid />
                                     </label>
                                 </div>
+                                <div v-if="isBoxLocated(box.number)" class="detalle-process-box__location-code">
+                                    <i class="pi pi-check-circle"></i>
+                                    <div>
+                                        <span>Código de ubicación generado</span>
+                                        <strong>{{ generatedBoxLocationCode(box) }}</strong>
+                                        <small>Se guardará al completar la transferencia.</small>
+                                    </div>
+                                </div>
                             </div>
                         </article>
                     </section>
@@ -1899,6 +2415,88 @@ onMounted(fetchDetail);
                     <i class="pi pi-info-circle"></i>
                     {{ pendingBoxesCount }} caja(s) pendiente(s)
                 </span>
+            </footer>
+        </div>
+    </Dialog>
+
+    <Dialog
+        v-model:visible="transferConfirmModalVisible"
+        modal
+        :draggable="false"
+        :closable="false"
+        :showHeader="false"
+        :contentStyle="{ padding: '0', overflow: 'hidden' }"
+        :style="{ width: 'min(680px, 94vw)' }"
+    >
+        <div class="detalle-transfer-confirm">
+            <header class="detalle-transfer-confirm__header">
+                <div class="detalle-transfer-confirm__title">
+                    <i class="pi pi-check-circle"></i>
+                    <h2>Confirmar Transferencia Física</h2>
+                </div>
+                <button type="button" class="detalle-transfer-confirm__close" :disabled="transferProcessSubmitting" @click="closeTransferConfirmModal">
+                    <i class="pi pi-times"></i>
+                </button>
+            </header>
+
+            <div class="detalle-transfer-confirm__body">
+                <p class="detalle-transfer-confirm__intro">
+                    Revise el resumen de la transferencia antes de completar el proceso.
+                </p>
+
+                <section class="detalle-transfer-confirm__summary">
+                    <h3>Resumen de la Transferencia</h3>
+                    <div>
+                        <span>N° de transferencia:</span>
+                        <strong>{{ transfer?.number }}</strong>
+                    </div>
+                    <div>
+                        <span>Total de cajas:</span>
+                        <strong>{{ transfer?.boxes?.length ?? 0 }}</strong>
+                    </div>
+                    <div>
+                        <span>Unidad productora:</span>
+                        <strong>{{ transfer?.unit }}</strong>
+                    </div>
+                </section>
+
+                <section>
+                    <h3 class="detalle-transfer-confirm__section-title">Ubicaciones Asignadas</h3>
+                    <div class="detalle-transfer-confirm__locations">
+                        <article v-for="box in transfer?.boxes ?? []" :key="`confirm-location-${box.number}`" class="detalle-transfer-confirm__location">
+                            <div class="detalle-transfer-confirm__location-main">
+                                <span class="detalle-transfer-confirm__box-icon">
+                                    <i class="pi pi-box"></i>
+                                </span>
+                                <strong>{{ boxTitle(box) }}</strong>
+                            </div>
+                            <span class="detalle-transfer-confirm__code">
+                                <i class="pi pi-map-marker"></i>
+                                {{ generatedBoxLocationCode(box) }}
+                            </span>
+                        </article>
+                    </div>
+                </section>
+
+                <section class="detalle-transfer-confirm__notice">
+                    <i class="pi pi-info-circle"></i>
+                    <div>
+                        <strong>Información importante</strong>
+                        <p>
+                            Al confirmar, la transferencia será marcada como completada y las ubicaciones físicas quedarán registradas en el sistema.
+                        </p>
+                    </div>
+                </section>
+            </div>
+
+            <footer class="detalle-transfer-confirm__footer">
+                <button type="button" class="detalle-process-modal__cancel" :disabled="transferProcessSubmitting" @click="closeTransferConfirmModal">
+                    Cancelar
+                </button>
+                <button type="button" class="detalle-process-modal__complete" :disabled="transferProcessSubmitting" @click="completeTransferProcess">
+                    <i class="pi pi-check-circle"></i>
+                    {{ transferProcessSubmitting ? 'Completando...' : 'Completar transferencia' }}
+                </button>
             </footer>
         </div>
     </Dialog>
@@ -2259,6 +2857,11 @@ onMounted(fetchDetail);
     border-left: 4px solid #ef4444;
 }
 
+.detalle-banner--blue {
+    background: #dbeafe;
+    border-left: 4px solid #1d4ed8;
+}
+
 .detalle-banner__head {
     display: flex;
     align-items: flex-start;
@@ -2295,6 +2898,10 @@ onMounted(fetchDetail);
     background: #ef4444;
 }
 
+.detalle-banner__icon--blue {
+    background: #1d4ed8;
+}
+
 .detalle-banner__title {
     color: #0f172a;
     font-size: 1.2rem;
@@ -2306,10 +2913,28 @@ onMounted(fetchDetail);
     margin-top: 0.35rem;
 }
 
+.detalle-banner__text--strong {
+    color: #8a5b00;
+    font-weight: 800;
+    margin-top: 1rem;
+}
+
 .detalle-banner__panel {
     background: #ffffff;
     border-radius: 1rem;
     padding: 1rem 1.15rem;
+}
+
+.detalle-banner__divider {
+    border-top: 1px solid #c7d2fe;
+    margin: 1rem 0;
+}
+
+.detalle-banner__notes {
+    background: #edf4ff;
+    border-radius: 0.7rem;
+    color: #0f3f91;
+    padding: 0.9rem 1rem;
 }
 
 .detalle-banner__panel--danger {
@@ -2355,6 +2980,14 @@ onMounted(fetchDetail);
     overflow: hidden;
 }
 
+.detalle-physical-review-card {
+    border: 2px solid #f07b00;
+    border-radius: 8px;
+    box-shadow: none;
+    min-height: 104px;
+    overflow: hidden;
+}
+
 .detalle-process-card__content {
     align-items: center;
     display: flex;
@@ -2384,6 +3017,10 @@ onMounted(fetchDetail);
     font-size: 1.35rem;
 }
 
+.detalle-process-card__icon--warning {
+    background: #e87900;
+}
+
 .detalle-process-card h3 {
     color: #0f172a;
     font-size: 1.15rem;
@@ -2407,6 +3044,22 @@ onMounted(fetchDetail);
     font-weight: 800;
     min-height: 3rem;
     min-width: 19rem;
+}
+
+.detalle-physical-review-card__actions {
+    display: flex;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+    justify-content: flex-end;
+}
+
+.detalle-physical-review-card__observe {
+    border-color: #e87900;
+    color: #c56200;
+    font-weight: 800;
+    min-height: 3rem;
+    min-width: 12rem;
 }
 
 .detalle-print-card__icon {
@@ -2485,11 +3138,11 @@ onMounted(fetchDetail);
 }
 
 .detalle-panel__header {
-    background: #2f6f9f;
-    color: #ffffff;
-    font-size: 1.15rem;
-    font-weight: 700;
-    padding: 1rem 1.3rem;
+    background: #ffffff;
+    color: #0f172a;
+    font-size: 1.25rem;
+    font-weight: 600;
+    padding: 1.75rem 2rem 0;
 }
 
 .detalle-panel__header--split {
@@ -2500,11 +3153,19 @@ onMounted(fetchDetail);
 }
 
 .detalle-panel__header--split .detalle-link-button {
-    color: #ffffff;
+    color: #1f5f8e;
 }
 
 .detalle-panel__body {
-    padding: 1.4rem 1.5rem 1.5rem;
+    padding: 1.4rem 2rem 2rem;
+}
+
+.detalle-panel__chips {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.7rem;
+    justify-content: flex-end;
 }
 
 .detalle-label {
@@ -2581,7 +3242,6 @@ onMounted(fetchDetail);
     color: #486581;
     font-size: 0.9rem;
     font-weight: 700;
-    text-transform: uppercase;
     border-bottom: 1px solid #d7dde6;
 }
 
@@ -2609,6 +3269,38 @@ onMounted(fetchDetail);
     color: #2f6f9f;
     font-size: 0.84rem;
     font-weight: 700;
+}
+
+.detalle-summary-series-row {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.detalle-summary-series-count,
+.detalle-summary-series-chip {
+    border-radius: 6px;
+    display: inline-flex;
+    font-size: 0.75rem;
+    line-height: 1.2;
+    max-width: 20rem;
+    overflow: hidden;
+    padding: 0.32rem 0.5rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.detalle-summary-series-count {
+    background: #dcecff;
+    color: #1f5f8e;
+    font-weight: 700;
+}
+
+.detalle-summary-series-chip {
+    background: #f4f7fb;
+    color: #123354;
 }
 
 .detalle-summary-card {
@@ -2645,12 +3337,17 @@ onMounted(fetchDetail);
     width: 100%;
     border: none;
     background: #f8fafc;
-    padding: 1.15rem 1.25rem;
+    padding: 1.35rem 1.45rem;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 1rem;
+    gap: 1.25rem;
     cursor: pointer;
+}
+
+.detalle-box-card__header > .flex {
+    align-items: center;
+    gap: 1.2rem !important;
 }
 
 .detalle-box-card__icon {
@@ -2660,8 +3357,10 @@ onMounted(fetchDetail);
     background: #2f6f9f;
     color: #ffffff;
     display: inline-flex;
+    flex-shrink: 0;
     align-items: center;
     justify-content: center;
+    font-size: 0.95rem;
 }
 
 .detalle-box-card__title {
@@ -2670,15 +3369,182 @@ onMounted(fetchDetail);
     font-weight: 700;
 }
 
+.detalle-box-card__series-row {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem 0.55rem;
+    margin-top: 0.55rem;
+}
+
+.detalle-box-card__series-count,
+.detalle-box-card__series-chip {
+    border-radius: 6px;
+    display: inline-flex;
+    font-size: 0.78rem;
+    line-height: 1.2;
+    max-width: min(100%, 24rem);
+    overflow: hidden;
+    padding: 0.35rem 0.55rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.detalle-box-card__series-count {
+    background: #dcecff;
+    color: #1f5f8e;
+    font-weight: 700;
+}
+
+.detalle-box-card__series-chip {
+    background: #f4f7fb;
+    color: #123354;
+}
+
 .detalle-box-card__subtitle {
     color: #64748b;
     font-size: 0.94rem;
-    margin-top: 0.2rem;
+    margin-top: 0.6rem;
 }
 
 .detalle-box-card__content {
     padding: 1rem 1.25rem 1.25rem;
     border-top: 1px solid #d7dde6;
+}
+
+.detalle-box-location-header {
+    border: 2px solid #1f2937;
+    border-radius: 1rem;
+    color: #111827;
+    margin-bottom: 1.25rem;
+    overflow: hidden;
+}
+
+.detalle-box-location-header__top {
+    align-items: flex-start;
+    border-bottom: 1px solid #d7dde6;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+    padding: 1.2rem 1.35rem 1rem;
+}
+
+.detalle-box-location-header__top h3 {
+    color: #111827;
+    font-size: 1.55rem;
+    font-weight: 900;
+    letter-spacing: 0;
+    margin: 0;
+}
+
+.detalle-box-location-header__top p {
+    color: #64748b;
+    margin: 0.45rem 0 0;
+}
+
+.detalle-box-location-header__date {
+    color: #526377;
+    min-width: 11rem;
+    text-align: right;
+}
+
+.detalle-box-location-header__date span,
+.detalle-box-location-header__details span,
+.detalle-box-location-header__qr span,
+.detalle-box-location-header__box-number span {
+    color: #64748b;
+    display: block;
+    font-size: 0.88rem;
+}
+
+.detalle-box-location-header__date strong {
+    color: #111827;
+    display: block;
+    font-size: 1.12rem;
+    margin-top: 0.3rem;
+}
+
+.detalle-box-location-header__main {
+    align-items: center;
+    display: grid;
+    gap: 1.5rem;
+    grid-template-columns: 9rem minmax(0, 1fr);
+    padding: 1.2rem 1.35rem;
+}
+
+.detalle-box-location-header__qr {
+    text-align: center;
+}
+
+.detalle-box-location-header__qr img {
+    display: block;
+    height: 6.2rem;
+    margin: 0 auto 0.55rem;
+    width: 6.2rem;
+}
+
+.detalle-box-location-header__hero {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.detalle-box-location-header__code {
+    background: #2f6f9f;
+    border-radius: 0.85rem;
+    color: #ffffff;
+    padding: 1rem 1.2rem;
+    text-align: center;
+}
+
+.detalle-box-location-header__code span {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0;
+}
+
+.detalle-box-location-header__code strong {
+    display: block;
+    font-size: 2rem;
+    font-weight: 900;
+    letter-spacing: 0;
+    margin-top: 0.45rem;
+}
+
+.detalle-box-location-header__box-number {
+    background: #edf3fa;
+    border-radius: 0.85rem;
+    padding: 0.8rem 1rem;
+}
+
+.detalle-box-location-header__box-number strong {
+    color: #111827;
+    display: block;
+    font-size: 1.65rem;
+    font-weight: 900;
+    margin-top: 0.25rem;
+}
+
+.detalle-box-location-header__details {
+    border-top: 1px solid #d7dde6;
+    display: grid;
+    gap: 1.3rem;
+    grid-template-columns: minmax(8rem, 0.7fr) minmax(12rem, 1fr) minmax(12rem, 1fr);
+    padding: 1rem 1.35rem;
+}
+
+.detalle-box-location-header__details strong {
+    color: #111827;
+    display: block;
+    font-weight: 800;
+    margin-top: 0.35rem;
+}
+
+.detalle-box-location-header__assigned {
+    border-top: 1px solid #d7dde6;
+    color: #64748b;
+    padding: 0.8rem 1.35rem;
 }
 
 .detalle-table-wrapper {
@@ -2914,14 +3780,13 @@ onMounted(fetchDetail);
 }
 
 .detalle-unit-auth-modal__grid span,
-.detalle-unit-auth-modal__box small {
+.detalle-unit-auth-modal__box-period {
     color: #64748b;
     display: block;
     font-size: 0.86rem;
 }
 
-.detalle-unit-auth-modal__grid strong,
-.detalle-unit-auth-modal__box strong {
+.detalle-unit-auth-modal__grid strong {
     color: #111827;
     display: block;
     margin-top: 0.45rem;
@@ -2961,28 +3826,78 @@ onMounted(fetchDetail);
 }
 
 .detalle-unit-auth-modal__box {
-    align-items: center;
+    align-items: flex-start;
     border: 1px solid #dbe3ed;
     border-radius: 8px;
     display: flex;
-    gap: 1rem;
+    gap: 1.25rem;
     justify-content: space-between;
-    padding: 1rem;
+    padding: 0.9rem 1rem;
 }
 
-.detalle-unit-auth-modal__box > strong {
-    color: #56b657;
-    flex-shrink: 0;
+.detalle-unit-auth-modal__box-content {
+    min-width: 0;
 }
 
-.detalle-unit-auth-modal__box span {
+.detalle-unit-auth-modal__box-series {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+}
+
+.detalle-unit-auth-modal__box-badge {
     background: #56b657;
     border-radius: 999px;
     color: #ffffff;
     display: inline-flex;
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     font-weight: 800;
-    padding: 0.3rem 0.85rem;
+    line-height: 1;
+    padding: 0.45rem 0.85rem;
+    white-space: nowrap;
+}
+
+.detalle-unit-auth-modal__series-count {
+    background: #dbeafe;
+    border-radius: 5px;
+    color: #1d5fa0;
+    display: inline-flex;
+    font-size: 0.76rem;
+    font-weight: 700;
+    line-height: 1.1;
+    padding: 0.35rem 0.55rem;
+    white-space: nowrap;
+}
+
+.detalle-unit-auth-modal__series-chip {
+    background: #f4f6f8;
+    border-radius: 4px;
+    color: #1f2937;
+    display: inline-flex;
+    font-size: 0.74rem;
+    line-height: 1.2;
+    max-width: 100%;
+    padding: 0.35rem 0.55rem;
+}
+
+.detalle-unit-auth-modal__box-period {
+    margin-top: 0.55rem;
+}
+
+.detalle-unit-auth-modal__box-period strong {
+    color: #111827;
+    font-weight: 800;
+}
+
+.detalle-unit-auth-modal__box-documents {
+    align-self: center;
+    color: #56b657;
+    flex-shrink: 0;
+    font-weight: 800;
+    line-height: 1.45;
+    min-width: 6.5rem;
+    text-align: center;
 }
 
 .detalle-unit-auth-modal__footer {
@@ -3261,6 +4176,44 @@ onMounted(fetchDetail);
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.detalle-process-box__location-code {
+    align-items: flex-start;
+    background: #eef6fb;
+    border-left: 4px solid #2f6f9f;
+    border-radius: 8px;
+    color: #1f5f8e;
+    display: flex;
+    gap: 0.9rem;
+    margin-top: 1.25rem;
+    padding: 1rem 1.1rem;
+}
+
+.detalle-process-box__location-code > i {
+    color: #10b981;
+    flex-shrink: 0;
+    font-size: 1.35rem;
+    margin-top: 0.15rem;
+}
+
+.detalle-process-box__location-code span,
+.detalle-process-box__location-code small {
+    color: #334155;
+    display: block;
+}
+
+.detalle-process-box__location-code span {
+    font-weight: 800;
+    margin-bottom: 0.45rem;
+}
+
+.detalle-process-box__location-code strong {
+    color: #1f5f8e;
+    display: block;
+    font-size: 1.25rem;
+    letter-spacing: 0;
+    margin-bottom: 0.45rem;
+}
+
 .detalle-process-box__fields label {
     color: #526377;
     display: flex;
@@ -3322,6 +4275,243 @@ onMounted(fetchDetail);
     display: inline-flex;
     gap: 0.55rem;
     margin-left: auto;
+}
+
+.detalle-process-modal__pending--done {
+    color: #10b981;
+    font-weight: 800;
+}
+
+.detalle-process-page {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    padding-bottom: 6rem;
+}
+
+.detalle-process-page__header {
+    align-items: center;
+    display: flex;
+    gap: 1rem;
+}
+
+.detalle-process-page__progress {
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+}
+
+.detalle-process-page__grid {
+    display: grid;
+    gap: 1.5rem;
+    grid-template-columns: minmax(17rem, 0.36fr) minmax(0, 1fr);
+}
+
+.detalle-process-page__info {
+    position: sticky;
+    top: 1rem;
+}
+
+.detalle-process-page__boxes {
+    min-width: 0;
+}
+
+.detalle-process-page__box {
+    border-width: 2px;
+}
+
+.detalle-process-page__box--done {
+    border-color: #10b981;
+}
+
+.detalle-process-box__icon--done {
+    background: #10b981;
+}
+
+.detalle-process-page__code-chip {
+    align-items: center;
+    background: #eef6fb;
+    border-radius: 8px;
+    color: #1f5f8e;
+    display: inline-flex;
+    font-weight: 800;
+    gap: 0.45rem;
+    margin-top: 0.6rem;
+    padding: 0.45rem 0.7rem;
+}
+
+.detalle-process-page__footer {
+    bottom: 1rem;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.16);
+    left: 0;
+    margin: 0;
+    position: sticky;
+    z-index: 5;
+}
+
+.detalle-transfer-confirm {
+    background: #ffffff;
+}
+
+.detalle-transfer-confirm__header {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    padding: 1.55rem 1.65rem 1rem;
+}
+
+.detalle-transfer-confirm__title {
+    align-items: center;
+    color: #2f6f9f;
+    display: flex;
+    gap: 0.75rem;
+}
+
+.detalle-transfer-confirm__title i {
+    color: #10b981;
+    font-size: 1.55rem;
+}
+
+.detalle-transfer-confirm__title h2 {
+    font-size: 1.55rem;
+    font-weight: 800;
+    margin: 0;
+}
+
+.detalle-transfer-confirm__close {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    color: #526377;
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 1rem;
+    height: 2.25rem;
+    justify-content: center;
+    width: 2.25rem;
+}
+
+.detalle-transfer-confirm__body {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    max-height: min(68vh, 42rem);
+    overflow: auto;
+    padding: 0 1.65rem 1.45rem;
+}
+
+.detalle-transfer-confirm__intro {
+    color: #64748b;
+    margin: 0;
+}
+
+.detalle-transfer-confirm__summary {
+    background: #eef6fb;
+    border: 1px solid #c7d9e8;
+    border-radius: 8px;
+    display: grid;
+    gap: 0.8rem;
+    padding: 1rem;
+}
+
+.detalle-transfer-confirm__summary h3,
+.detalle-transfer-confirm__section-title {
+    color: #111827;
+    font-size: 1rem;
+    font-weight: 800;
+    margin: 0 0 0.6rem;
+}
+
+.detalle-transfer-confirm__summary div {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.detalle-transfer-confirm__summary span {
+    color: #64748b;
+}
+
+.detalle-transfer-confirm__summary strong {
+    color: #111827;
+}
+
+.detalle-transfer-confirm__locations {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.detalle-transfer-confirm__location {
+    align-items: center;
+    border: 1px solid #10b981;
+    border-radius: 8px;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+    padding: 0.85rem 1rem;
+}
+
+.detalle-transfer-confirm__location-main {
+    align-items: center;
+    display: flex;
+    gap: 0.8rem;
+}
+
+.detalle-transfer-confirm__box-icon {
+    align-items: center;
+    background: #10b981;
+    border-radius: 8px;
+    color: #ffffff;
+    display: inline-flex;
+    height: 2.3rem;
+    justify-content: center;
+    width: 2.3rem;
+}
+
+.detalle-transfer-confirm__code {
+    align-items: center;
+    background: #2f6f9f;
+    border-radius: 6px;
+    color: #ffffff;
+    display: inline-flex;
+    font-weight: 800;
+    gap: 0.4rem;
+    padding: 0.45rem 0.7rem;
+}
+
+.detalle-transfer-confirm__notice {
+    align-items: flex-start;
+    background: #eef6fb;
+    border-left: 4px solid #2f6f9f;
+    border-radius: 8px;
+    display: flex;
+    gap: 0.85rem;
+    padding: 1rem;
+}
+
+.detalle-transfer-confirm__notice i {
+    color: #2f6f9f;
+    font-size: 1.2rem;
+    margin-top: 0.15rem;
+}
+
+.detalle-transfer-confirm__notice strong {
+    color: #1f2937;
+}
+
+.detalle-transfer-confirm__notice p {
+    color: #64748b;
+    line-height: 1.45;
+    margin: 0.45rem 0 0;
+}
+
+.detalle-transfer-confirm__footer {
+    align-items: center;
+    border-top: 1px solid #dbe3ed;
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-end;
+    padding: 1rem 1.65rem;
 }
 
 .detalle-history {
@@ -3655,6 +4845,7 @@ onMounted(fetchDetail);
         font-size: 1.8rem;
     }
 
+    .detalle-panel__header,
     .detalle-panel__body,
     .detalle-box-card__header,
     .detalle-box-card__content,
@@ -3662,6 +4853,15 @@ onMounted(fetchDetail);
     .detalle-print-card {
         padding-left: 1rem;
         padding-right: 1rem;
+    }
+
+    .detalle-panel__header--split {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .detalle-panel__chips {
+        justify-content: flex-start;
     }
 
     .detalle-actions {
@@ -3685,11 +4885,17 @@ onMounted(fetchDetail);
     }
 
     .detalle-process-modal__grid,
+    .detalle-process-page__grid,
     .detalle-process-box__fields {
         grid-template-columns: 1fr;
     }
 
-    .detalle-process-modal__footer {
+    .detalle-process-page__info {
+        position: static;
+    }
+
+    .detalle-process-modal__footer,
+    .detalle-transfer-confirm__footer {
         align-items: stretch;
         flex-direction: column;
     }
@@ -3700,6 +4906,29 @@ onMounted(fetchDetail);
     }
 
     .detalle-process-modal__pending {
+        margin-left: 0;
+    }
+
+    .detalle-process-page__footer {
+        bottom: 0.75rem;
+    }
+
+    .detalle-transfer-confirm__location,
+    .detalle-transfer-confirm__summary div {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .detalle-box-location-header__main,
+    .detalle-box-location-header__details {
+        grid-template-columns: 1fr;
+    }
+
+    .detalle-box-location-header__qr {
+        text-align: left;
+    }
+
+    .detalle-box-location-header__qr img {
         margin-left: 0;
     }
 
@@ -3759,6 +4988,53 @@ onMounted(fetchDetail);
     .detalle-subtitle {
         display: inline-block;
         margin-top: 0.2rem;
+    }
+
+    .detalle-process-page {
+        padding-bottom: 8rem;
+    }
+
+    .detalle-process-page__header {
+        align-items: flex-start;
+    }
+
+    .detalle-process-modal__progress-head,
+    .detalle-process-box__summary {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .detalle-process-box__summary-main {
+        align-items: flex-start;
+    }
+
+    .detalle-transfer-confirm__header,
+    .detalle-transfer-confirm__body,
+    .detalle-transfer-confirm__footer {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    .detalle-transfer-confirm__title h2 {
+        font-size: 1.25rem;
+    }
+
+    .detalle-box-location-header__top {
+        flex-direction: column;
+    }
+
+    .detalle-box-location-header__date {
+        min-width: 0;
+        text-align: left;
+    }
+
+    .detalle-box-location-header__top h3 {
+        font-size: 1.15rem;
+    }
+
+    .detalle-box-location-header__code strong {
+        font-size: 1.45rem;
     }
 
     .detalle-chip {

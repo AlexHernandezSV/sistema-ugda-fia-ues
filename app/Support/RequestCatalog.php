@@ -104,14 +104,28 @@ class RequestCatalog
             && $workflowCode === 'transfer_status_pending'
             && $viewerProfile === 'Director/Jefe de Unidad'
             && in_array($transfer->unit_id, $viewerUnitIds, true);
+        $physicalReviewStatuses = [
+            'transfer_status_physical_review',
+            'transfer_status_physical_observed',
+            'transfer_status_subsanated',
+        ];
+        $isPhysicalReviewFlow = in_array($workflowCode, $physicalReviewStatuses, true);
+        $latestSubsanation = $transfer->events
+            ->filter(fn ($event) => $event->status?->code === 'transfer_status_subsanated' || $event->title === 'Subsanada')
+            ->sortByDesc('occurred_at')
+            ->first();
+        $hasSubsanationAfterObservation = $latestObservation
+            && $latestSubsanation
+            && $latestSubsanation->occurred_at?->greaterThan($latestObservation->occurred_at);
+
         $isUgdaReview = $authCode === 'transfer_auth_authorized'
             && $workflowCode === 'transfer_status_pending'
             && self::viewerCanManageUgda($viewer);
-        $canCorrectObserved = $workflowCode === 'transfer_status_observed'
+        $canCorrectObserved = in_array($workflowCode, ['transfer_status_observed', 'transfer_status_physical_observed'], true)
             && self::viewerCanCorrectObservedTransfer($viewer, $transfer);
-        $isReview = $isUnitDirectorReview || $isUgdaReview;
+        $isReview = $isUnitDirectorReview || $isUgdaReview || ($isPhysicalReviewFlow && self::viewerCanManageUgda($viewer));
         $isScheduled = $workflowCode === 'transfer_status_scheduled';
-        $mode = $isUnitDirectorReview ? 'unitAuthorization' : ($isUgdaReview ? 'review' : 'detail');
+        $mode = $isUnitDirectorReview ? 'unitAuthorization' : (($isUgdaReview || ($isPhysicalReviewFlow && self::viewerCanManageUgda($viewer))) ? 'review' : 'detail');
 
         return [
             'number' => $transfer->code,
@@ -151,13 +165,34 @@ class RequestCatalog
                     'scheduledAt' => self::formatDateTime($latestSchedule->occurred_at),
                 ]
                 : null,
-            'processCard' => $isScheduled && self::viewerCanManageUgda($viewer)
+            'processCard' => ($isScheduled || $workflowCode === 'transfer_status_subsanated') && self::viewerCanManageUgda($viewer)
                 ? [
-                    'title' => 'Proceso de Transferencia',
-                    'description' => 'Asigne ubicaciones fisicas a las cajas de documentos para su resguardo en UGDA',
-                    'buttonLabel' => 'Iniciar proceso de transferencia',
+                    'action' => 'startPhysicalReview',
+                    'icon' => 'pi pi-eye',
+                    'title' => $workflowCode === 'transfer_status_subsanated' ? 'Validar Correcciones' : 'Revisión Física de Documentos',
+                    'description' => $workflowCode === 'transfer_status_subsanated'
+                        ? 'Inicie una nueva revisión física para validar las correcciones realizadas por el solicitante'
+                        : 'Inicie el proceso de revisión física de la documentación antes de asignar ubicaciones',
+                    'buttonLabel' => $workflowCode === 'transfer_status_subsanated' ? 'Iniciar nueva revisión' : 'Iniciar revisión física',
                 ]
                 : null,
+            'physicalReviewCard' => $workflowCode === 'transfer_status_physical_review' && self::viewerCanManageUgda($viewer)
+                ? [
+                    'title' => 'Revisión Física en Proceso',
+                    'description' => 'La documentación está siendo revisada. Complete la revisión registrando observaciones o proceda con la asignación de ubicaciones.',
+                    'observeLabel' => 'Observar revisión',
+                    'transferLabel' => 'Iniciar proceso de transferencia',
+                    'canStartTransfer' => true,
+                ]
+                : ($workflowCode === 'transfer_status_physical_observed' && self::viewerCanManageUgda($viewer)
+                    ? [
+                        'title' => 'Revisión Física en Proceso',
+                        'description' => 'Puede seguir registrando observaciones mientras la solicitud se encuentre en observación de revisión.',
+                        'observeLabel' => 'Observar revisión',
+                        'transferLabel' => 'Iniciar proceso de transferencia',
+                        'canStartTransfer' => false,
+                    ]
+                    : null),
             'workflowNotice' => $isUnitDirectorReview
                 ? [
                     'title' => 'Solicitud pendiente de autorizacion',
@@ -169,11 +204,28 @@ class RequestCatalog
                     'description' => 'Esta solicitud ha sido autorizada por la jefatura de unidad y requiere gestion de la UGDA para continuar el proceso.',
                 ]
                 : null),
+            'physicalObservations' => $isPhysicalReviewFlow && $observations->isNotEmpty()
+                ? self::buildPhysicalObservationPanel(
+                    $observations,
+                    $workflowCode,
+                    $hasSubsanationAfterObservation,
+                    self::viewerCanCorrectObservedTransfer($viewer, $transfer)
+                )
+                : null,
+            'subsanationSummary' => $hasSubsanationAfterObservation && in_array($workflowCode, ['transfer_status_subsanated', 'transfer_status_physical_review'], true)
+                ? [
+                    'title' => 'Observaciones Subsanadas',
+                    'description' => 'El solicitante ha corregido las observaciones y reenviado la solicitud para nueva validación',
+                    'message' => 'Se ha recibido la documentación corregida. Revise las aclaraciones del solicitante e inicie una nueva revisión física para validar los cambios realizados.',
+                    'notesLabel' => 'Aclaraciones del solicitante:',
+                    'notes' => $latestSubsanation->context['correction_notes'] ?? 'Sin aclaraciones registradas.',
+                ]
+                : null,
             'observationsRegistered' => $workflowCode === 'transfer_status_observed' && $observations->isNotEmpty()
                 ? [
                     'count' => $observations->count(),
                     'title' => 'Observaciones Registradas',
-                    'description' => 'Esta solicitud tiene ' . $observations->count() . ' observacion(es) registrada(s)',
+                    'description' => 'Esta solicitud tiene ' . $observations->count() . ' observación(es) registrada(s)',
                     'canCorrect' => $canCorrectObserved,
                     'actionLabel' => 'Editar solicitud y corregir observaciones',
                     'items' => $observations->map(fn ($event) => [
@@ -188,8 +240,8 @@ class RequestCatalog
                 && $latestCorrection
                 && $latestCorrection->occurred_at?->greaterThan($latestObservation->occurred_at)
                 ? [
-                    'title' => 'Observacion resuelta',
-                    'description' => 'La unidad solicitante corrigio la solicitud y la reenvio a jefatura para autorizacion.',
+                    'title' => 'Observación resuelta',
+                    'description' => 'La unidad solicitante corrigio la solicitud y la reenvió a jefatura para autorización.',
                     'observedBy' => self::eventActorName($latestObservation),
                     'observedAt' => self::formatDateTime($latestObservation->occurred_at),
                     'observation' => $latestObservation->description,
@@ -295,7 +347,7 @@ class RequestCatalog
                 ? [
                     'count' => $observations->count(),
                     'title' => 'Observaciones Registradas',
-                    'description' => 'Esta solicitud tiene ' . $observations->count() . ' observacion(es) registrada(s)',
+                    'description' => 'Esta solicitud tiene ' . $observations->count() . ' observación(es) registrada(s)',
                     'items' => $observations->map(fn ($event) => [
                         'actor' => self::eventActorName($event),
                         'dateTime' => self::formatDateTime($event->occurred_at),
@@ -504,14 +556,27 @@ class RequestCatalog
 
     private static function buildTransferDocumentSummary(Transfer $transfer): array
     {
-        $rows = $transfer->boxes->map(fn ($box, $index) => [
-            'index' => $index + 1,
-            'series' => $box->series_name,
-            'startYear' => (string) $box->start_year,
-            'endYear' => (string) $box->end_year,
-            'boxNumber' => (string) $box->box_number,
-            'documentsLabel' => $box->documents->count() . ' doc(s)',
-        ])->values()->all();
+        $rows = $transfer->boxes->map(function ($box, $index) {
+            $seriesList = self::splitSeriesLabels($box->series_name);
+
+            if ($seriesList->isEmpty()) {
+                $seriesList = $box->documents
+                    ->pluck('series_label')
+                    ->filter()
+                    ->unique()
+                    ->values();
+            }
+
+            return [
+                'index' => $index + 1,
+                'series' => $box->series_name,
+                'seriesList' => $seriesList->values()->all(),
+                'startYear' => (string) $box->start_year,
+                'endYear' => (string) $box->end_year,
+                'boxNumber' => (string) $box->box_number,
+                'documentsLabel' => $box->documents->count() . ' doc(s)',
+            ];
+        })->values()->all();
 
         $totalDocuments = $transfer->boxes->sum(fn ($box) => $box->documents->count());
 
@@ -524,13 +589,70 @@ class RequestCatalog
         ];
     }
 
+    private static function buildPhysicalObservationPanel(Collection $observations, ?string $workflowCode, bool $hasSubsanationAfterObservation, bool $canCorrect): array
+    {
+        $count = $observations->count();
+        $items = $observations->map(fn ($event) => [
+            'actor' => self::eventActorName($event),
+            'dateTime' => self::formatDateTime($event->occurred_at),
+            'message' => $event->description,
+        ])->values()->all();
+
+        if ($workflowCode === 'transfer_status_physical_review' && $hasSubsanationAfterObservation) {
+            return [
+                'count' => $count,
+                'title' => 'Observaciones Previas de Revisión Física',
+                'description' => 'Estas son las observaciones previas que se registraron. Valide que hayan sido corregidas durante esta nueva revisión:',
+                'instruction' => 'Si las observaciones fueron corregidas, proceda con el proceso de transferencia. Si encuentra nuevas observaciones, regístrelas usando el botón "Observar revisión"',
+                'canCorrect' => false,
+                'actionLabel' => null,
+                'items' => $items,
+            ];
+        }
+
+        if ($workflowCode === 'transfer_status_subsanated') {
+            return [
+                'count' => $count,
+                'title' => 'Observaciones de Revisión Física',
+                'description' => 'La solicitud ha sido subsanada. Revise las siguientes ' . $count . ' observaciones que se hicieron para validar las correcciones:',
+                'instruction' => 'Inicie una nueva revisión física para validar que las observaciones han sido corregidas',
+                'canCorrect' => false,
+                'actionLabel' => null,
+                'items' => $items,
+            ];
+        }
+
+        return [
+            'count' => $count,
+            'title' => 'Observaciones de Revisión Física',
+            'description' => $workflowCode === 'transfer_status_physical_observed'
+                ? 'La revisión física encontró ' . $count . ' observaciones que debe corregir'
+                : 'La revisión física encontró ' . $count . ' observaciones registrada(s)',
+            'instruction' => $canCorrect ? 'Puede editar la solicitud para corregir las observaciones y volver a enviarla' : null,
+            'canCorrect' => $canCorrect,
+            'actionLabel' => 'Editar solicitud y corregir observaciones',
+            'items' => $items,
+        ];
+    }
+
     private static function mapTransferBox(string $transferNumber, $box): array
     {
         $number = str_pad((string) $box->box_number, 3, '0', STR_PAD_LEFT);
+        $seriesList = self::splitSeriesLabels($box->series_name);
+
+        if ($seriesList->isEmpty()) {
+            $seriesList = $box->documents
+                ->pluck('series_label')
+                ->filter()
+                ->unique()
+                ->values();
+        }
 
         return [
             'number' => $number,
             'title' => $box->title ?: 'Caja #' . $number,
+            'series' => $box->series_name,
+            'seriesList' => $seriesList->values()->all(),
             'period' => $box->period_label ?: self::buildPeriodLabel($box->start_year, $box->end_year),
             'documentsCount' => $box->documents->count(),
             'physicalLocation' => $box->location_code,
@@ -547,6 +669,15 @@ class RequestCatalog
                 'digitalUrl' => $document->digital_file_name ? '/api/transfers/' . $transferNumber . '/documents/' . $document->code . '/download' : null,
             ])->values()->all(),
         ];
+    }
+
+    private static function splitSeriesLabels(?string $value): Collection
+    {
+        return collect(explode(';', (string) $value))
+            ->map(fn ($item) => trim($item))
+            ->filter()
+            ->unique()
+            ->values();
     }
 
     private static function mapTransferDecisionCard($event): array
