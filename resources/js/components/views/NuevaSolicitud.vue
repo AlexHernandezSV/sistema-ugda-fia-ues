@@ -229,6 +229,13 @@ const addBatch = () => {
         return;
     }
 
+    // VALIDACIÓN: Años no mayores al actual (NUEVA)
+    const currentYear = new Date().getFullYear();
+    if (parseInt(startYear, 10) > currentYear || parseInt(endYear, 10) > currentYear) {
+        showError(`Las fechas inicial y final no pueden ser mayores a ${currentYear}.`);
+        return;
+    }
+
     if (Number(endYear) < Number(startYear)) {
         showError('La fecha final no puede ser menor que la fecha inicial.');
         return;
@@ -375,6 +382,24 @@ const addDocumentToTemp = () => {
     if (!documentSeries || !documentName || !documentCode || !docForm.value.support) {
         showError('Complete los datos obligatorios del documento.');
         return;
+    }
+
+    // NUEVA VALIDACIÓN: Año no mayor al actual (solo si se ingresó)
+    if (documentDate !== '') {
+        const currentYear = new Date().getFullYear();
+        if (parseInt(documentDate, 10) > currentYear) {
+            showError(`El año del documento no puede ser mayor a ${currentYear}.`);
+            return;
+        }
+    }
+
+    // NUEVA VALIDACIÓN: Páginas sea número positivo (solo si se ingresó)
+    if (documentPages !== '') {
+        const pagesNumber = Number(documentPages);
+        if (isNaN(pagesNumber) || pagesNumber < 1 || !Number.isInteger(pagesNumber)) {
+            showError('La cantidad de páginas debe ser un número entero positivo.');
+            return;
+        }
     }
 
     tempDocuments.value.push({

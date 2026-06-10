@@ -27,3 +27,6 @@ Homestead.yaml
 Thumbs.db
 npm-debug.log
 yarn-error.log
+env
+docker-compose.yml
+Dockerfile

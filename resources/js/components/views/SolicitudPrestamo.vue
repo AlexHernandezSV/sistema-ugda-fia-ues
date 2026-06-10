@@ -145,6 +145,34 @@ const addAdditionalDocument = () => {
         return;
     }
 
+    // NUEVA VALIDACIÓN: año si fue ingresado
+    const yearValue = additionalForm.year ? additionalForm.year.trim() : '';
+    
+    if (yearValue !== '') {
+        // Validar formato 4 dígitos
+        if (!/^\d{4}$/.test(yearValue)) {
+            toast.add({
+                severity: 'warn',
+                summary: 'Año inválido',
+                detail: 'El año debe tener 4 dígitos (ej: 2024).',
+                life: 2800,
+            });
+            return;
+        }
+        
+        // Validar que no sea mayor al año actual
+        const currentYear = new Date().getFullYear();
+        if (parseInt(yearValue, 10) > currentYear) {
+            toast.add({
+                severity: 'warn',
+                summary: 'Año inválido',
+                detail: `El año no puede ser mayor a ${currentYear}.`,
+                life: 2800,
+            });
+            return;
+        }
+    }
+
     additionalDocuments.value = [
         ...additionalDocuments.value,
         {
