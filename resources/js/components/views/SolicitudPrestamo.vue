@@ -13,8 +13,10 @@ const confirmVisible = ref(false);
 const search = ref('');
 const pendingSelectedIds = ref([]);
 const selectedSystemIds = ref([]);
+const systemDocumentTypes = ref({});
 const showAdditionalForm = ref(false);
 const availableDocuments = ref([]);
+const documentTypeOptions = ['Copia', 'Original'];
 
 const requester = reactive({
     name: '',
@@ -53,7 +55,12 @@ const pendingDocuments = computed(() =>
 );
 
 const selectedSystemDocuments = computed(() =>
-    availableDocuments.value.filter((document) => selectedSystemIds.value.includes(document.id))
+    availableDocuments.value
+        .filter((document) => selectedSystemIds.value.includes(document.id))
+        .map((document) => ({
+            ...document,
+            documentType: systemDocumentTypes.value[document.id] ?? 'Copia',
+        }))
 );
 
 const totalDocuments = computed(() => selectedSystemIds.value.length + additionalDocuments.value.length);
@@ -100,12 +107,22 @@ const togglePendingDocument = (id) => {
 };
 
 const addSelectedDocuments = () => {
-    selectedSystemIds.value = [...new Set([...selectedSystemIds.value, ...pendingSelectedIds.value])];
+    const nextSelectedIds = [...new Set([...selectedSystemIds.value, ...pendingSelectedIds.value])];
+    const nextTypes = { ...systemDocumentTypes.value };
+
+    nextSelectedIds.forEach((id) => {
+        nextTypes[id] = nextTypes[id] ?? 'Copia';
+    });
+
+    selectedSystemIds.value = nextSelectedIds;
+    systemDocumentTypes.value = nextTypes;
     pendingSelectedIds.value = [];
 };
 
 const removeSystemDocument = (id) => {
     selectedSystemIds.value = selectedSystemIds.value.filter((item) => item !== id);
+    const { [id]: _removed, ...nextTypes } = systemDocumentTypes.value;
+    systemDocumentTypes.value = nextTypes;
 };
 
 const resetAdditionalForm = () => {
@@ -168,7 +185,10 @@ const submitLoanRequest = async () => {
         const { data } = await axios.post('/api/loans', {
             requester_name: requester.name,
             unit_name: requester.unitName,
-            document_ids: selectedSystemIds.value,
+            system_documents: selectedSystemIds.value.map((id) => ({
+                id,
+                document_type: systemDocumentTypes.value[id] ?? 'Copia',
+            })),
             additional_documents: additionalDocuments.value.map((document) => ({
                 name: document.name,
                 year: document.year,
@@ -278,7 +298,7 @@ onMounted(fetchCatalog);
                             <i class="pi pi-file"></i>
                         </div>
                         <div class="prestamo-document__body">
-                            <strong>{{ document.title }}</strong>
+                            <span class="prestamo-document-title">{{ document.title }}</span>
                             <div class="prestamo-document__grid">
                                 <span>Serie: {{ document.series || 'Sin serie' }}</span>
                                 <span>Caja: {{ document.box }}</span>
@@ -301,12 +321,15 @@ onMounted(fetchCatalog);
                     <div class="prestamo-selected-list">
                         <div v-for="document in selectedSystemDocuments" :key="document.id" class="prestamo-selected-item">
                             <div>
-                                <strong>{{ document.title }}</strong>
+                                <span class="prestamo-document-title">{{ document.title }}</span>
                                 <span>{{ document.series || 'Sin serie' }} - {{ document.box }} - {{ document.year || 'N/D' }}</span>
                             </div>
-                            <button type="button" @click="removeSystemDocument(document.id)">
-                                <i class="pi pi-trash"></i>
-                            </button>
+                            <div class="prestamo-selected-item__actions">
+                                <Dropdown v-model="systemDocumentTypes[document.id]" :options="documentTypeOptions" class="prestamo-document-type" />
+                                <button type="button" aria-label="Quitar documento" @click="removeSystemDocument(document.id)">
+                                    <i class="pi pi-trash"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -344,7 +367,7 @@ onMounted(fetchCatalog);
                         </div>
                         <div class="col-12 md:col-4">
                             <label class="prestamo-label">Tipo</label>
-                            <Dropdown v-model="additionalForm.documentType" :options="['Copia', 'Original']" class="w-full mt-2" />
+                            <Dropdown v-model="additionalForm.documentType" :options="documentTypeOptions" class="w-full mt-2" />
                         </div>
                         <div class="col-12">
                             <label class="prestamo-label">Observación Adicional</label>
@@ -363,13 +386,16 @@ onMounted(fetchCatalog);
                     <div class="prestamo-selected-list">
                         <div v-for="document in additionalDocuments" :key="document.id" class="prestamo-selected-item">
                             <div>
-                                <strong>{{ document.name }}</strong>
-                                <span>Año: {{ document.year || 'N/D' }} - Cantidad: {{ document.quantity || 'N/D' }} - {{ document.documentType }}</span>
+                                <span class="prestamo-document-title">{{ document.name }}</span>
+                                <span>Año: {{ document.year || 'N/D' }} - Cantidad: {{ document.quantity || 'N/D' }}</span>
                                 <em v-if="document.observation">Obs.: {{ document.observation }}</em>
                             </div>
-                            <button type="button" @click="removeAdditionalDocument(document.id)">
-                                <i class="pi pi-trash"></i>
-                            </button>
+                            <div class="prestamo-selected-item__actions">
+                                <Dropdown v-model="document.documentType" :options="documentTypeOptions" class="prestamo-document-type" />
+                                <button type="button" aria-label="Quitar documento" @click="removeAdditionalDocument(document.id)">
+                                    <i class="pi pi-trash"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -383,7 +409,7 @@ onMounted(fetchCatalog);
             </div>
         </template>
 
-        <Dialog v-model:visible="confirmVisible" modal :closable="false" :style="{ width: 'min(56rem, calc(100vw - 2rem))' }" contentClass="p-0">
+        <Dialog v-model:visible="confirmVisible" modal :closable="false" :style="{ width: 'min(56rem, calc(100vw - 2rem))' }" class="prestamo-confirm-dialog" contentClass="p-0">
             <div class="prestamo-confirm">
                 <div class="prestamo-confirm__header">
                     <div>
@@ -419,8 +445,8 @@ onMounted(fetchCatalog);
                         <h3>Documentos del Sistema ({{ selectedSystemDocuments.length }})</h3>
                         <div class="prestamo-confirm__items">
                             <div v-for="document in selectedSystemDocuments" :key="document.id">
-                                <strong>{{ document.title }}</strong>
-                                <span>{{ document.series || 'Sin serie' }} - {{ document.box }} - {{ document.year || 'N/D' }}</span>
+                                <span class="prestamo-document-title">{{ document.title }}</span>
+                                <span>{{ document.series || 'Sin serie' }} - {{ document.box }} - {{ document.year || 'N/D' }} - Tipo: {{ document.documentType }}</span>
                             </div>
                         </div>
                     </div>
@@ -429,7 +455,7 @@ onMounted(fetchCatalog);
                         <h3>Documentos Adicionales ({{ additionalDocuments.length }})</h3>
                         <div class="prestamo-confirm__items">
                             <div v-for="document in additionalDocuments" :key="document.id">
-                                <strong>{{ document.name }}</strong>
+                                <span class="prestamo-document-title">{{ document.name }}</span>
                                 <span>Año: {{ document.year || 'N/D' }} - Cantidad: {{ document.quantity || 'N/D' }} - Tipo: {{ document.documentType }}</span>
                                 <em v-if="document.observation">Observación: {{ document.observation }}</em>
                             </div>
@@ -609,6 +635,12 @@ onMounted(fetchCatalog);
     min-width: 0;
 }
 
+.prestamo-document-title {
+    color: #0f172a;
+    display: block;
+    font-weight: 400;
+}
+
 .prestamo-document__grid {
     color: #475569;
     display: grid;
@@ -718,6 +750,17 @@ onMounted(fetchCatalog);
     padding: 0.85rem 1rem;
 }
 
+.prestamo-selected-item__actions {
+    align-items: center;
+    display: flex;
+    flex-shrink: 0;
+    gap: 0.75rem;
+}
+
+.prestamo-document-type {
+    width: 8rem;
+}
+
 .prestamo-selected-item span,
 .prestamo-selected-item em {
     color: #64748b;
@@ -726,12 +769,31 @@ onMounted(fetchCatalog);
     margin-top: 0.35rem;
 }
 
+.prestamo-selected-item .prestamo-document-title,
+.prestamo-confirm__items .prestamo-document-title {
+    color: #0f172a;
+    font-size: 1rem;
+    font-weight: 400;
+    margin-top: 0;
+}
+
 .prestamo-selected-item button {
     background: transparent;
     border: 0;
     color: #ef4444;
     cursor: pointer;
     font-size: 1rem;
+}
+
+@media (max-width: 640px) {
+    .prestamo-selected-item {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .prestamo-selected-item__actions {
+        justify-content: flex-end;
+    }
 }
 
 .prestamo-actions {
@@ -770,6 +832,10 @@ onMounted(fetchCatalog);
     background: #ffffff;
     border: 1px solid #cbd5e1;
     color: #475569;
+}
+
+:global(.prestamo-confirm-dialog .p-dialog-header) {
+    display: none;
 }
 
 .prestamo-confirm {

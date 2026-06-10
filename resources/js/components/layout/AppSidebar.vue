@@ -12,6 +12,7 @@ import {
 
 const MOBILE_BREAKPOINT = 991;
 const REPORTS_PERMISSION = 'endpoint.ui.reports.read';
+const ADMIN_PROFILE = 'administrador';
 const UGDA_PROFILE = 'usuario ugda';
 const REQUESTER_PROFILE = 'unidad solicitante';
 const UNIT_DIRECTOR_PROFILE = 'director/jefe de unidad';
@@ -39,6 +40,7 @@ const userData = ref({
 
 const hasPermission = (permission) => userData.value.permissions.includes(permission);
 const normalizedRole = computed(() => String(userData.value.role ?? '').trim().toLowerCase());
+const isAdminProfile = computed(() => normalizedRole.value === ADMIN_PROFILE);
 const canAccessReports = computed(() => hasPermission(REPORTS_PERMISSION) || normalizedRole.value === UGDA_PROFILE);
 const isRequesterProfile = computed(() => normalizedRole.value === REQUESTER_PROFILE);
 const isUnitDirectorProfile = computed(() => normalizedRole.value === UNIT_DIRECTOR_PROFILE);
@@ -79,6 +81,16 @@ const menuItems = computed(() => {
             label: 'Pendientes',
             icon: 'pi pi-file-check',
             to: '/solicitudes/prestamos/pendientes',
+        });
+    }
+
+    if (isAdminProfile.value) {
+        items.push({
+            label: 'Archivo General',
+            icon: 'pi pi-box',
+            children: [
+                { label: 'Buscar Documentos', icon: 'pi pi-search', to: '/archivo-general' },
+            ],
         });
     }
 

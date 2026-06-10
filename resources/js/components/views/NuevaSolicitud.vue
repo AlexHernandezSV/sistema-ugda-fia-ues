@@ -845,9 +845,15 @@ const goBack = () => {
                         <article v-for="box in boxesList" :key="box.id_temp" class="transfer-confirm__box">
                             <div class="transfer-confirm__box-main">
                                 <span class="transfer-confirm__box-badge">Caja #{{ String(box.box_number).padStart(3, '0') }}</span>
-                                <strong class="transfer-confirm__box-series-text">
-                                    {{ getBoxSeriesLabels(box).join('; ') }}
-                                </strong>
+                                <div class="transfer-request__series-chips transfer-confirm__box-series-chips">
+                                    <span
+                                        v-for="series in getBoxSeriesLabels(box)"
+                                        :key="`confirm-${box.id_temp}-${series}`"
+                                        class="transfer-request__series-chip"
+                                    >
+                                        {{ series }}
+                                    </span>
+                                </div>
                                 <p>Periodo: <strong>{{ box.year_start }} - {{ box.year_end }}</strong></p>
                             </div>
                             <strong class="transfer-confirm__box-docs">{{ box.documents_count }} documento(s)</strong>
@@ -1481,7 +1487,7 @@ const goBack = () => {
 }
 
 :global(.transfer-confirm-dialog .p-dialog-header) {
-    background: #56b657;
+    background: #2f6f9f;
     border-bottom: 0;
     color: #ffffff;
     padding: 1.25rem 1.5rem;
@@ -1617,7 +1623,7 @@ const goBack = () => {
 }
 
 .transfer-confirm__metrics strong {
-    color: #56b657;
+    color: #2f6f9f;
     display: block;
     font-size: 1.9rem;
     line-height: 1;
@@ -1645,7 +1651,7 @@ const goBack = () => {
 }
 
 .transfer-confirm__box-badge {
-    background: #56b657;
+    background: #2f6f9f;
     border-radius: 999px;
     color: #ffffff;
     display: inline-flex;
@@ -1655,14 +1661,8 @@ const goBack = () => {
     padding: 0.35rem 0.75rem;
 }
 
-.transfer-confirm__box-series-text {
-    color: #111827;
-    display: block;
-    font-size: 1rem;
-    font-weight: 800;
-    line-height: 1.12;
+.transfer-confirm__box-series-chips {
     margin-top: 0.75rem;
-    overflow-wrap: anywhere;
 }
 
 .transfer-confirm__box p {
@@ -1675,7 +1675,7 @@ const goBack = () => {
 }
 
 .transfer-confirm__box-docs {
-    color: #56b657;
+    color: #2f6f9f;
     flex-shrink: 0;
     line-height: 1.5;
     text-align: center;
@@ -1683,15 +1683,15 @@ const goBack = () => {
 }
 
 .transfer-confirm__save {
-    background: #56b657;
-    border-color: #56b657;
+    background: #2f6f9f;
+    border-color: #2f6f9f;
     min-width: 15.5rem;
 }
 
 .transfer-confirm__save:hover,
 .transfer-confirm__save:focus {
-    background: #49a64b;
-    border-color: #49a64b;
+    background: #245d88;
+    border-color: #245d88;
 }
 
 :global(.transfer-docs-dialog.p-dialog),

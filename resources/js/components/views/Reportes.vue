@@ -1,14 +1,30 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import axios from 'axios';
 
 const router = useRouter();
+const loading = ref(true);
+const errorMessage = ref('');
+const reportSummary = ref({
+    categories: {
+        entry_and_registry: 0,
+        access_and_consultation: 0,
+        classification_and_organization: 0,
+    },
+    summary: {
+        total_documents: 0,
+        total_transfers: 0,
+        total_boxes: 0,
+        reserved_documents: 0,
+    },
+});
 
 const reportCategories = computed(() => ([
     {
         title: 'Reportes de Ingreso y Registro',
         description: 'Dashboards para consultar ingresos, recepcion y trazabilidad documental.',
-        availableReports: 4,
+        availableReports: reportSummary.value.categories.entry_and_registry,
         icon: 'pi pi-file-edit',
         accentClass: 'reports-card--blue',
         iconShellClass: 'reports-icon-shell--blue',
@@ -16,7 +32,7 @@ const reportCategories = computed(() => ([
     {
         title: 'Reportes de Consulta y Acceso',
         description: 'Indicadores sobre prestamos, consultas y atencion de usuarios.',
-        availableReports: 3,
+        availableReports: reportSummary.value.categories.access_and_consultation,
         icon: 'pi pi-eye',
         accentClass: 'reports-card--green',
         iconShellClass: 'reports-icon-shell--green',
@@ -24,7 +40,7 @@ const reportCategories = computed(() => ([
     {
         title: 'Reportes de Clasificacion y Organizacion',
         description: 'Resumenes para series, cajas y organizacion del archivo general.',
-        availableReports: 2,
+        availableReports: reportSummary.value.categories.classification_and_organization,
         icon: 'pi pi-folder-open',
         accentClass: 'reports-card--violet',
         iconShellClass: 'reports-icon-shell--violet',
@@ -34,25 +50,25 @@ const reportCategories = computed(() => ([
 const summaryCards = computed(() => ([
     {
         label: 'Total Documentos',
-        value: 57,
+        value: reportSummary.value.summary.total_documents,
         icon: 'pi pi-file',
         accentClass: 'reports-mini-card--blue',
     },
     {
         label: 'Total Transferencias',
-        value: 24,
+        value: reportSummary.value.summary.total_transfers,
         icon: 'pi pi-arrow-up-right',
         accentClass: 'reports-mini-card--green',
     },
     {
         label: 'Total Cajas',
-        value: 22,
+        value: reportSummary.value.summary.total_boxes,
         icon: 'pi pi-folder-open',
         accentClass: 'reports-mini-card--violet',
     },
     {
         label: 'Docs. Reservados',
-        value: 0,
+        value: reportSummary.value.summary.reserved_documents,
         icon: 'pi pi-chart-bar',
         accentClass: 'reports-mini-card--amber',
     },
@@ -61,6 +77,35 @@ const summaryCards = computed(() => ([
 const goBack = () => {
     router.push('/dashboard');
 };
+
+const fetchReportSummary = async () => {
+    loading.value = true;
+    errorMessage.value = '';
+
+    try {
+        const { data } = await axios.get('/api/reports/summary');
+        reportSummary.value = {
+            categories: {
+                entry_and_registry: data.categories?.entry_and_registry ?? 0,
+                access_and_consultation: data.categories?.access_and_consultation ?? 0,
+                classification_and_organization: data.categories?.classification_and_organization ?? 0,
+            },
+            summary: {
+                total_documents: data.summary?.total_documents ?? 0,
+                total_transfers: data.summary?.total_transfers ?? 0,
+                total_boxes: data.summary?.total_boxes ?? 0,
+                reserved_documents: data.summary?.reserved_documents ?? 0,
+            },
+        };
+    } catch (error) {
+        console.error('Error al cargar resumen de reportes:', error);
+        errorMessage.value = error.response?.data?.message ?? 'No se pudo cargar el resumen de reportes.';
+    } finally {
+        loading.value = false;
+    }
+};
+
+onMounted(fetchReportSummary);
 </script>
 
 <template>
@@ -83,6 +128,16 @@ const goBack = () => {
             <div class="reports-section__header">
                 <h2 class="reports-section__title m-0">Categorias de Reportes</h2>
                 <p class="reports-section__subtitle m-0">Selecciona una categoria para acceder a dashboards interactivos</p>
+            </div>
+
+            <div v-if="errorMessage" class="reports-message reports-message--error">
+                <i class="pi pi-exclamation-triangle"></i>
+                <span>{{ errorMessage }}</span>
+            </div>
+
+            <div v-else-if="loading" class="reports-message">
+                <i class="pi pi-spin pi-spinner"></i>
+                <span>Cargando valores desde la base de datos...</span>
             </div>
 
             <div class="grid">
@@ -212,6 +267,22 @@ const goBack = () => {
 .reports-section__subtitle {
     color: #6b7a90;
     font-size: 1rem;
+}
+
+.reports-message {
+    align-items: center;
+    background: #edf3fa;
+    border-radius: 0.9rem;
+    color: #2f6f9f;
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+    padding: 0.95rem 1rem;
+}
+
+.reports-message--error {
+    background: #fef2f2;
+    color: #b91c1c;
 }
 
 .reports-card {

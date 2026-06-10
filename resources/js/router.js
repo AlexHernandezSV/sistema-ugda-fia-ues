@@ -7,6 +7,7 @@ import Login from './components/Login.vue';
 import Dashboard from './components/Dashboard.vue';
 import Unidades from './components/views/Unidades.vue';
 import Usuarios from './components/views/Usuarios.vue'; // <--- NUEVO IMPORT
+import ArchivoGeneral from './components/views/ArchivoGeneral.vue';
 import SeriesDocumentales from './components/views/SeriesDocumentales.vue';
 import Solicitudes from './components/views/Solicitudes.vue';
 import NuevaSolicitud from './components/views/NuevaSolicitud.vue';
@@ -63,6 +64,13 @@ const routes = [
         name: 'series-documentales',
         meta: { title: 'Series Documentales', permission: 'endpoint.api.documentary-series.create' },
         component: SeriesDocumentales
+    },
+
+    {
+        path: '/archivo-general',
+        name: 'archivo-general',
+        meta: { title: 'Archivo General', allowedProfiles: ['Administrador'] },
+        component: ArchivoGeneral
     },
 
     {
@@ -124,7 +132,7 @@ const routes = [
 
     { path: '/solicitudes/transferencias/:number/proceso',
         name: 'solicitudes-transferencia-proceso',
-        meta: { title: 'Proceso de Transferencia', allowedProfiles: ['Usuario UGDA'] },
+        meta: { title: 'Proceso de Transferencia', allowedProfiles: ['Administrador', 'Usuario UGDA'] },
         component: DetalleTransferencia
     },
 

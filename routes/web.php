@@ -2,10 +2,12 @@
 
 use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request; // <--- IMPORTANTE: Necesario para obtener el usuario actual
+use App\Http\Controllers\ArchiveController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DocumentarySeriesController;
 use App\Http\Controllers\LoanController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ReportController;
 use App\Http\Controllers\RequestCatalogController;
 use App\Http\Controllers\SystemNotificationController;
 use App\Http\Controllers\TransferController;
@@ -137,6 +139,9 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/api/request-catalog', [RequestCatalogController::class, 'index']);
     Route::get('/api/dashboard-summary', [RequestCatalogController::class, 'dashboard']);
+    Route::get('/api/reports/summary', [ReportController::class, 'summary'])
+        ->middleware('permission:endpoint.ui.reports.read');
+    Route::get('/api/archive/documents', [ArchiveController::class, 'documents']);
     Route::get('/api/transfers/next-code', [TransferController::class, 'nextCode']);
     Route::get('/api/transfers/document-import-template', [TransferController::class, 'documentImportTemplate']);
     Route::post('/api/transfers/import-documents', [TransferController::class, 'importDocuments']);

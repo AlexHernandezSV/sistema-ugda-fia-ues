@@ -72,6 +72,9 @@ class LoanController extends Controller
             'unit_name' => ['required', 'string', 'max:255'],
             'document_ids' => ['nullable', 'array'],
             'document_ids.*' => ['integer'],
+            'system_documents' => ['nullable', 'array'],
+            'system_documents.*.id' => ['required_with:system_documents', 'integer'],
+            'system_documents.*.document_type' => ['required_with:system_documents', 'in:Copia,Original'],
             'additional_documents' => ['nullable', 'array'],
             'additional_documents.*.name' => ['required_with:additional_documents', 'string', 'max:255'],
             'additional_documents.*.year' => ['nullable', 'string', 'max:60'],
@@ -88,11 +91,18 @@ class LoanController extends Controller
             ], 422);
         }
 
-        $selectedIds = collect($request->input('document_ids', []))
+        $systemDocuments = collect($request->input('system_documents', []))
+            ->filter(fn ($document) => filled($document['id'] ?? null))
+            ->values();
+        $selectedIds = ($systemDocuments->isNotEmpty()
+            ? $systemDocuments->pluck('id')
+            : collect($request->input('document_ids', [])))
             ->map(fn ($id) => (int) $id)
             ->filter()
             ->unique()
             ->values();
+        $systemDocumentTypes = $systemDocuments
+            ->mapWithKeys(fn ($document) => [(int) $document['id'] => $document['document_type'] ?? 'Copia']);
         $additionalDocuments = collect($request->input('additional_documents', []))
             ->filter(fn ($document) => filled($document['name'] ?? null))
             ->values();
@@ -131,7 +141,7 @@ class LoanController extends Controller
                 ], 422);
             }
 
-            $loan = DB::transaction(function () use ($request, $user, $activeUnit, $transferDocuments, $additionalDocuments) {
+            $loan = DB::transaction(function () use ($request, $user, $activeUnit, $transferDocuments, $systemDocumentTypes, $additionalDocuments) {
                 $authPending = $this->statusId('loan_auth_pending');
                 $statusPending = $this->statusId('loan_status_pending');
 
@@ -147,6 +157,8 @@ class LoanController extends Controller
                 ]);
 
                 foreach ($transferDocuments->values() as $index => $document) {
+                    $documentType = $systemDocumentTypes->get($document->id, 'Copia');
+
                     $loan->documents()->create([
                         'document_kind' => 'system',
                         'group_title' => 'Documentos del Sistema (' . $transferDocuments->count() . ')',
@@ -155,8 +167,8 @@ class LoanController extends Controller
                         'box_code' => 'CAJA-' . str_pad((string) ($document->box?->box_number ?? 0), 3, '0', STR_PAD_LEFT),
                         'year_label' => $document->year_label,
                         'unit_name_snapshot' => $document->box?->transfer?->unit?->name,
-                        'document_type_label' => 'Copia',
-                        'document_type_tone' => 'info',
+                        'document_type_label' => $documentType,
+                        'document_type_tone' => $documentType === 'Original' ? 'warning' : 'info',
                         'sort_order' => $index + 1,
                     ]);
                 }
