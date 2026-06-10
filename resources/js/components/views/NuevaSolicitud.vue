@@ -203,6 +203,13 @@ const addBatch = () => {
         return;
     }
 
+    // VALIDACIÓN: Años no mayores al actual (NUEVA)
+    const currentYear = new Date().getFullYear();
+    if (parseInt(startYear, 10) > currentYear || parseInt(endYear, 10) > currentYear) {
+        showError(`Las fechas inicial y final no pueden ser mayores a ${currentYear}.`);
+        return;
+    }
+
     if (Number(endYear) < Number(startYear)) {
         showError('La fecha final no puede ser menor que la fecha inicial.');
         return;
