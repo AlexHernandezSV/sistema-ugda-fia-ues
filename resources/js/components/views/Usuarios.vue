@@ -592,7 +592,7 @@ const clearFilter = () => {
 }
 
 .user-units-selector-row {
-    align-items: flex-start;
+    align-items: center;
 }
 
 :deep(.user-units-selector-dropdown) {
@@ -601,7 +601,7 @@ const clearFilter = () => {
 }
 
 .user-units-selector-button {
-    height: 3rem;
+    height: 2.25rem;
 }
 
 .filters-toolbar {

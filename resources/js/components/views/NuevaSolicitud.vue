@@ -354,6 +354,24 @@ const addDocumentToTemp = () => {
         return;
     }
 
+    // NUEVA VALIDACIÓN: Año no mayor al actual (solo si se ingresó)
+    if (documentDate !== '') {
+        const currentYear = new Date().getFullYear();
+        if (parseInt(documentDate, 10) > currentYear) {
+            showError(`El año del documento no puede ser mayor a ${currentYear}.`);
+            return;
+        }
+    }
+
+    // NUEVA VALIDACIÓN: Páginas sea número positivo (solo si se ingresó)
+    if (documentPages !== '') {
+        const pagesNumber = Number(documentPages);
+        if (isNaN(pagesNumber) || pagesNumber < 1 || !Number.isInteger(pagesNumber)) {
+            showError('La cantidad de páginas debe ser un número entero positivo.');
+            return;
+        }
+    }
+
     tempDocuments.value.push({
         id_doc: Date.now(),
         series: documentSeries,
