@@ -589,9 +589,13 @@ const goBack = () => {
                             </div>
                         </div>
 
-                        <Button label="Actualizar y continuar" icon="pi pi-check"
+                        <Button label="Actualizar y continuar" 
                             class="login-primary-button w-full justify-content-center"
-                            :loading="loading" @click="handleTemporaryPasswordChange" />
+                            :loading="loading" @click="handleTemporaryPasswordChange">
+                            <template #icon>
+                                <i class="pi pi-check-circle"></i>
+                            </template>
+                        </Button>
 
                         <Button label="Volver" class="login-secondary-button w-full justify-content-center"
                             severity="secondary" outlined @click="goBack" />

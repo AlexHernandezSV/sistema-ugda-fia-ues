@@ -2794,12 +2794,12 @@ onMounted(fetchDetail);
 }
 
 .detalle-decision-modal__button--primary {
-    background: #98b6d2;
+    background: #2f6f9f !important;
     color: #ffffff;
 }
 
 .detalle-decision-modal__button--warning {
-    background: #f7d18a;
+    background: #f6ad3c !important;
     color: #ffffff;
 }
 
