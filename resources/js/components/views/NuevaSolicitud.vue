@@ -164,10 +164,27 @@ onMounted(async () => {
         unitsList.value = Array.isArray(userRes.units)
             ? userRes.units.map((unit) => ({ label: unit.name, value: unit.id }))
             : [];
+        const userUnitIds = new Set(
+            Array.isArray(userRes.unit_ids) && userRes.unit_ids.length > 0
+                ? userRes.unit_ids.map((id) => Number(id))
+                : [Number(headerForm.value.unit_id)].filter(Boolean)
+        );
         seriesOptions.value = Array.isArray(seriesRes.data)
-            ? seriesRes.data.flatMap((series) => {
+            ? seriesRes.data.filter((series) => (
+                isEditMode.value
+                    || (
+                        Array.isArray(series.unit_ids)
+                        && series.unit_ids.some((unitId) => userUnitIds.has(Number(unitId)))
+                    )
+            )).flatMap((series) => {
                 if (Array.isArray(series.subseries) && series.subseries.length > 0) {
-                    return series.subseries.map((subseries) => ({
+                    return series.subseries.filter((subseries) => (
+                        isEditMode.value
+                            || (
+                                Array.isArray(subseries.unit_ids)
+                                && subseries.unit_ids.some((unitId) => userUnitIds.has(Number(unitId)))
+                            )
+                    )).map((subseries) => ({
                         id: `subseries-${subseries.id}`,
                         label: `${series.code} - ${series.name} / ${subseries.code} - ${subseries.name}`,
                     }));

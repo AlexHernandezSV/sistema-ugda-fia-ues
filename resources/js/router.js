@@ -8,6 +8,8 @@ import Dashboard from './components/Dashboard.vue';
 import Unidades from './components/views/Unidades.vue';
 import Usuarios from './components/views/Usuarios.vue'; // <--- NUEVO IMPORT
 import ArchivoGeneral from './components/views/ArchivoGeneral.vue';
+import ArchivoGestion from './components/views/ArchivoGestion.vue';
+import CrearCajaArchivo from './components/views/CrearCajaArchivo.vue';
 import SeriesDocumentales from './components/views/SeriesDocumentales.vue';
 import Solicitudes from './components/views/Solicitudes.vue';
 import NuevaSolicitud from './components/views/NuevaSolicitud.vue';
@@ -71,6 +73,20 @@ const routes = [
         name: 'archivo-general',
         meta: { title: 'Archivo General', allowedProfiles: ['Administrador'] },
         component: ArchivoGeneral
+    },
+
+    {
+        path: '/archivo-general/gestion',
+        name: 'archivo-general-gestion',
+        meta: { title: 'Gestion de Archivo', allowedProfiles: ['Administrador'] },
+        component: ArchivoGestion
+    },
+
+    {
+        path: '/archivo-general/cajas/crear',
+        name: 'archivo-general-cajas-crear',
+        meta: { title: 'Crear Nueva Caja', allowedProfiles: ['Administrador'] },
+        component: CrearCajaArchivo
     },
 
     {

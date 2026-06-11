@@ -141,6 +141,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/api/dashboard-summary', [RequestCatalogController::class, 'dashboard']);
     Route::get('/api/reports/summary', [ReportController::class, 'summary'])
         ->middleware('permission:endpoint.ui.reports.read');
+    Route::get('/api/archive/catalog', [ArchiveController::class, 'catalog']);
+    Route::get('/api/archive/boxes', [ArchiveController::class, 'boxes']);
+    Route::post('/api/archive/boxes', [ArchiveController::class, 'storeBox']);
+    Route::delete('/api/archive/boxes/{id}', [ArchiveController::class, 'destroyBox']);
     Route::get('/api/archive/documents', [ArchiveController::class, 'documents']);
     Route::get('/api/transfers/next-code', [TransferController::class, 'nextCode']);
     Route::get('/api/transfers/document-import-template', [TransferController::class, 'documentImportTemplate']);

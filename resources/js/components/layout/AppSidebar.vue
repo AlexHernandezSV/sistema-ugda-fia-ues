@@ -90,6 +90,7 @@ const menuItems = computed(() => {
             icon: 'pi pi-box',
             children: [
                 { label: 'Buscar Documentos', icon: 'pi pi-search', to: '/archivo-general' },
+                { label: 'Gestion de Archivo', icon: 'pi pi-folder-plus', to: '/archivo-general/gestion' },
             ],
         });
     }

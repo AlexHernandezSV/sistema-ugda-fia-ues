@@ -28,4 +28,11 @@ class DocumentarySeries extends Model
             ->whereNull('documentary_subseries.deleted_at')
             ->orderBy('code');
     }
+
+    public function units()
+    {
+        return $this->belongsToMany(Unit::class, 'documentary_series_unit')
+            ->withTimestamps()
+            ->orderBy('name');
+    }
 }

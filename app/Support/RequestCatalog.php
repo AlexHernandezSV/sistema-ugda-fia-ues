@@ -15,6 +15,7 @@ class RequestCatalog
     {
         $transferQuery = Transfer::query()
             ->with(['requester.person', 'unit', 'authorizationStatus', 'workflowStatus'])
+            ->where(fn ($query) => $query->whereNull('view_mode')->orWhere('view_mode', '<>', 'archive'))
             ->orderByDesc('requested_at');
 
         self::scopeToVisibleUnits($transferQuery, $viewer);

@@ -27,4 +27,11 @@ class DocumentarySubseries extends Model
     {
         return $this->belongsTo(DocumentarySeries::class, 'documentary_series_id');
     }
+
+    public function units()
+    {
+        return $this->belongsToMany(Unit::class, 'documentary_subseries_unit')
+            ->withTimestamps()
+            ->orderBy('name');
+    }
 }

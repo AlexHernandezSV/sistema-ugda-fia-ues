@@ -11,23 +11,26 @@ const loading = ref(true);
 const isSavingSeries = ref(false);
 const isSavingSubseries = ref(false);
 const displaySeriesModal = ref(false);
-const displaySubseriesModal = ref(false);
 const displayDeleteModal = ref(false);
 const showCreateSeriesPanel = ref(false);
 const activeSubseriesSeriesId = ref(null);
+const activeEditSubseriesId = ref(null);
 const expandedSeriesIds = ref([]);
 const searchValue = ref('');
 
 const seriesList = ref([]);
+const unitOptions = ref([]);
 
 const createSeriesForm = ref({
     code: '',
     name: '',
+    unit_ids: [],
 });
 
 const createSubseriesForm = ref({
     code: '',
     name: '',
+    unit_ids: [],
 });
 
 const editSeriesForm = ref({
@@ -35,6 +38,7 @@ const editSeriesForm = ref({
     code: '',
     name: '',
     is_active: true,
+    unit_ids: [],
 });
 
 const editSubseriesForm = ref({
@@ -44,6 +48,7 @@ const editSubseriesForm = ref({
     code: '',
     name: '',
     is_active: true,
+    unit_ids: [],
 });
 
 const seriesErrors = ref({
@@ -62,11 +67,6 @@ const deleteDialogState = ref({
     subseries: null,
     message: '',
 });
-
-const statusOptions = [
-    { label: 'Activa', value: true },
-    { label: 'Inactiva', value: false },
-];
 
 const searchTerm = computed(() => searchValue.value.trim().toLowerCase());
 const canSaveSeries = computed(() => /^\d+$/.test(createSeriesForm.value.code) && String(createSeriesForm.value.name ?? '').trim().length > 0);
@@ -90,8 +90,19 @@ const fetchSeries = async () => {
     loading.value = true;
 
     try {
-        const response = await axios.get('/api/documentary-series');
-        seriesList.value = Array.isArray(response.data) ? response.data : [];
+        const [seriesResponse, unitsResponse] = await Promise.all([
+            axios.get('/api/documentary-series'),
+            axios.get('/api/units'),
+        ]);
+        seriesList.value = Array.isArray(seriesResponse.data) ? seriesResponse.data : [];
+        unitOptions.value = Array.isArray(unitsResponse.data)
+            ? unitsResponse.data
+                .filter((unit) => unit.is_active !== false)
+                .map((unit) => ({
+                    label: unit.name,
+                    value: unit.id,
+                }))
+            : [];
     } catch (error) {
         if ([401, 419].includes(error.response?.status)) {
             return;
@@ -158,6 +169,40 @@ const validateSubseriesForm = (target = createSubseriesForm.value) => {
 
 const matchesSeries = (series, term) => `${series.code} ${series.name}`.toLowerCase().includes(term);
 const matchesSubseries = (subseries, term) => `${subseries.code} ${subseries.name}`.toLowerCase().includes(term);
+const getSeriesUnitsSummary = (series) => {
+    const units = Array.isArray(series.units) ? series.units : [];
+
+    if (units.length === 0) {
+        return 'Sin unidades asignadas - no visible en solicitudes';
+    }
+
+    if (units.length <= 3) {
+        return units.map((unit) => unit.name).join(', ');
+    }
+
+    return `${units.length} unidades asignadas`;
+};
+const getSubseriesUnitsSummary = (subseries) => {
+    const units = Array.isArray(subseries.units) ? subseries.units : [];
+
+    if (units.length === 0) {
+        return 'Sin unidades asignadas';
+    }
+
+    if (units.length <= 3) {
+        return units.map((unit) => unit.name).join(', ');
+    }
+
+    return `${units.length} unidades asignadas`;
+};
+const getSeriesUnitOptions = (series) => (
+    Array.isArray(series.units)
+        ? series.units.map((unit) => ({
+            label: unit.name,
+            value: unit.id,
+        }))
+        : []
+);
 
 const getVisibleSubseries = (series) => {
     if (!searchTerm.value || matchesSeries(series, searchTerm.value)) {
@@ -201,13 +246,13 @@ const goBack = () => {
 const openCreateSeriesPanel = () => {
     showCreateSeriesPanel.value = true;
     resetSeriesErrors();
-    createSeriesForm.value = { code: '', name: '' };
+    createSeriesForm.value = { code: '', name: '', unit_ids: [] };
 };
 
 const closeCreateSeriesPanel = () => {
     showCreateSeriesPanel.value = false;
     resetSeriesErrors();
-    createSeriesForm.value = { code: '', name: '' };
+    createSeriesForm.value = { code: '', name: '', unit_ids: [] };
 };
 
 const saveSeries = async () => {
@@ -222,6 +267,7 @@ const saveSeries = async () => {
             code: createSeriesForm.value.code,
             name: createSeriesForm.value.name.trim(),
             is_active: true,
+            unit_ids: createSeriesForm.value.unit_ids,
         });
 
         toast.add({
@@ -247,6 +293,7 @@ const openEditSeriesModal = (series) => {
         code: series.code,
         name: series.name,
         is_active: Boolean(series.is_active),
+        unit_ids: Array.isArray(series.unit_ids) ? [...series.unit_ids] : [],
     };
     displaySeriesModal.value = true;
 };
@@ -263,6 +310,7 @@ const updateSeries = async () => {
             code: editSeriesForm.value.code,
             name: editSeriesForm.value.name.trim(),
             is_active: editSeriesForm.value.is_active,
+            unit_ids: editSeriesForm.value.unit_ids,
         });
 
         toast.add({
@@ -293,15 +341,16 @@ const openDeleteSeriesModal = (series) => {
 
 const openCreateSubseriesForm = (series) => {
     activeSubseriesSeriesId.value = series.id;
+    activeEditSubseriesId.value = null;
     resetSubseriesErrors();
-    createSubseriesForm.value = { code: '', name: '' };
+    createSubseriesForm.value = { code: '', name: '', unit_ids: [] };
     ensureExpanded(series.id);
 };
 
 const closeCreateSubseriesForm = () => {
     activeSubseriesSeriesId.value = null;
     resetSubseriesErrors();
-    createSubseriesForm.value = { code: '', name: '' };
+    createSubseriesForm.value = { code: '', name: '', unit_ids: [] };
 };
 
 const saveSubseries = async () => {
@@ -320,6 +369,7 @@ const saveSubseries = async () => {
             code: createSubseriesForm.value.code,
             name: createSubseriesForm.value.name.trim(),
             is_active: true,
+            unit_ids: createSubseriesForm.value.unit_ids,
         });
 
         toast.add({
@@ -341,6 +391,8 @@ const saveSubseries = async () => {
 };
 
 const openEditSubseriesModal = (series, subseries) => {
+    activeSubseriesSeriesId.value = null;
+    activeEditSubseriesId.value = subseries.id;
     resetSubseriesErrors();
     editSubseriesForm.value = {
         id: subseries.id,
@@ -349,8 +401,23 @@ const openEditSubseriesModal = (series, subseries) => {
         code: subseries.code,
         name: subseries.name,
         is_active: Boolean(subseries.is_active),
+        unit_ids: Array.isArray(subseries.unit_ids) ? [...subseries.unit_ids] : [],
     };
-    displaySubseriesModal.value = true;
+    ensureExpanded(series.id);
+};
+
+const closeEditSubseriesForm = () => {
+    activeEditSubseriesId.value = null;
+    resetSubseriesErrors();
+    editSubseriesForm.value = {
+        id: null,
+        documentary_series_id: null,
+        parent_series_name: '',
+        code: '',
+        name: '',
+        is_active: true,
+        unit_ids: [],
+    };
 };
 
 const updateSubseries = async () => {
@@ -365,6 +432,7 @@ const updateSubseries = async () => {
             code: editSubseriesForm.value.code,
             name: editSubseriesForm.value.name.trim(),
             is_active: editSubseriesForm.value.is_active,
+            unit_ids: editSubseriesForm.value.unit_ids,
         });
 
         toast.add({
@@ -375,7 +443,7 @@ const updateSubseries = async () => {
         });
 
         const expandedSeriesId = editSubseriesForm.value.documentary_series_id;
-        displaySubseriesModal.value = false;
+        closeEditSubseriesForm();
         await fetchSeries();
         ensureExpanded(expandedSeriesId);
     } catch (error) {
@@ -549,6 +617,24 @@ const clearFilter = () => {
             </div>
         </div>
 
+        <div class="series-units-field">
+            <label class="series-field__label">
+                <i class="pi pi-building mr-2"></i>
+                Unidades productoras que pueden usar esta serie
+            </label>
+            <MultiSelect
+                v-model="createSeriesForm.unit_ids"
+                :options="unitOptions"
+                optionLabel="label"
+                optionValue="value"
+                placeholder="Seleccionar unidades productoras..."
+                display="chip"
+                filter
+                class="w-full"
+            />
+            <small class="series-field__hint">Solo estas unidades veran esta serie al crear solicitudes de transferencia.</small>
+        </div>
+
         <div class="series-form-card__footer">
             <Button label="Cancelar" severity="secondary" text @click="closeCreateSeriesPanel" />
             <Button
@@ -597,6 +683,7 @@ const clearFilter = () => {
                 <div class="series-panel__details">
                     <h2 class="series-panel__title">{{ series.name }}</h2>
                     <span class="series-panel__meta">{{ series.subseries_count }} subseries</span>
+                    <span class="series-panel__units">{{ getSeriesUnitsSummary(series) }}</span>
                 </div>
 
                 <div class="series-panel__actions">
@@ -640,10 +727,10 @@ const clearFilter = () => {
 
                 <div
                     v-if="activeSubseriesSeriesId === series.id"
-                    class="surface-card border-round-xl border-1 border-200 p-3 mb-4 subseries-form-card"
+                    class="surface-card border-round-xl border-1 border-200 p-3 mb-4 subseries-form-card subseries-inline-form"
                 >
-                    <div class="grid p-fluid">
-                        <div class="col-12 md:col-3">
+                    <div class="subseries-inline-form__row">
+                        <div>
                             <label class="series-field__label">Codigo</label>
                             <InputText
                                 v-model="createSubseriesForm.code"
@@ -654,7 +741,7 @@ const clearFilter = () => {
                             />
                             <small class="p-error block mt-1">{{ subseriesErrors.code }}</small>
                         </div>
-                        <div class="col-12 md:col-9">
+                        <div>
                             <label class="series-field__label">Nombre de Subserie</label>
                             <InputText
                                 v-model="createSubseriesForm.name"
@@ -664,6 +751,23 @@ const clearFilter = () => {
                             />
                             <small class="p-error block mt-1">{{ subseriesErrors.name }}</small>
                         </div>
+                    </div>
+
+                    <div class="subseries-inline-form__units">
+                        <label class="series-field__label">
+                            <i class="pi pi-building mr-2"></i>
+                            Unidades productoras
+                        </label>
+                        <MultiSelect
+                            v-model="createSubseriesForm.unit_ids"
+                            :options="getSeriesUnitOptions(series)"
+                            optionLabel="label"
+                            optionValue="value"
+                            placeholder="Seleccionar unidades..."
+                            display="chip"
+                            filter
+                            class="w-full"
+                        />
                     </div>
 
                     <div class="series-form-card__footer">
@@ -691,35 +795,105 @@ const clearFilter = () => {
                     <div
                         v-for="subseries in getVisibleSubseries(series)"
                         :key="subseries.id"
-                        class="subseries-item"
+                        :class="['subseries-item', { 'subseries-item--editing': activeEditSubseriesId === subseries.id }]"
                     >
-                        <div class="subseries-item__code">{{ subseries.code }}</div>
+                        <template v-if="activeEditSubseriesId === subseries.id">
+                            <div class="subseries-inline-form subseries-inline-form--edit">
+                                <div class="subseries-inline-form__row">
+                                    <div>
+                                        <label class="series-field__label">Codigo</label>
+                                        <InputText
+                                            v-model="editSubseriesForm.code"
+                                            maxlength="20"
+                                            placeholder="Ej: 12"
+                                            :class="{ 'p-invalid': subseriesErrors.code }"
+                                            @input="normalizeSubseriesCode(editSubseriesForm)"
+                                        />
+                                        <small class="p-error block mt-1">{{ subseriesErrors.code }}</small>
+                                    </div>
+                                    <div>
+                                        <label class="series-field__label">Nombre de Subserie</label>
+                                        <InputText
+                                            v-model="editSubseriesForm.name"
+                                            maxlength="150"
+                                            placeholder="Ej: Actas Asamblea General Universitaria"
+                                            :class="{ 'p-invalid': subseriesErrors.name }"
+                                        />
+                                        <small class="p-error block mt-1">{{ subseriesErrors.name }}</small>
+                                    </div>
+                                </div>
 
-                        <div class="subseries-item__details">
-                            <span class="subseries-item__name">{{ subseries.name }}</span>
-                        </div>
+                                <div class="subseries-inline-form__units">
+                                    <label class="series-field__label">
+                                        <i class="pi pi-building mr-2"></i>
+                                        Unidades productoras
+                                    </label>
+                                    <MultiSelect
+                                        v-model="editSubseriesForm.unit_ids"
+                                        :options="getSeriesUnitOptions(series)"
+                                        optionLabel="label"
+                                        optionValue="value"
+                                        placeholder="Seleccionar unidades..."
+                                        display="chip"
+                                        filter
+                                        class="w-full"
+                                    />
+                                </div>
 
-                        <div class="subseries-item__actions">
-                            <span :class="['series-status-chip', subseries.is_active ? 'series-status-chip--active' : 'series-status-chip--inactive']">
-                                {{ subseries.is_active ? 'Activa' : 'Inactiva' }}
-                            </span>
-                            <Button
-                                icon="pi pi-pencil"
-                                text
-                                rounded
-                                severity="secondary"
-                                class="text-gray-600 hover:text-blue-600"
-                                @click="openEditSubseriesModal(series, subseries)"
-                            />
-                            <Button
-                                icon="pi pi-trash"
-                                text
-                                rounded
-                                severity="secondary"
-                                class="text-red-500 hover:text-red-600"
-                                @click="openDeleteSubseriesModal(series, subseries)"
-                            />
-                        </div>
+                                <div class="subseries-inline-form__status">
+                                    <label class="series-field__label">Estado</label>
+                                    <div :class="['series-status-toggle', editSubseriesForm.is_active ? 'is-active' : 'is-inactive']">
+                                        <ToggleSwitch v-model="editSubseriesForm.is_active" />
+                                        <span class="series-status-toggle__text">
+                                            {{ editSubseriesForm.is_active ? 'Activa' : 'Inactiva' }}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div class="series-form-card__footer">
+                                    <Button label="Cancelar" severity="secondary" text @click="closeEditSubseriesForm" />
+                                    <Button
+                                        label="Guardar"
+                                        icon="pi pi-save"
+                                        class="border-none"
+                                        style="background-color: #1560bd;"
+                                        :loading="isSavingSubseries"
+                                        @click="updateSubseries"
+                                    />
+                                </div>
+                            </div>
+                        </template>
+
+                        <template v-else>
+                            <div class="subseries-item__code">{{ subseries.code }}</div>
+
+                            <div class="subseries-item__details">
+                                <span class="subseries-item__name">{{ subseries.name }}</span>
+                                <span class="subseries-item__units">{{ getSubseriesUnitsSummary(subseries) }}</span>
+                            </div>
+
+                            <div class="subseries-item__actions">
+                                <span :class="['series-status-chip', subseries.is_active ? 'series-status-chip--active' : 'series-status-chip--inactive']">
+                                    {{ subseries.is_active ? 'Activa' : 'Inactiva' }}
+                                </span>
+                                <Button
+                                    icon="pi pi-pencil"
+                                    text
+                                    rounded
+                                    severity="secondary"
+                                    class="text-gray-600 hover:text-blue-600"
+                                    @click="openEditSubseriesModal(series, subseries)"
+                                />
+                                <Button
+                                    icon="pi pi-trash"
+                                    text
+                                    rounded
+                                    severity="secondary"
+                                    class="text-red-500 hover:text-red-600"
+                                    @click="openDeleteSubseriesModal(series, subseries)"
+                                />
+                            </div>
+                        </template>
                     </div>
                 </div>
             </div>
@@ -730,7 +904,7 @@ const clearFilter = () => {
         v-model:visible="displaySeriesModal"
         modal
         :draggable="false"
-        :style="{ width: '500px', maxWidth: 'calc(100vw - 2rem)' }"
+        :style="{ width: '760px', maxWidth: 'calc(100vw - 2rem)' }"
         class="p-fluid blue-header-dialog series-edit-dialog"
         header="Editar Serie Documental"
     >
@@ -758,14 +932,31 @@ const clearFilter = () => {
                 <small class="p-error block mt-1">{{ seriesErrors.name }}</small>
             </div>
             </div>
-            <div class="series-edit-dialog__field series-edit-dialog__field--status">
-                <label class="series-field__label">Estado</label>
-                <Dropdown
-                    v-model="editSeriesForm.is_active"
-                    :options="statusOptions"
+            <div class="series-edit-dialog__field series-edit-dialog__field--units">
+                <label class="series-field__label">
+                    <i class="pi pi-building mr-2"></i>
+                    Unidades productoras que pueden usar esta serie
+                </label>
+                <MultiSelect
+                    v-model="editSeriesForm.unit_ids"
+                    :options="unitOptions"
                     optionLabel="label"
                     optionValue="value"
+                    placeholder="Seleccionar unidades productoras..."
+                    display="chip"
+                    filter
+                    class="w-full"
                 />
+                <small class="series-field__hint">Solo estas unidades veran esta serie al crear solicitudes de transferencia.</small>
+            </div>
+            <div class="series-edit-dialog__field series-edit-dialog__field--status">
+                <label class="series-field__label">Estado</label>
+                <div :class="['series-status-toggle', editSeriesForm.is_active ? 'is-active' : 'is-inactive']">
+                    <ToggleSwitch v-model="editSeriesForm.is_active" />
+                    <span class="series-status-toggle__text">
+                        {{ editSeriesForm.is_active ? 'Activa' : 'Inactiva' }}
+                    </span>
+                </div>
             </div>
         </div>
 
@@ -778,68 +969,6 @@ const clearFilter = () => {
                     style="background-color: #1560bd;"
                     :loading="isSavingSeries"
                     @click="updateSeries"
-                />
-            </div>
-        </template>
-    </Dialog>
-
-    <Dialog
-        v-model:visible="displaySubseriesModal"
-        modal
-        :draggable="false"
-        :style="{ width: '500px', maxWidth: 'calc(100vw - 2rem)' }"
-        class="p-fluid blue-header-dialog series-edit-dialog"
-        header="Editar Subserie Documental"
-    >
-        <div class="mb-3 text-sm text-gray-600">
-            Serie asociada:
-            <strong>{{ editSubseriesForm.parent_series_name }}</strong>
-        </div>
-
-        <div class="series-edit-dialog__content">
-            <div class="series-edit-dialog__row">
-                <div class="series-edit-dialog__field series-edit-dialog__field--code">
-                <label class="series-field__label">Codigo de Subserie</label>
-                <InputText
-                    v-model="editSubseriesForm.code"
-                    maxlength="20"
-                    placeholder="Ej: 12"
-                    :class="{ 'p-invalid': subseriesErrors.code }"
-                    @input="normalizeSubseriesCode(editSubseriesForm)"
-                />
-                <small class="p-error block mt-1">{{ subseriesErrors.code }}</small>
-            </div>
-                <div class="series-edit-dialog__field series-edit-dialog__field--name">
-                <label class="series-field__label">Nombre de Subserie</label>
-                <InputText
-                    v-model="editSubseriesForm.name"
-                    maxlength="150"
-                    placeholder="Nombre de la subserie"
-                    :class="{ 'p-invalid': subseriesErrors.name }"
-                />
-                <small class="p-error block mt-1">{{ subseriesErrors.name }}</small>
-            </div>
-            </div>
-            <div class="series-edit-dialog__field series-edit-dialog__field--status">
-                <label class="series-field__label">Estado</label>
-                <Dropdown
-                    v-model="editSubseriesForm.is_active"
-                    :options="statusOptions"
-                    optionLabel="label"
-                    optionValue="value"
-                />
-            </div>
-        </div>
-
-        <template #footer>
-            <div class="series-dialog__footer">
-                <Button label="Cancelar" severity="secondary" outlined @click="displaySubseriesModal = false" />
-                <Button
-                    label="Guardar Cambios"
-                    class="border-none"
-                    style="background-color: #1560bd;"
-                    :loading="isSavingSubseries"
-                    @click="updateSubseries"
                 />
             </div>
         </template>
@@ -984,8 +1113,46 @@ const clearFilter = () => {
 }
 
 .series-edit-dialog__field--status {
-    max-width: 10rem;
+    max-width: 100%;
     margin-bottom: 0;
+}
+
+.series-status-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: fit-content;
+    min-height: 2.5rem;
+    padding: 0.35rem 0.65rem 0.35rem 0;
+}
+
+.series-status-toggle__text {
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.series-status-toggle.is-active .series-status-toggle__text {
+    color: #15803d;
+}
+
+.series-status-toggle.is-inactive .series-status-toggle__text {
+    color: #dc2626;
+}
+
+:deep(.series-status-toggle.is-active .p-toggleswitch-slider) {
+    background: #16a34a !important;
+}
+
+:deep(.series-status-toggle.is-active .p-toggleswitch.p-focus .p-toggleswitch-slider) {
+    box-shadow: 0 0 0 0.2rem rgba(22, 163, 74, 0.2) !important;
+}
+
+:deep(.series-status-toggle.is-inactive .p-toggleswitch-slider) {
+    background: #dc2626 !important;
+}
+
+:deep(.series-status-toggle.is-inactive .p-toggleswitch.p-focus .p-toggleswitch-slider) {
+    box-shadow: 0 0 0 0.2rem rgba(220, 38, 38, 0.18) !important;
 }
 
 .filters-toolbar {
@@ -1029,26 +1196,26 @@ const clearFilter = () => {
     font-weight: 500;
 }
 
+.series-field__hint {
+    color: #8a94a6;
+    display: block;
+    font-size: 0.78rem;
+    margin-top: 0.45rem;
+}
+
+.series-units-field {
+    margin-top: 1rem;
+}
+
 .series-create-grid {
-    display: flex;
-    align-items: flex-start;
+    display: grid;
     gap: 1.25rem;
-    flex-wrap: wrap;
+    grid-template-columns: minmax(0, 0.45fr) minmax(0, 1fr);
 }
 
 .series-create-grid__field {
     width: 100%;
     max-width: 100%;
-}
-
-.series-create-grid__field--code {
-    flex: 0 0 220px;
-    max-width: 220px;
-}
-
-.series-create-grid__field--name {
-    flex: 0 0 220px;
-    max-width: 220px;
 }
 
 .series-form-card__footer,
@@ -1150,6 +1317,13 @@ const clearFilter = () => {
     font-size: 0.92rem;
 }
 
+.series-panel__units {
+    color: #8a94a6;
+    display: block;
+    font-size: 0.8rem;
+    margin-top: 0.25rem;
+}
+
 .series-panel__actions {
     display: flex;
     align-items: center;
@@ -1182,6 +1356,28 @@ const clearFilter = () => {
     background: #fff;
 }
 
+.subseries-inline-form {
+    width: 100%;
+}
+
+.subseries-inline-form__row {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: minmax(0, 0.32fr) minmax(0, 1fr);
+}
+
+.subseries-inline-form__units {
+    margin-top: 0.75rem;
+}
+
+.subseries-inline-form__status {
+    margin-top: 0.75rem;
+}
+
+.subseries-inline-form .series-form-card__footer {
+    margin-top: 0.75rem;
+}
+
 .subseries-list {
     display: flex;
     flex-direction: column;
@@ -1196,6 +1392,11 @@ const clearFilter = () => {
     border: 1px solid #e5e7eb;
     border-radius: 1rem;
     padding: 0.9rem 1rem;
+}
+
+.subseries-item--editing {
+    display: block;
+    padding: 0.9rem;
 }
 
 .subseries-item__code {
@@ -1218,6 +1419,13 @@ const clearFilter = () => {
     font-size: 0.98rem;
     font-weight: 500;
     word-break: break-word;
+}
+
+.subseries-item__units {
+    color: #8a94a6;
+    display: block;
+    font-size: 0.78rem;
+    margin-top: 0.3rem;
 }
 
 .subseries-item__actions {
@@ -1297,8 +1505,11 @@ const clearFilter = () => {
 
     .series-create-grid__field--code,
     .series-create-grid__field--name {
-        flex: 1 1 100%;
         max-width: 100%;
+    }
+
+    .series-create-grid {
+        grid-template-columns: 1fr;
     }
 
     .series-form-card__footer,
@@ -1344,6 +1555,10 @@ const clearFilter = () => {
 
     .subseries-item {
         grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .subseries-inline-form__row {
+        grid-template-columns: 1fr;
     }
 
     .subseries-item__actions {

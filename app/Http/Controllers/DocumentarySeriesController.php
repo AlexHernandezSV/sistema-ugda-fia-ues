@@ -12,8 +12,9 @@ class DocumentarySeriesController extends Controller
     public function index()
     {
         $series = DocumentarySeries::query()
+            ->with('units:id,code,name')
             ->with(['subseries' => function ($query) {
-                $query->orderBy('code');
+                $query->with('units:id,code,name')->orderBy('code');
             }])
             ->orderBy('code')
             ->get();
@@ -29,6 +30,8 @@ class DocumentarySeriesController extends Controller
             'code' => ['required', 'string', 'max:20', 'regex:/^\d+$/', 'unique:documentary_series,code'],
             'name' => ['required', 'string', 'max:150'],
             'is_active' => ['sometimes', 'boolean'],
+            'unit_ids' => ['nullable', 'array'],
+            'unit_ids.*' => ['integer', 'exists:units,id'],
         ], [
             'code.required' => 'El codigo de la serie es obligatorio.',
             'code.max' => 'El codigo de la serie no puede exceder los 20 digitos.',
@@ -36,13 +39,15 @@ class DocumentarySeriesController extends Controller
             'code.unique' => 'Ya existe una serie documental registrada con este codigo.',
             'name.required' => 'El nombre de la serie es obligatorio.',
             'name.max' => 'El nombre de la serie no puede exceder los 150 caracteres.',
+            'unit_ids.*.exists' => 'Una de las unidades productoras seleccionadas no existe.',
         ]);
 
-        DocumentarySeries::create([
+        $series = DocumentarySeries::create([
             'code' => trim($validated['code']),
             'name' => trim($validated['name']),
             'is_active' => $validated['is_active'] ?? true,
         ]);
+        $series->units()->sync($validated['unit_ids'] ?? []);
 
         return response()->json(['message' => 'Serie documental creada con exito']);
     }
@@ -61,6 +66,8 @@ class DocumentarySeriesController extends Controller
             ],
             'name' => ['required', 'string', 'max:150'],
             'is_active' => ['required', 'boolean'],
+            'unit_ids' => ['nullable', 'array'],
+            'unit_ids.*' => ['integer', 'exists:units,id'],
         ], [
             'code.required' => 'El codigo de la serie es obligatorio.',
             'code.max' => 'El codigo de la serie no puede exceder los 20 digitos.',
@@ -68,6 +75,7 @@ class DocumentarySeriesController extends Controller
             'code.unique' => 'Ya existe una serie documental registrada con este codigo.',
             'name.required' => 'El nombre de la serie es obligatorio.',
             'name.max' => 'El nombre de la serie no puede exceder los 150 caracteres.',
+            'unit_ids.*.exists' => 'Una de las unidades productoras seleccionadas no existe.',
         ]);
 
         $series->update([
@@ -75,6 +83,20 @@ class DocumentarySeriesController extends Controller
             'name' => trim($validated['name']),
             'is_active' => $validated['is_active'],
         ]);
+        $selectedUnitIds = $validated['unit_ids'] ?? [];
+        $series->units()->sync($selectedUnitIds);
+        $series->subseries()
+            ->with('units:id')
+            ->get()
+            ->each(function (DocumentarySubseries $subseries) use ($selectedUnitIds) {
+                $subseries->units()->sync(
+                    $subseries->units
+                        ->pluck('id')
+                        ->intersect($selectedUnitIds)
+                        ->values()
+                        ->all()
+                );
+            });
 
         return response()->json(['message' => 'Serie documental actualizada']);
     }
@@ -94,7 +116,8 @@ class DocumentarySeriesController extends Controller
 
     public function storeSubseries(Request $request, $seriesId)
     {
-        $series = DocumentarySeries::findOrFail($seriesId);
+        $series = DocumentarySeries::with('units:id')->findOrFail($seriesId);
+        $allowedUnitIds = $series->units->pluck('id')->all();
 
         $validated = $request->validate([
             'code' => [
@@ -107,6 +130,8 @@ class DocumentarySeriesController extends Controller
             ],
             'name' => ['required', 'string', 'max:150'],
             'is_active' => ['sometimes', 'boolean'],
+            'unit_ids' => ['nullable', 'array'],
+            'unit_ids.*' => ['integer', Rule::in($allowedUnitIds)],
         ], [
             'code.required' => 'El codigo de la subserie es obligatorio.',
             'code.max' => 'El codigo de la subserie no puede exceder los 20 digitos.',
@@ -114,21 +139,24 @@ class DocumentarySeriesController extends Controller
             'code.unique' => 'Ya existe una subserie registrada con este codigo dentro de la serie seleccionada.',
             'name.required' => 'El nombre de la subserie es obligatorio.',
             'name.max' => 'El nombre de la subserie no puede exceder los 150 caracteres.',
+            'unit_ids.*.in' => 'Las unidades de la subserie deben pertenecer a las unidades asignadas a la serie.',
         ]);
 
-        DocumentarySubseries::create([
+        $subseries = DocumentarySubseries::create([
             'documentary_series_id' => $series->id,
             'code' => trim($validated['code']),
             'name' => trim($validated['name']),
             'is_active' => $validated['is_active'] ?? true,
         ]);
+        $subseries->units()->sync($validated['unit_ids'] ?? []);
 
         return response()->json(['message' => 'Subserie documental creada con exito']);
     }
 
     public function updateSubseries(Request $request, $id)
     {
-        $subseries = DocumentarySubseries::findOrFail($id);
+        $subseries = DocumentarySubseries::with('series.units:id')->findOrFail($id);
+        $allowedUnitIds = $subseries->series?->units?->pluck('id')->all() ?? [];
 
         $validated = $request->validate([
             'code' => [
@@ -142,6 +170,8 @@ class DocumentarySeriesController extends Controller
             ],
             'name' => ['required', 'string', 'max:150'],
             'is_active' => ['required', 'boolean'],
+            'unit_ids' => ['nullable', 'array'],
+            'unit_ids.*' => ['integer', Rule::in($allowedUnitIds)],
         ], [
             'code.required' => 'El codigo de la subserie es obligatorio.',
             'code.max' => 'El codigo de la subserie no puede exceder los 20 digitos.',
@@ -149,6 +179,7 @@ class DocumentarySeriesController extends Controller
             'code.unique' => 'Ya existe una subserie registrada con este codigo dentro de la serie seleccionada.',
             'name.required' => 'El nombre de la subserie es obligatorio.',
             'name.max' => 'El nombre de la subserie no puede exceder los 150 caracteres.',
+            'unit_ids.*.in' => 'Las unidades de la subserie deben pertenecer a las unidades asignadas a la serie.',
         ]);
 
         $subseries->update([
@@ -156,6 +187,7 @@ class DocumentarySeriesController extends Controller
             'name' => trim($validated['name']),
             'is_active' => $validated['is_active'],
         ]);
+        $subseries->units()->sync($validated['unit_ids'] ?? []);
 
         return response()->json(['message' => 'Subserie documental actualizada']);
     }
@@ -176,6 +208,15 @@ class DocumentarySeriesController extends Controller
             'name' => $series->name,
             'is_active' => $series->is_active,
             'subseries_count' => $series->subseries->count(),
+            'unit_ids' => $series->units->pluck('id')->values()->all(),
+            'units' => $series->units
+                ->map(fn ($unit) => [
+                    'id' => $unit->id,
+                    'code' => $unit->code,
+                    'name' => $unit->name,
+                ])
+                ->values()
+                ->all(),
             'subseries' => $series->subseries
                 ->map(fn (DocumentarySubseries $subseries) => [
                     'id' => $subseries->id,
@@ -183,6 +224,15 @@ class DocumentarySeriesController extends Controller
                     'name' => $subseries->name,
                     'is_active' => $subseries->is_active,
                     'documentary_series_id' => $subseries->documentary_series_id,
+                    'unit_ids' => $subseries->units->pluck('id')->values()->all(),
+                    'units' => $subseries->units
+                        ->map(fn ($unit) => [
+                            'id' => $unit->id,
+                            'code' => $unit->code,
+                            'name' => $unit->name,
+                        ])
+                        ->values()
+                        ->all(),
                 ])
                 ->values()
                 ->all(),
