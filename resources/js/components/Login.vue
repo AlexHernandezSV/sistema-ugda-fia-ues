@@ -1030,8 +1030,13 @@ const goBack = () => {
     font-size: 1rem;
 }
 
-:deep(.login-primary-button .p-button-icon.pi-sign-in) {
+:deep(.login-primary-button .p-button-icon.pi) {
     font-family: 'primeicons' !important;
+    font-style: normal;
+    font-weight: normal;
+    font-variant: normal;
+    text-transform: none;
+    line-height: 1;
 }
 
 :deep(.login-primary-button .p-button-icon.pi-sign-in)::before {
