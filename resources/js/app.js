@@ -5,6 +5,7 @@ import Aura from '@primevue/themes/aura';
 import ToastService from 'primevue/toastservice';
 import router from './router';
 import App from './components/App.vue';
+import { installInputSanitizer } from './inputSanitizer';
 
 // 1. ESTILOS DE ICONOS
 import 'primeicons/primeicons.css';
@@ -87,5 +88,7 @@ app.component('ToggleSwitch', ToggleSwitch);
 app.component('Toast', Toast);
 app.component('Card', Card);
 app.component('DatePicker', DatePicker);
+
+installInputSanitizer();
 
 app.mount('#app');

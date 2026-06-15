@@ -227,6 +227,12 @@ const toggleFinishSearchDocument = (id) => {
     finishSearchForm.selectedIds = [...finishSearchForm.selectedIds, id];
 };
 
+const toggleFinishSearchDocuments = () => {
+    const ids = searchResultDocuments.value.map((document) => document.id);
+
+    finishSearchForm.selectedIds = finishSearchAllSelected.value ? [] : ids;
+};
+
 const submitStartSearch = async () => {
     if (!loan.value) {
         return;
@@ -530,6 +536,8 @@ const searchResultDocuments = computed(() => (loan.value?.documentGroups ?? [])
         ...item,
         groupTitle: group.title,
     }))));
+const finishSearchAllSelected = computed(() => searchResultDocuments.value.length > 0
+    && finishSearchForm.selectedIds.length === searchResultDocuments.value.length);
 
 onMounted(fetchDetail);
 </script>
@@ -1155,21 +1163,35 @@ onMounted(fetchDetail);
                 </div>
 
                 <div v-if="finishSearchForm.result === 'partial'" class="detalle-form-section detalle-form-section--primary mb-3">
-                    <div class="flex align-items-start gap-3 mb-3">
-                        <div class="detalle-form-section__icon detalle-form-section__icon--primary">
-                            <i class="pi pi-file-check"></i>
+                    <div class="detalle-loan-selection__top">
+                        <div class="detalle-loan-selection__heading">
+                            <div class="detalle-form-section__icon detalle-form-section__icon--primary">
+                                <i class="pi pi-file-check"></i>
+                            </div>
+                            <div>
+                                <div class="detalle-form-section__title">Documentos encontrados</div>
+                                <div class="detalle-form-section__text">Seleccione los documentos que si fueron localizados.</div>
+                            </div>
                         </div>
-                        <div>
-                            <div class="detalle-form-section__title">Documentos encontrados</div>
-                            <div class="detalle-form-section__text">Seleccione los documentos que si fueron localizados.</div>
-                        </div>
+                        <button
+                            type="button"
+                            class="detalle-mini-action detalle-mini-action--primary"
+                            :disabled="searchResultDocuments.length === 0"
+                            @click="toggleFinishSearchDocuments"
+                        >
+                            {{ finishSearchAllSelected ? 'Quitar todos' : 'Seleccionar todos' }}
+                        </button>
                     </div>
 
                     <div class="flex flex-column gap-3">
                         <label
                             v-for="document in searchResultDocuments"
                             :key="document.id"
-                            class="detalle-select-card"
+                            :class="[
+                                'detalle-select-card',
+                                'detalle-select-card--primary',
+                                finishSearchForm.selectedIds.includes(document.id) ? 'detalle-select-card--selected' : ''
+                            ]"
                         >
                             <input
                                 type="checkbox"
@@ -1187,6 +1209,10 @@ onMounted(fetchDetail);
                                 </div>
                             </div>
                         </label>
+                    </div>
+
+                    <div class="detalle-select-summary detalle-select-summary--primary mt-3">
+                        Documentos marcados como encontrados: {{ finishSearchForm.selectedIds.length }} de {{ searchResultDocuments.length }}
                     </div>
                 </div>
 
@@ -2381,8 +2407,17 @@ onMounted(fetchDetail);
     background: #28b04b;
 }
 
+.detalle-mini-action--primary {
+    background: #2f6fae;
+}
+
 .detalle-mini-action--muted {
     background: #6b7280;
+}
+
+.detalle-mini-action:disabled {
+    cursor: not-allowed;
+    opacity: 0.65;
 }
 
 .detalle-select-card {
@@ -2404,6 +2439,12 @@ onMounted(fetchDetail);
 .detalle-select-card--loan.detalle-select-card--selected {
     border-color: #c8d5e4;
     background: #ffffff;
+}
+
+.detalle-select-card--primary.detalle-select-card--selected {
+    background: #eff6ff;
+    border-color: #2f6fae;
+    box-shadow: 0 0 0 1px rgba(47, 111, 174, 0.18);
 }
 
 .detalle-select-card__checkbox {
@@ -2437,6 +2478,13 @@ onMounted(fetchDetail);
     padding: 0.9rem 1rem;
     color: #334155;
     background: #ffffff;
+}
+
+.detalle-select-summary--primary {
+    border-color: #bfdbfe;
+    color: #1d4ed8;
+    background: #eff6ff;
+    font-weight: 700;
 }
 
 .detalle-loan-selection {

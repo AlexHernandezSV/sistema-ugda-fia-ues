@@ -223,6 +223,23 @@ class SystemNotificationService
         ]);
     }
 
+    public function loanAuthorizedByUnit(Loan $loan, User $actor): void
+    {
+        $loan->loadMissing('unit');
+
+        $this->notifyUsers($this->ugdaUsers(), $actor, [
+            'type' => 'loan_pending_search',
+            'title' => 'Prestamo autorizado',
+            'short_message' => 'Prestamo #' . $loan->number . ' listo para busqueda.',
+            'body' => 'La jefatura autorizo el prestamo de ' . ($loan->unit?->name ?? 'la unidad solicitante') . '. UGDA debe iniciar la busqueda de documentos.',
+            'tone' => 'info',
+            'action_url' => '/solicitudes/prestamos/' . $loan->number,
+            'reference_type' => 'loan',
+            'reference_id' => $loan->id,
+            'reference_number' => $loan->number,
+        ]);
+    }
+
     public function loanSearchStarted(Loan $loan, User $actor): void
     {
         $this->notifyUsers([$loan->user_id], $actor, [
@@ -257,6 +274,18 @@ class SystemNotificationService
 
             return;
         }
+
+        $this->notifyUsers([$loan->user_id], $actor, [
+            'type' => 'loan_search_completed',
+            'title' => 'Busqueda finalizada',
+            'short_message' => 'Prestamo #' . $loan->number . ' tiene documentos encontrados.',
+            'body' => 'UGDA finalizo la busqueda de los documentos solicitados. Revise el detalle de la solicitud para consultar los documentos encontrados.',
+            'tone' => 'success',
+            'action_url' => '/solicitudes/prestamos/' . $loan->number,
+            'reference_type' => 'loan',
+            'reference_id' => $loan->id,
+            'reference_number' => $loan->number,
+        ]);
 
         $this->notifyUsers($this->ugdaUsers(), $actor, [
             'type' => 'loan_pending_delivery',

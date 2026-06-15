@@ -353,8 +353,11 @@ onMounted(fetchProfile);
                         </label>
                         <label>
                             <span>Nueva contrasena</span>
-                            <InputText v-model="passwordForm.password" type="password" autocomplete="new-password" />
+                            <InputText v-model="passwordForm.password" type="password" autocomplete="new-password" placeholder="Minimo 10 caracteres" />
                         </label>
+                        <p class="perfil-password-policy">
+                            Usa al menos 10 caracteres con mayuscula, minuscula, numero y simbolo.
+                        </p>
                         <label>
                             <span>Confirmar nueva contrasena</span>
                             <InputText v-model="passwordForm.password_confirmation" type="password" autocomplete="new-password" />
@@ -707,6 +710,14 @@ onMounted(fetchProfile);
     gap: .35rem;
     color: #1560bd;
     font-weight: 800;
+}
+
+.perfil-password-policy {
+    margin: -.35rem 0 .1rem;
+    color: #60738a;
+    font-size: .82rem;
+    font-weight: 700;
+    line-height: 1.45;
 }
 
 .perfil-primary {

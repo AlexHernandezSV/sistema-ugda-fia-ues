@@ -6,6 +6,7 @@ use App\Models\Loan;
 use App\Models\RequestStatusCatalog;
 use App\Models\TransferDocument;
 use App\Services\SystemNotificationService;
+use App\Support\RequestNumberGenerator;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -144,12 +145,13 @@ class LoanController extends Controller
             $loan = DB::transaction(function () use ($request, $user, $activeUnit, $transferDocuments, $systemDocumentTypes, $additionalDocuments) {
                 $authPending = $this->statusId('loan_auth_pending');
                 $statusPending = $this->statusId('loan_status_pending');
+                $requestedAt = now();
 
                 $loan = Loan::query()->create([
-                    'number' => $this->nextNumber(),
+                    'number' => RequestNumberGenerator::loan($requestedAt),
                     'user_id' => $user->id,
                     'unit_id' => $activeUnit->id,
-                    'requested_at' => now(),
+                    'requested_at' => $requestedAt,
                     'authorization_status_id' => $authPending,
                     'workflow_status_id' => $statusPending,
                     'view_mode' => 'detail',
@@ -778,7 +780,14 @@ class LoanController extends Controller
                 ]);
             });
 
-            app(SystemNotificationService::class)->loanStatusChanged($loan->fresh(), $request->user(), $workflowCode, $description);
+            $notificationService = app(SystemNotificationService::class);
+            $freshLoan = $loan->fresh(['unit']);
+
+            if ($authCode === 'loan_auth_authorized') {
+                $notificationService->loanAuthorizedByUnit($freshLoan, $request->user());
+            } else {
+                $notificationService->loanStatusChanged($freshLoan, $request->user(), $workflowCode, $description);
+            }
 
             return response()->json(['message' => 'Solicitud de prestamo actualizada correctamente.']);
         } catch (Throwable $exception) {
@@ -793,17 +802,6 @@ class LoanController extends Controller
     private function statusId(string $code): ?int
     {
         return RequestStatusCatalog::query()->where('code', $code)->value('id');
-    }
-
-    private function nextNumber(): string
-    {
-        $last = Loan::query()
-            ->where('number', 'like', 'PREST-%')
-            ->pluck('number')
-            ->map(fn ($number) => (int) preg_replace('/\D+/', '', $number))
-            ->max();
-
-        return 'PREST-' . str_pad((string) (($last ?? 0) + 1), 3, '0', STR_PAD_LEFT);
     }
 
     private function canRequesterCreate(Request $request): bool

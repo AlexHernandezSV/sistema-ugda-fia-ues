@@ -11,6 +11,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 
 class UserProfileController extends Controller
 {
@@ -80,11 +81,15 @@ class UserProfileController extends Controller
     {
         $request->validate([
             'current_password' => ['required'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'password' => [
+                'required',
+                'string',
+                Password::min(10)->mixedCase()->numbers()->symbols(),
+                'confirmed',
+            ],
         ], [
             'current_password.required' => 'Ingrese su contrasena actual.',
             'password.required' => 'Ingrese la nueva contrasena.',
-            'password.min' => 'La nueva contrasena debe tener al menos :min caracteres.',
             'password.confirmed' => 'La confirmacion no coincide.',
         ]);
 

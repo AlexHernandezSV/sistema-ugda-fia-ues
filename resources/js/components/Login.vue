@@ -653,7 +653,7 @@ onBeforeUnmount(() => {
                                 <input v-model="newPassword"
                                     :type="showNewPassword && newPassword.length > 0 ? 'text' : 'password'"
                                     autocomplete="new-password" class="login-field__input login-password-input"
-                                    placeholder="Minimo 8 caracteres" @keyup.enter="handleTemporaryPasswordChange" />
+                                    placeholder="Minimo 10 caracteres" @keyup.enter="handleTemporaryPasswordChange" />
                                 <button v-if="newPassword.length > 0" type="button" class="login-password-toggle"
                                     :aria-label="showNewPassword ? 'Ocultar contrasena' : 'Mostrar contrasena'"
                                     @mousedown.prevent="showNewPassword = !showNewPassword">
@@ -677,6 +677,10 @@ onBeforeUnmount(() => {
                                 </button>
                             </div>
                         </div>
+
+                        <p class="login-password-policy">
+                            Usa al menos 10 caracteres con mayuscula, minuscula, numero y simbolo.
+                        </p>
 
                         <Button label="Actualizar y continuar" icon="pi pi-check"
                             class="login-primary-button w-full justify-content-center"
@@ -1160,6 +1164,14 @@ onBeforeUnmount(() => {
     font-weight: 700;
     line-height: 1.45;
     text-align: center;
+}
+
+.login-password-policy {
+    margin: -10px 0 18px;
+    color: #57759a;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.45;
 }
 
 .login-code-grid {

@@ -142,7 +142,8 @@ class RequestCatalog
                     ? 'Solicitud #' . $transfer->code . ' - ' . ($transfer->unit?->name ?? 'Sin unidad')
                     : 'Detalle de la solicitud'),
             'mode' => $mode,
-            'showPrintCard' => (bool) $transfer->show_print_card,
+            'showPrintCard' => (bool) $transfer->show_print_card && self::viewerCanViewBoxLocationLabels($viewer),
+            'canViewBoxLocationLabels' => self::viewerCanViewBoxLocationLabels($viewer),
             'boxDisplayState' => $transfer->box_display_state ?: 'collapsed',
             'authorizedBy' => self::userDisplayName($transfer->authorizedBy),
             'authorizedAt' => self::formatDateTime($transfer->authorized_at),
@@ -254,7 +255,7 @@ class RequestCatalog
                 ? self::mapTransferDecisionCard($latestDecision)
                 : null,
             'documentSummary' => $isReview ? self::buildTransferDocumentSummary($transfer) : null,
-            'boxes' => $transfer->boxes->map(fn ($box) => self::mapTransferBox($transfer->code, $box))->values()->all(),
+            'boxes' => $transfer->boxes->map(fn ($box) => self::mapTransferBox($transfer, $box, $viewer))->values()->all(),
             'actions' => $isUnitDirectorReview
                 ? self::transferUnitAuthorizationActions()
                 : ($isUgdaReview ? self::transferReviewActions($workflowCode) : []),
@@ -385,14 +386,20 @@ class RequestCatalog
         $document = TransferDocument::query()
             ->where('code', $code)
             ->whereHas('box.transfer', fn ($query) => $query->where('code', $number))
-            ->with('box.transfer')
+            ->with(['box.transfer.workflowStatus'])
             ->first();
 
         if ($document === null || empty($document->digital_file_name)) {
             return null;
         }
 
-        if (!self::viewerCanAccessRequestUnit($viewer, $document->box?->transfer?->unit_id)) {
+        $transfer = $document->box?->transfer;
+
+        if (!self::viewerCanAccessRequestUnit($viewer, $transfer?->unit_id)) {
+            return null;
+        }
+
+        if (self::shouldHideCompletedDigitalDocument($transfer, $document, $viewer)) {
             return null;
         }
 
@@ -636,7 +643,7 @@ class RequestCatalog
         ];
     }
 
-    private static function mapTransferBox(string $transferNumber, $box): array
+    private static function mapTransferBox(Transfer $transfer, $box, ?User $viewer = null): array
     {
         $number = str_pad((string) $box->box_number, 3, '0', STR_PAD_LEFT);
         $seriesList = self::splitSeriesLabels($box->series_name);
@@ -658,18 +665,42 @@ class RequestCatalog
             'documentsCount' => $box->documents->count(),
             'physicalLocation' => $box->location_code,
             'isLocated' => !empty($box->location_code),
-            'documents' => $box->documents->map(fn ($document) => [
-                'code' => $document->code,
-                'name' => $document->name,
-                'series' => $document->series_label,
-                'support' => $document->support_type,
-                'year' => $document->year_label,
-                'pages' => $document->pages_label,
-                'digitalFile' => $document->digital_file_name,
-                'digitalAvailable' => !empty($document->digital_file_name),
-                'digitalUrl' => $document->digital_file_name ? '/api/transfers/' . $transferNumber . '/documents/' . $document->code . '/download' : null,
-            ])->values()->all(),
+            'documents' => $box->documents->map(function ($document) use ($transfer, $viewer) {
+                $hideDigitalSupport = self::shouldHideCompletedDigitalDocument($transfer, $document, $viewer);
+
+                return [
+                    'code' => $document->code,
+                    'name' => $document->name,
+                    'series' => $document->series_label,
+                    'support' => $hideDigitalSupport ? null : $document->support_type,
+                    'supportRestricted' => $hideDigitalSupport,
+                    'year' => $document->year_label,
+                    'pages' => $document->pages_label,
+                    'digitalFile' => $hideDigitalSupport ? null : $document->digital_file_name,
+                    'digitalAvailable' => !$hideDigitalSupport && !empty($document->digital_file_name),
+                    'digitalRestricted' => $hideDigitalSupport && !empty($document->digital_file_name),
+                    'digitalUrl' => !$hideDigitalSupport && $document->digital_file_name ? '/api/transfers/' . $transfer->code . '/documents/' . $document->code . '/download' : null,
+                ];
+            })->values()->all(),
         ];
+    }
+
+    private static function shouldHideCompletedDigitalDocument(?Transfer $transfer, TransferDocument $document, ?User $viewer): bool
+    {
+        if ($transfer?->workflowStatus?->code !== 'transfer_status_transferred') {
+            return false;
+        }
+
+        if (self::viewerCanManageUgda($viewer)) {
+            return false;
+        }
+
+        return self::isDigitalSupport($document->support_type) || !empty($document->digital_file_name);
+    }
+
+    private static function isDigitalSupport(?string $supportType): bool
+    {
+        return strcasecmp(trim((string) $supportType), 'Digital') === 0;
     }
 
     private static function splitSeriesLabels(?string $value): Collection
@@ -1036,6 +1067,11 @@ class RequestCatalog
         return $viewer->units()
             ->where('units.code', 'UGDA')
             ->exists();
+    }
+
+    private static function viewerCanViewBoxLocationLabels(?User $viewer): bool
+    {
+        return self::viewerCanManageUgda($viewer);
     }
 
     private static function viewerUnitIds(?User $viewer): array

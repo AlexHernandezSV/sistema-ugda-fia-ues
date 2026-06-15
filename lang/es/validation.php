@@ -39,6 +39,13 @@ return [
         'string' => 'El campo :attribute debe tener al menos :min caracteres.',
     ],
     'numeric' => 'El campo :attribute debe ser un numero.',
+    'password' => [
+        'letters' => 'El campo :attribute debe incluir al menos una letra.',
+        'mixed' => 'El campo :attribute debe incluir al menos una letra mayuscula y una minuscula.',
+        'numbers' => 'El campo :attribute debe incluir al menos un numero.',
+        'symbols' => 'El campo :attribute debe incluir al menos un simbolo.',
+        'uncompromised' => 'La :attribute ingresada aparece en filtraciones conocidas. Elija una diferente.',
+    ],
     'regex' => 'El formato del campo :attribute no es valido.',
     'required' => 'El campo :attribute es obligatorio.',
     'same' => 'Los campos :attribute y :other deben coincidir.',

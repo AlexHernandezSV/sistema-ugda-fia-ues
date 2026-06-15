@@ -51,11 +51,16 @@ class UserController extends Controller
             'unit_ids' => ['required_without:unit_id', 'array', 'min:1'],
             'unit_ids.*' => ['integer', 'exists:units,id'],
             'unit_id' => ['nullable', 'integer', 'exists:units,id'],
-            'role' => ['required', 'string', 'max:100'],
+            'role' => $this->roleValidationRules(),
         ], [
             'first_name.regex' => 'El nombre solo puede contener letras.',
             'carnet.regex' => 'El carnet solo puede contener letras mayúsculas y números.',
+            'role.required' => 'Seleccione un rol para el usuario.',
+            'role.exists' => 'Seleccione un rol valido.',
             'max' => 'El campo no debe exceder los :max caracteres.',
+        ], [
+            'role.required' => 'Seleccione un rol para el usuario.',
+            'role.exists' => 'Seleccione un rol valido.',
         ]);
 
         $randomPassword = Str::random(8);
@@ -121,7 +126,7 @@ class UserController extends Controller
             'unit_ids' => ['required_without:unit_id', 'array', 'min:1'],
             'unit_ids.*' => ['integer', 'exists:units,id'],
             'unit_id' => ['nullable', 'integer', 'exists:units,id'],
-            'role' => ['required', 'string', 'max:100'],
+            'role' => $this->roleValidationRules(),
             'is_active' => ['required', 'boolean'],
         ]);
 
@@ -258,6 +263,18 @@ class UserController extends Controller
                 'deleted_at' => null,
             ]
         );
+    }
+
+    private function roleValidationRules(): array
+    {
+        return [
+            'required',
+            'string',
+            'max:100',
+            Rule::exists('profiles', 'name')
+                ->where('is_active', true)
+                ->whereNull('deleted_at'),
+        ];
     }
 
     private function userDisplayName(User $user): string

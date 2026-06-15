@@ -11,6 +11,7 @@ const profilesList = ref([]);
 const loading = ref(true);
 const isSaving = ref(false);
 const isResettingPassword = ref(false);
+const formSubmitted = ref(false);
 
 const rowsPerPageOptions = ref([5, 10, 25, 50]);
 const filters = ref({
@@ -50,6 +51,7 @@ const selectedUnits = computed(() =>
         .map(unitId => unitsList.value.find(unit => unit.value === unitId))
         .filter(Boolean)
 );
+const roleMissing = computed(() => !String(form.value.role ?? '').trim());
 
 // --- CARGAR DATOS ---
 const fetchData = async () => {
@@ -141,6 +143,7 @@ const openCreateModal = () => {
     emailFormatError.value = '';
     carnetError.value = '';
     nameErrors.value = {}; 
+    formSubmitted.value = false;
     
     form.value = { 
         first_name: '', second_name: '', 
@@ -158,6 +161,7 @@ const openEditModal = (user) => {
     emailFormatError.value = '';
     carnetError.value = '';
     nameErrors.value = {};
+    formSubmitted.value = false;
 
     form.value = {
         id: user.id,
@@ -201,8 +205,10 @@ const removeUnitFromForm = (unitId) => {
 const saveUser = async () => {
     if (isSaving.value) return;
 
+    formSubmitted.value = true;
+
     // 1. Validar Campos Obligatorios
-    if (!form.value.first_name || !form.value.first_last_name || !form.value.email || form.value.unit_ids.length === 0 || !form.value.role) {
+    if (!form.value.first_name || !form.value.first_last_name || !form.value.email || form.value.unit_ids.length === 0 || roleMissing.value) {
         toast.add({ severity: 'warn', summary: 'Atención', detail: 'Complete los campos obligatorios (*)', life: 3000 });
         return;
     }
@@ -238,6 +244,7 @@ const saveUser = async () => {
             toast.add({ severity: 'success', summary: 'Creado', detail: 'Usuario creado y credenciales enviadas', life: 3000 });
         }
         displayModal.value = false;
+        formSubmitted.value = false;
         fetchData(); 
     } catch (error) {
         if (error.response && error.response.status === 422) {
@@ -492,7 +499,18 @@ const clearFilter = () => {
                 </div>
                 <div class="col-12 md:col-6 field mb-3">
                     <label class="font-medium" style="color: #1560bd;">Rol de Usuario *</label>
-                    <Dropdown v-model="form.role" :options="profilesList" optionLabel="label" optionValue="value" placeholder="Seleccione Rol" class="w-full bg-gray-50" />
+                    <Dropdown
+                        v-model="form.role"
+                        :options="profilesList"
+                        optionLabel="label"
+                        optionValue="value"
+                        placeholder="Seleccione Rol"
+                        class="w-full bg-gray-50"
+                        :class="{ 'p-invalid': formSubmitted && roleMissing }"
+                    />
+                    <small v-if="formSubmitted && roleMissing" class="p-error text-sm block mt-1">
+                        Seleccione un rol para el usuario.
+                    </small>
                 </div>
 
                 <div class="col-12 field mb-3" v-if="isEditing">

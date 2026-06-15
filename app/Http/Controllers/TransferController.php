@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\RequestStatusCatalog;
 use App\Models\Transfer;
 use App\Services\SystemNotificationService;
+use App\Support\RequestNumberGenerator;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,17 +16,14 @@ use ZipArchive;
 
 class TransferController extends Controller
 {
-    public function nextCode(): JsonResponse
+    public function nextCode(Request $request): JsonResponse
     {
         try {
-            $last = Transfer::query()
-                ->pluck('code')
-                ->filter(fn ($code) => ctype_digit((string) $code))
-                ->map(fn ($code) => (int) $code)
-                ->max();
-            $next = str_pad((string) (($last ?? 0) + 1), 6, '0', STR_PAD_LEFT);
+            $requestDate = $request->filled('request_date')
+                ? Carbon::parse($request->input('request_date'))
+                : now();
 
-            return response()->json(['code' => $next]);
+            return response()->json(['code' => RequestNumberGenerator::transfer($requestDate)]);
         } catch (Throwable $exception) {
             report($exception);
 
@@ -507,7 +505,7 @@ class TransferController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'code' => ['required', 'string', 'max:60', 'unique:transfers,code'],
+            'code' => ['nullable', 'string', 'max:60'],
             'request_date' => ['required', 'date'],
             'unit_id' => ['required', 'exists:units,id'],
             'description' => ['nullable', 'string', 'max:1000'],
@@ -546,7 +544,7 @@ class TransferController extends Controller
                 $statusPending = RequestStatusCatalog::query()->where('code', 'transfer_status_pending')->value('id');
 
                 $transfer = Transfer::query()->create([
-                    'code' => $request->string('code')->toString(),
+                    'code' => RequestNumberGenerator::transfer($requestedAt),
                     'user_id' => $request->user()->id,
                     'unit_id' => (int) $request->input('unit_id'),
                     'request_date' => $requestedAt->toDateString(),
@@ -603,11 +601,21 @@ class TransferController extends Controller
                 'content_description' => $boxPayload['series'],
             ]);
 
-            foreach ($boxPayload['documents_list'] as $documentIndex => $documentPayload) {
+            $seenDocuments = [];
+            $sortOrder = 1;
+
+            foreach ($boxPayload['documents_list'] as $documentPayload) {
+                $fingerprint = $this->documentFingerprint($documentPayload, $boxPayload['series']);
+
+                if (isset($seenDocuments[$fingerprint])) {
+                    continue;
+                }
+
+                $seenDocuments[$fingerprint] = true;
                 $fileName = $documentPayload['file_name'] ?? null;
 
                 $box->documents()->create([
-                    'code' => $documentPayload['code'] ?? 'DOC-' . $transfer->code . '-' . str_pad((string) ($documentIndex + 1), 3, '0', STR_PAD_LEFT),
+                    'code' => $documentPayload['code'] ?? 'DOC-' . $transfer->code . '-' . str_pad((string) $sortOrder, 3, '0', STR_PAD_LEFT),
                     'name' => $documentPayload['name'],
                     'series_label' => $documentPayload['series'] ?? $boxPayload['series'],
                     'support_type' => $documentPayload['support'],
@@ -615,10 +623,28 @@ class TransferController extends Controller
                     'pages_label' => $documentPayload['pages'] ?? null,
                     'digital_file_name' => $fileName,
                     'digital_file_path' => $fileName ? 'uploads/' . $fileName : null,
-                    'sort_order' => $documentIndex + 1,
+                    'sort_order' => $sortOrder,
                 ]);
+
+                $sortOrder++;
             }
         }
+    }
+
+    private function documentFingerprint(array $documentPayload, string $defaultSeries): string
+    {
+        $values = [
+            $documentPayload['series'] ?? $defaultSeries,
+            $documentPayload['name'] ?? '',
+            $documentPayload['code'] ?? '',
+            $documentPayload['support'] ?? '',
+            $documentPayload['date'] ?? '',
+            $documentPayload['pages'] ?? '',
+        ];
+
+        return collect($values)
+            ->map(fn ($value) => mb_strtolower(preg_replace('/\s+/', ' ', trim((string) $value)) ?? ''))
+            ->implode('|');
     }
 
     private function createDocumentImportWorkbook(array $rows): string

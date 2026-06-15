@@ -129,6 +129,12 @@ const supportChipClass = (support) => {
     }
 };
 
+const documentSupportLabel = (document) => (document.supportRestricted ? 'Restringido' : (document.support || 'N/A'));
+
+const documentSupportClass = (document) => (document.supportRestricted
+    ? 'detalle-support-chip detalle-support-chip--restricted'
+    : supportChipClass(document.support));
+
 const compactDate = (value) => {
     if (!value) {
         return '';
@@ -224,6 +230,10 @@ const buildLabelPreviewItems = async (data) => {
 };
 
 const openLabelsPreview = () => {
+    if (!canViewBoxLocationLabels.value) {
+        return;
+    }
+
     labelsDialogVisible.value = true;
     requestAnimationFrame(() => {
         labelsPreviewRef.value?.scrollTo({ top: 0, behavior: 'auto' });
@@ -604,6 +614,10 @@ const buildLabelsDocument = () => {
 };
 
 const printLabels = () => {
+    if (!canViewBoxLocationLabels.value) {
+        return;
+    }
+
     const popup = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=900');
 
     if (!popup) {
@@ -627,7 +641,7 @@ const printLabels = () => {
 };
 
 const downloadLabelsPdf = async () => {
-    if (!transfer.value || labelPreviewCards.value.length === 0 || labelsBusy.value) {
+    if (!canViewBoxLocationLabels.value || !transfer.value || labelPreviewCards.value.length === 0 || labelsBusy.value) {
         return;
     }
 
@@ -1113,7 +1127,7 @@ const fetchDetail = async () => {
         const boxes = data.boxes ?? [];
         expandedBoxes.value = buildExpandedState(boxes, data.boxDisplayState);
         allBoxesExpanded.value = boxes.length > 0 && boxes.every((box) => expandedBoxes.value[box.number]);
-        labelPreviewItems.value = await buildLabelPreviewItems(data);
+        labelPreviewItems.value = data.canViewBoxLocationLabels ? await buildLabelPreviewItems(data) : [];
         if (isProcessPage.value) {
             prepareTransferProcess();
         }
@@ -1127,12 +1141,13 @@ const fetchDetail = async () => {
 
 const isReviewMode = computed(() => ['review', 'unitAuthorization'].includes(transfer.value?.mode));
 const isProcessPage = computed(() => route.name === 'solicitudes-transferencia-proceso');
-const showBoxLocationHeaders = computed(() => transfer.value?.auth === 'Autorizado' && transfer.value?.status === 'Transferido');
+const canViewBoxLocationLabels = computed(() => Boolean(transfer.value?.canViewBoxLocationLabels));
+const showBoxLocationHeaders = computed(() => canViewBoxLocationLabels.value && transfer.value?.auth === 'Autorizado' && transfer.value?.status === 'Transferido');
 const pageTitle = computed(() => transfer.value?.pageTitle ?? (transfer.value ? `Transferencia #${transfer.value.number}` : 'Transferencia'));
 const pageSubtitle = computed(() => transfer.value?.pageSubtitle ?? 'Detalle de la solicitud');
 const showHistory = computed(() => (transfer.value?.history?.length ?? 0) > 0);
-const showDescription = computed(() => !isReviewMode.value && Boolean(transfer.value?.description));
-const showPrintCard = computed(() => Boolean(transfer.value?.showPrintCard) && !transfer.value?.scheduledSummary);
+const showDescription = computed(() => Boolean(transfer.value?.description));
+const showPrintCard = computed(() => canViewBoxLocationLabels.value && Boolean(transfer.value?.showPrintCard) && !transfer.value?.scheduledSummary);
 const hasReviewActions = computed(() => (transfer.value?.actions?.length ?? 0) > 0);
 
 onMounted(fetchDetail);
@@ -1766,7 +1781,7 @@ onMounted(fetchDetail);
                                                 <td>{{ document.series }}</td>
                                                 <td class="ugda-chip-table-cell">
                                                     <div class="ugda-chip-cell">
-                                                        <span :class="supportChipClass(document.support)">{{ document.support }}</span>
+                                                        <span :class="documentSupportClass(document)">{{ documentSupportLabel(document) }}</span>
                                                     </div>
                                                 </td>
                                                 <td>{{ document.year }}</td>
@@ -1781,6 +1796,10 @@ onMounted(fetchDetail);
                                                         <i class="pi pi-download"></i>
                                                         <span>{{ document.digitalFile }}</span>
                                                     </a>
+                                                    <span v-else-if="document.digitalRestricted" class="detalle-document-file detalle-document-file--restricted">
+                                                        <i class="pi pi-lock"></i>
+                                                        <span>Restringido</span>
+                                                    </span>
                                                     <span v-else class="detalle-document-file detalle-document-file--empty">N/A</span>
                                                 </td>
                                             </tr>
@@ -2008,7 +2027,7 @@ onMounted(fetchDetail);
                                             <td>{{ document.series }}</td>
                                             <td class="ugda-chip-table-cell">
                                                 <div class="ugda-chip-cell">
-                                                    <span :class="supportChipClass(document.support)">{{ document.support }}</span>
+                                                    <span :class="documentSupportClass(document)">{{ documentSupportLabel(document) }}</span>
                                                 </div>
                                             </td>
                                             <td>{{ document.year }}</td>
@@ -2023,6 +2042,10 @@ onMounted(fetchDetail);
                                                     <i class="pi pi-download"></i>
                                                     <span>{{ document.digitalFile }}</span>
                                                 </a>
+                                                <span v-else-if="document.digitalRestricted" class="detalle-document-file detalle-document-file--restricted">
+                                                    <i class="pi pi-lock"></i>
+                                                    <span>Restringido</span>
+                                                </span>
                                                 <span v-else class="detalle-document-file detalle-document-file--empty">N/A</span>
                                             </td>
                                         </tr>
@@ -3578,6 +3601,11 @@ onMounted(fetchDetail);
     color: #94a3b8;
 }
 
+.detalle-document-file--restricted {
+    color: #64748b;
+    font-weight: 700;
+}
+
 .detalle-support-chip {
     display: inline-flex;
     align-items: center;
@@ -3602,6 +3630,11 @@ onMounted(fetchDetail);
 .detalle-support-chip--accent {
     background: #f3e8ff;
     color: #9333ea;
+}
+
+.detalle-support-chip--restricted {
+    background: #f1f5f9;
+    color: #64748b;
 }
 
 .detalle-textarea-label {

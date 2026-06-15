@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import axios from 'axios';
@@ -32,6 +32,7 @@ const unitsList = ref([]);
 const supportOptions = ref(['Físico', 'Digital', 'Mixto']);
 const isLoading = ref(false);
 const isSubmitting = ref(false);
+const isRefreshingCode = ref(false);
 
 const isModalOpen = ref(false);
 const isImportModalOpen = ref(false);
@@ -95,6 +96,34 @@ const formatDateForApi = (value) => {
     return `${date.getFullYear()}-${month}-${day}`;
 };
 
+const refreshNextTransferCode = async () => {
+    if (isEditMode.value) {
+        return;
+    }
+
+    const requestDate = formatDateForApi(headerForm.value.request_date);
+
+    if (!requestDate) {
+        headerForm.value.code = '';
+        return;
+    }
+
+    isRefreshingCode.value = true;
+
+    try {
+        const { data } = await axios.get('/api/transfers/next-code', {
+            params: { request_date: requestDate },
+        });
+
+        headerForm.value.code = data.code ?? '';
+    } catch (error) {
+        console.error('Error generando numero de transferencia:', error);
+        showError('No se pudo generar el numero de transferencia.');
+    } finally {
+        isRefreshingCode.value = false;
+    }
+};
+
 const getYearString = (value) => {
     if (!value) {
         return '';
@@ -151,7 +180,9 @@ onMounted(async () => {
             axios.get('/api/documentary-series'),
             isEditMode.value
                 ? axios.get(`/api/transfers/${editNumber.value}/edit-data`)
-                : axios.get('/api/transfers/next-code'),
+                : axios.get('/api/transfers/next-code', {
+                    params: { request_date: formatDateForApi(headerForm.value.request_date) },
+                }),
         ]);
 
         headerForm.value.user_name = [
@@ -227,6 +258,15 @@ onMounted(async () => {
         isLoading.value = false;
     }
 });
+
+watch(
+    () => headerForm.value.request_date,
+    () => {
+        if (!isLoading.value) {
+            refreshNextTransferCode();
+        }
+    }
+);
 
 const addBatch = () => {
     const selectedSeries = Array.isArray(batchForm.value.series)
@@ -339,6 +379,35 @@ const downloadExcelTemplate = () => {
     window.location.href = '/api/transfers/document-import-template';
 };
 
+const normalizeDocumentValue = (value) => String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+
+const getDocumentFingerprint = (document) => [
+    document.series,
+    document.name,
+    document.code,
+    document.support,
+    document.date,
+    document.pages,
+].map(normalizeDocumentValue).join('|');
+
+const getUniqueDocuments = (documents) => {
+    const seen = new Set();
+
+    return documents.filter((document) => {
+        const fingerprint = getDocumentFingerprint(document);
+
+        if (seen.has(fingerprint)) {
+            return false;
+        }
+
+        seen.add(fingerprint);
+        return true;
+    });
+};
+
 const importDocumentsFromExcel = async () => {
     if (!excelFile.value) {
         showError('Seleccione un archivo Excel para importar.');
@@ -365,7 +434,29 @@ const importDocumentsFromExcel = async () => {
             return;
         }
 
-        tempDocuments.value.push(...importedDocuments.map((document, index) => ({
+        const existingFingerprints = new Set(tempDocuments.value.map(getDocumentFingerprint));
+        const importedFingerprints = new Set();
+        const documentsToAdd = importedDocuments.filter((document) => {
+            const fingerprint = getDocumentFingerprint(document);
+
+            if (existingFingerprints.has(fingerprint) || importedFingerprints.has(fingerprint)) {
+                return false;
+            }
+
+            importedFingerprints.add(fingerprint);
+            return true;
+        });
+        const skippedDocuments = importedDocuments.length - documentsToAdd.length;
+
+        if (documentsToAdd.length === 0) {
+            showError('Los documentos de esta plantilla ya fueron cargados en la caja.');
+            excelFile.value = null;
+            resetExcelFileInput();
+            isImportModalOpen.value = false;
+            return;
+        }
+
+        tempDocuments.value.push(...documentsToAdd.map((document, index) => ({
             id_doc: `${Date.now()}-${index}`,
             ...document,
             file_name: null,
@@ -378,7 +469,9 @@ const importDocumentsFromExcel = async () => {
         toast.add({
             severity: 'success',
             summary: 'Documentos importados',
-            detail: `${importedDocuments.length} documento(s) agregado(s) al inventario de la caja.`,
+            detail: skippedDocuments > 0
+                ? `${documentsToAdd.length} documento(s) agregado(s). ${skippedDocuments} duplicado(s) omitido(s).`
+                : `${documentsToAdd.length} documento(s) agregado(s) al inventario de la caja.`,
             life: 3200,
         });
     } catch (error) {
@@ -494,9 +587,21 @@ const saveBoxChanges = () => {
         return;
     }
 
-    boxesList.value[currentBoxIndex.value].documents_list = [...tempDocuments.value];
-    boxesList.value[currentBoxIndex.value].documents_count = tempDocuments.value.length;
+    const uniqueDocuments = getUniqueDocuments(tempDocuments.value);
+    const skippedDocuments = tempDocuments.value.length - uniqueDocuments.length;
+
+    boxesList.value[currentBoxIndex.value].documents_list = uniqueDocuments;
+    boxesList.value[currentBoxIndex.value].documents_count = uniqueDocuments.length;
     isModalOpen.value = false;
+
+    if (skippedDocuments > 0) {
+        toast.add({
+            severity: 'warn',
+            summary: 'Documentos duplicados omitidos',
+            detail: `${skippedDocuments} documento(s) duplicado(s) no se guardaron en la caja.`,
+            life: 3600,
+        });
+    }
 };
 
 const validateTransferDraft = () => {
@@ -626,7 +731,7 @@ const goBack = () => {
                 <div class="transfer-request__grid">
                     <div class="transfer-request__field">
                         <label for="transferCode">N° de transferencia documental <span>*</span></label>
-                        <InputText id="transferCode" v-model="headerForm.code" :disabled="isLoading" readonly />
+                        <InputText id="transferCode" v-model="headerForm.code" :disabled="isLoading || isRefreshingCode" readonly />
                     </div>
 
                     <div class="transfer-request__field">

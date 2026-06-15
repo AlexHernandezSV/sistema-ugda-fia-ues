@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rules\Password;
 
 class AuthController extends Controller
 {
@@ -86,12 +87,16 @@ class AuthController extends Controller
         $request->validate([
             'email' => ['required', 'email'],
             'current_password' => ['required'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'password' => [
+                'required',
+                'string',
+                Password::min(10)->mixedCase()->numbers()->symbols(),
+                'confirmed',
+            ],
         ], [
             'email.required' => 'El correo es obligatorio.',
             'current_password.required' => 'La contrasena temporal es obligatoria.',
             'password.required' => 'La nueva contrasena es obligatoria.',
-            'password.min' => 'La nueva contrasena debe tener al menos :min caracteres.',
             'password.confirmed' => 'La confirmacion de la contrasena no coincide.',
         ]);
 
