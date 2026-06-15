@@ -1,5 +1,5 @@
 <script setup>
-import { ref, nextTick } from 'vue';
+import { ref, nextTick, computed, onBeforeUnmount } from 'vue';
 import Button from 'primevue/button';
 import { useToast } from 'primevue/usetoast';
 import axios from 'axios';
@@ -13,6 +13,7 @@ const showTemporaryPassword = ref(false);
 const showNewPassword = ref(false);
 const showNewPasswordConfirmation = ref(false);
 const twoFactorMethod = ref('email');
+const lockoutSeconds = ref(0);
 
 const email = ref('');
 const password = ref('');
@@ -21,6 +22,19 @@ const newPassword = ref('');
 const newPasswordConfirmation = ref('');
 const digits = ref(['', '', '', '', '', '']);
 const inputs = ref([]);
+let lockoutTimer = null;
+
+const isLockoutActive = computed(() => lockoutSeconds.value > 0);
+
+const lockoutMessage = computed(() => {
+    const minutes = Math.floor(lockoutSeconds.value / 60);
+    const seconds = lockoutSeconds.value % 60;
+    const time = minutes > 0
+        ? `${minutes} min ${seconds.toString().padStart(2, '0')} s`
+        : `${seconds} s`;
+
+    return `Acceso bloqueado temporalmente. Intenta de nuevo en ${time}.`;
+});
 
 const focusOtpInput = (index) => {
     inputs.value[index]?.focus?.();
@@ -32,6 +46,38 @@ const togglePasswordVisibility = () => {
 
 const resetOtp = () => {
     digits.value = ['', '', '', '', '', ''];
+};
+
+const startLockout = (retryAfter = 60) => {
+    lockoutSeconds.value = Math.max(1, Number(retryAfter) || 60);
+
+    if (lockoutTimer) {
+        clearInterval(lockoutTimer);
+    }
+
+    lockoutTimer = setInterval(() => {
+        lockoutSeconds.value = Math.max(0, lockoutSeconds.value - 1);
+
+        if (lockoutSeconds.value === 0 && lockoutTimer) {
+            clearInterval(lockoutTimer);
+            lockoutTimer = null;
+        }
+    }, 1000);
+};
+
+const warnIfLocked = () => {
+    if (!isLockoutActive.value) {
+        return false;
+    }
+
+    toast.add({
+        severity: 'warn',
+        summary: 'Acceso bloqueado',
+        detail: lockoutMessage.value,
+        life: 3500
+    });
+
+    return true;
 };
 
 const verificationSubtitle = () => {
@@ -81,6 +127,10 @@ const handleLoginResponse = (data) => {
 };
 
 const handleLogin = async () => {
+    if (warnIfLocked()) {
+        return;
+    }
+
     twoFactorMethod.value = 'email';
     loading.value = true;
 
@@ -101,6 +151,10 @@ const handleLogin = async () => {
 };
 
 const resendCode = async () => {
+    if (warnIfLocked()) {
+        return;
+    }
+
     if (twoFactorMethod.value !== 'email') {
         toast.add({
             severity: 'warn',
@@ -146,6 +200,10 @@ const resendCode = async () => {
 };
 
 const handleTemporaryPasswordChange = async () => {
+    if (warnIfLocked()) {
+        return;
+    }
+
     if (!temporaryPassword.value || !newPassword.value || !newPasswordConfirmation.value) {
         toast.add({
             severity: 'warn',
@@ -185,6 +243,10 @@ const handleTemporaryPasswordChange = async () => {
 };
 
 const handleVerifyCode = async () => {
+    if (warnIfLocked()) {
+        return;
+    }
+
     const code = digits.value.join('');
 
     if (code.length < 6) {
@@ -216,7 +278,9 @@ const handleVerifyCode = async () => {
             window.location.href = response.data.redirect;
         }, 1000);
     } catch (error) {
-        if (error.response && error.response.status === 401) {
+        if (error.response && error.response.status === 429) {
+            handleErrors(error);
+        } else if (error.response && error.response.status === 401) {
             toast.add({
                 severity: 'error',
                 summary: 'Código inválido',
@@ -300,6 +364,17 @@ const handleErrors = (error) => {
             return;
         }
 
+        if (error.response.status === 429) {
+            startLockout(error.response.data.retry_after);
+            toast.add({
+                severity: 'warn',
+                summary: 'Acceso bloqueado',
+                detail: error.response.data.message || lockoutMessage.value,
+                life: 6000
+            });
+            return;
+        }
+
         toast.add({
             severity: 'error',
             summary: 'Error',
@@ -324,6 +399,12 @@ const goBack = () => {
     newPassword.value = '';
     newPasswordConfirmation.value = '';
 };
+
+onBeforeUnmount(() => {
+    if (lockoutTimer) {
+        clearInterval(lockoutTimer);
+    }
+});
 </script>
 
 <template>
@@ -468,7 +549,11 @@ const goBack = () => {
 
                         <Button label="Iniciar Sesión" icon="pi pi-sign-in"
                             class="login-primary-button w-full justify-content-center"
-                            :loading="loading" @click="handleLogin" />
+                            :loading="loading" :disabled="isLockoutActive" @click="handleLogin" />
+
+                        <p v-if="isLockoutActive" class="login-lockout-message">
+                            {{ lockoutMessage }}
+                        </p>
 
                         <div class="login-step__footer">
                             © 2025 Universidad de El Salvador
@@ -504,7 +589,7 @@ const goBack = () => {
                         </div>
 
                         <Button class="login-primary-button w-full justify-content-center"
-                            :loading="loading" @click="handleVerifyCode">
+                            :loading="loading" :disabled="isLockoutActive" @click="handleVerifyCode">
                             <span class="login-primary-button__content">
                                 <svg class="login-primary-button__icon-svg" xmlns="http://www.w3.org/2000/svg"
                                     width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -517,7 +602,11 @@ const goBack = () => {
                         </Button>
 
                         <Button label="Reenviar código" class="login-secondary-button w-full justify-content-center"
-                            severity="secondary" outlined @click="resendCode" v-if="twoFactorMethod === 'email'" />
+                            severity="secondary" outlined :disabled="isLockoutActive" @click="resendCode" v-if="twoFactorMethod === 'email'" />
+
+                        <p v-if="isLockoutActive" class="login-lockout-message">
+                            {{ lockoutMessage }}
+                        </p>
 
                         <Button label="Volver" class="login-secondary-button w-full justify-content-center"
                             severity="secondary" outlined @click="goBack" />
@@ -591,7 +680,11 @@ const goBack = () => {
 
                         <Button label="Actualizar y continuar" icon="pi pi-check"
                             class="login-primary-button w-full justify-content-center"
-                            :loading="loading" @click="handleTemporaryPasswordChange" />
+                            :loading="loading" :disabled="isLockoutActive" @click="handleTemporaryPasswordChange" />
+
+                        <p v-if="isLockoutActive" class="login-lockout-message">
+                            {{ lockoutMessage }}
+                        </p>
 
                         <Button label="Volver" class="login-secondary-button w-full justify-content-center"
                             severity="secondary" outlined @click="goBack" />
@@ -1015,6 +1108,12 @@ const goBack = () => {
     background: linear-gradient(180deg, #2f6fad 0%, #285f98 100%) !important;
 }
 
+.login-primary-button:disabled,
+.login-secondary-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.68;
+}
+
 .login-primary-button__content {
     display: inline-flex;
     align-items: center;
@@ -1052,6 +1151,15 @@ const goBack = () => {
     color: #57759a !important;
     font-size: 15px !important;
     font-weight: 700 !important;
+}
+
+.login-lockout-message {
+    margin: 12px 0 0;
+    color: #b42318;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.45;
+    text-align: center;
 }
 
 .login-code-grid {

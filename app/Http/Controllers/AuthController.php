@@ -9,11 +9,20 @@ use App\Services\UserActivityLogger;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
+    private const FIRST_LOCKOUT_ATTEMPTS = 5;
+    private const SECOND_LOCKOUT_ATTEMPTS = 8;
+    private const FAILURE_COUNTER_TTL_SECONDS = 86400;
+    private const FIRST_LOCKOUT_SECONDS = 60;
+    private const SECOND_LOCKOUT_SECONDS = 900;
+    private const FINAL_LOCKOUT_SECONDS = 3600;
+
     public function __construct(
         private readonly AuthenticatorCodeService $authenticatorCodes,
         private readonly UserActivityLogger $activityLogger
@@ -31,11 +40,25 @@ class AuthController extends Controller
             'password.required' => 'La contrasena es obligatoria.',
         ]);
 
+        $throttleKey = $this->throttleKey($request, 'login');
+
+        if ($this->tooManyAttempts($throttleKey)) {
+            return $this->lockoutResponse($throttleKey);
+        }
+
         $user = User::where('email', $request->email)->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
+            $this->hitFailedAttempt($throttleKey);
+
+            if ($this->tooManyAttempts($throttleKey)) {
+                return $this->lockoutResponse($throttleKey);
+            }
+
             return response()->json(['message' => 'Credenciales incorrectas.'], 401);
         }
+
+        $this->clearFailedAttempts($throttleKey);
 
         if (!$user->is_active) {
             return response()->json(['message' => 'El usuario se encuentra inactivo.'], 403);
@@ -72,11 +95,25 @@ class AuthController extends Controller
             'password.confirmed' => 'La confirmacion de la contrasena no coincide.',
         ]);
 
+        $throttleKey = $this->throttleKey($request, 'temporary-password');
+
+        if ($this->tooManyAttempts($throttleKey)) {
+            return $this->lockoutResponse($throttleKey);
+        }
+
         $user = User::where('email', $request->email)->first();
 
         if (!$user || !Hash::check($request->current_password, $user->password)) {
+            $this->hitFailedAttempt($throttleKey);
+
+            if ($this->tooManyAttempts($throttleKey)) {
+                return $this->lockoutResponse($throttleKey);
+            }
+
             return response()->json(['message' => 'La contrasena temporal no es valida.'], 401);
         }
+
+        $this->clearFailedAttempts($throttleKey);
 
         if (!$user->is_active) {
             return response()->json(['message' => 'El usuario se encuentra inactivo.'], 403);
@@ -114,15 +151,35 @@ class AuthController extends Controller
             'code' => ['required', 'string'],
         ]);
 
+        $throttleKey = $this->throttleKey($request, 'two-factor');
+
+        if ($this->tooManyAttempts($throttleKey)) {
+            return $this->lockoutResponse($throttleKey);
+        }
+
         $user = User::where('email', $request->email)->first();
 
         if (!$user || !$user->is_active) {
+            $this->hitFailedAttempt($throttleKey);
+
+            if ($this->tooManyAttempts($throttleKey)) {
+                return $this->lockoutResponse($throttleKey);
+            }
+
             return response()->json(['message' => 'El codigo es incorrecto o ha expirado.'], 401);
         }
 
         if (($user->two_factor_method ?: 'email') === 'authenticator') {
             if ($this->authenticatorCodes->verify($user->two_factor_secret, $request->code)) {
+                $this->clearFailedAttempts($throttleKey);
+
                 return $this->finishLogin($request, $user);
+            }
+
+            $this->hitFailedAttempt($throttleKey);
+
+            if ($this->tooManyAttempts($throttleKey)) {
+                return $this->lockoutResponse($throttleKey);
             }
 
             return response()->json(['message' => 'El codigo es incorrecto o ha expirado.'], 401);
@@ -137,7 +194,15 @@ class AuthController extends Controller
             $user->two_factor_expires_at = null;
             $user->save();
 
+            $this->clearFailedAttempts($throttleKey);
+
             return $this->finishLogin($request, $user);
+        }
+
+        $this->hitFailedAttempt($throttleKey);
+
+        if ($this->tooManyAttempts($throttleKey)) {
+            return $this->lockoutResponse($throttleKey);
         }
 
         return response()->json(['message' => 'El codigo es incorrecto o ha expirado.'], 401);
@@ -214,5 +279,91 @@ class AuthController extends Controller
     {
         return $user->temporary_password_expires_at
             && Carbon::now()->greaterThan($user->temporary_password_expires_at);
+    }
+
+    private function throttleKey(Request $request, string $action): string
+    {
+        $email = Str::lower((string) $request->input('email', ''));
+
+        return 'auth:' . $action . ':' . sha1($email . '|' . $request->ip());
+    }
+
+    private function hitFailedAttempt(string $throttleKey): void
+    {
+        Cache::add($this->attemptsKey($throttleKey), 0, self::FAILURE_COUNTER_TTL_SECONDS);
+
+        $attempts = Cache::increment($this->attemptsKey($throttleKey));
+        $seconds = $this->lockoutSecondsForAttempts($attempts);
+
+        if ($seconds > 0) {
+            Cache::put($this->lockoutKey($throttleKey), Carbon::now()->addSeconds($seconds)->timestamp, $seconds);
+        }
+    }
+
+    private function tooManyAttempts(string $throttleKey): bool
+    {
+        return $this->lockoutSecondsRemaining($throttleKey) > 0;
+    }
+
+    private function lockoutResponse(string $throttleKey)
+    {
+        $seconds = $this->lockoutSecondsRemaining($throttleKey);
+        $wait = $this->formatLockoutWait($seconds);
+
+        return response()->json([
+            'message' => "Demasiados intentos fallidos. Intente nuevamente en {$wait}.",
+            'retry_after' => $seconds,
+        ], 429);
+    }
+
+    private function clearFailedAttempts(string $throttleKey): void
+    {
+        Cache::forget($this->attemptsKey($throttleKey));
+        Cache::forget($this->lockoutKey($throttleKey));
+    }
+
+    private function lockoutSecondsForAttempts(int $attempts): int
+    {
+        if ($attempts < self::FIRST_LOCKOUT_ATTEMPTS) {
+            return 0;
+        }
+
+        if ($attempts === self::FIRST_LOCKOUT_ATTEMPTS) {
+            return self::FIRST_LOCKOUT_SECONDS;
+        }
+
+        if ($attempts <= self::SECOND_LOCKOUT_ATTEMPTS) {
+            return self::SECOND_LOCKOUT_SECONDS;
+        }
+
+        return self::FINAL_LOCKOUT_SECONDS;
+    }
+
+    private function lockoutSecondsRemaining(string $throttleKey): int
+    {
+        $lockedUntil = (int) Cache::get($this->lockoutKey($throttleKey), 0);
+
+        return max(0, $lockedUntil - Carbon::now()->timestamp);
+    }
+
+    private function formatLockoutWait(int $seconds): string
+    {
+        if ($seconds >= self::FINAL_LOCKOUT_SECONDS) {
+            return '1 hora';
+        }
+
+        $minutes = max(1, (int) ceil($seconds / 60));
+
+        return $minutes === 1 ? '1 minuto' : "{$minutes} minutos";
+    }
+
+    private function attemptsKey(string $throttleKey): string
+    {
+        return $throttleKey . ':attempts';
+    }
+
+    private function lockoutKey(string $throttleKey): string
+    {
+        return $throttleKey . ':locked-until';
     }
 }
