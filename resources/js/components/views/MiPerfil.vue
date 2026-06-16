@@ -62,7 +62,7 @@ const fetchProfile = async () => {
         toast.add({
             severity: 'error',
             summary: 'Error',
-            detail: 'No se pudo cargar la informacion del perfil.',
+            detail: 'No se pudo cargar la información del perfil.',
             life: 3500,
         });
     } finally {
@@ -230,7 +230,7 @@ onMounted(fetchProfile);
             <div>
                 <span class="perfil-eyebrow">Mi Perfil</span>
                 <h1>Perfil y seguridad</h1>
-                <p>Administra tu informacion personal, acceso y ultimos movimientos.</p>
+                <p>Administra tu información personal, acceso y últimos movimientos.</p>
             </div>
             <div class="perfil-status" :class="{ 'perfil-status--active': profile.is_active }">
                 <span></span>
@@ -283,7 +283,7 @@ onMounted(fetchProfile);
                 <div class="perfil-panel perfil-panel--wide">
                     <div class="perfil-panel__header">
                         <div>
-                            <h3>Informacion personal</h3>
+                            <h3>Información personal</h3>
                             <p>Datos principales asociados a tu cuenta.</p>
                         </div>
                     </div>

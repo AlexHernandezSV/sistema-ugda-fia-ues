@@ -103,6 +103,7 @@ const menuItems = computed(() => {
         hasPermission('endpoint.api.units.create') ? { label: 'Unidades', icon: 'pi pi-building', to: '/unidades' } : null,
         hasPermission('endpoint.api.users.create') ? { label: 'Usuarios', icon: 'pi pi-users', to: '/usuarios' } : null,
         hasPermission('endpoint.api.documentary-series.create') ? { label: 'Series Documentales', icon: 'pi pi-clone', to: '/series-documentales' } : null,
+        { label: 'Ubicaciones Fisicas', icon: 'pi pi-map-marker', to: '/archivo-general/ubicaciones' },
     ].filter(Boolean);
 
     if (configurationChildren.length > 0) {

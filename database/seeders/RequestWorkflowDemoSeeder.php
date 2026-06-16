@@ -627,7 +627,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                     'return_date' => '15/02/2026',
                     'received_by' => 'carlos_rodriguez_ugda',
                     'condition_label' => 'Documentos devueltos en buen estado',
-                    'observations' => 'Devolucion realizada antes de la hora establecida. Documentos verificados y en perfectas condiciones.',
+                    'observations' => 'Devolución realizada antes de la hora establecida. Documentos verificados y en perfectas condiciones.',
                     'document_titles' => ['Proyectos de Investigacion 2020'],
                 ],
             ],

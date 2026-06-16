@@ -35,4 +35,9 @@ class LoanDocument extends Model
     {
         return $this->belongsTo(Loan::class);
     }
+
+    public function modifications()
+    {
+        return $this->hasMany(LoanDocumentModification::class)->latest();
+    }
 }

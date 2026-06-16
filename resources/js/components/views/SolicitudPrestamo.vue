@@ -265,7 +265,7 @@ onMounted(fetchCatalog);
         <div class="prestamo-info">
             <i class="pi pi-info-circle"></i>
             <div>
-                <strong>Informacion importante</strong>
+                <strong>Información importante</strong>
                 <p>Esta solicitud es para documentos que ya fueron transferidos y se encuentran bajo custodia de la UGDA. El prestamo debe ser autorizado por el Director/Jefe y luego sera revisado por el personal de archivo.</p>
             </div>
         </div>

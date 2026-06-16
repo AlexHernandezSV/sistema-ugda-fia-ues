@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\RequestStatusCatalog;
+use App\Models\PhysicalLocationShelf;
 use App\Models\Transfer;
 use App\Services\SystemNotificationService;
 use App\Support\RequestNumberGenerator;
@@ -976,10 +977,9 @@ class TransferController extends Controller
         $validator = Validator::make($request->all(), [
             'locations' => ['required', 'array', 'min:1'],
             'locations.*.box_number' => ['required', 'integer', 'min:1'],
-            'locations.*.aisle' => ['required', 'string', 'max:80'],
-            'locations.*.shelf' => ['required', 'string', 'max:80'],
-            'locations.*.level' => ['required', 'string', 'max:80'],
-            'locations.*.position' => ['required', 'string', 'max:80'],
+            'locations.*.office_id' => ['required', 'integer', 'exists:physical_location_offices,id'],
+            'locations.*.aisle_id' => ['required', 'integer', 'exists:physical_location_aisles,id'],
+            'locations.*.shelf_id' => ['required', 'integer', 'exists:physical_location_shelves,id'],
         ]);
 
         if ($validator->fails()) {
@@ -1024,10 +1024,27 @@ class TransferController extends Controller
                 ], 422);
             }
 
-            DB::transaction(function () use ($request, $transfer, $locations) {
+            $validShelves = [];
+
+            foreach ($locations as $boxNumber => $location) {
+                $shelf = $this->findValidShelf(
+                    (int) ($location['office_id'] ?? 0),
+                    (int) ($location['aisle_id'] ?? 0),
+                    (int) ($location['shelf_id'] ?? 0)
+                );
+
+                if ($shelf === null) {
+                    return response()->json([
+                        'message' => 'La ubicacion fisica de la caja #' . $boxNumber . ' no respeta la relacion oficina, pasillo y estante.',
+                    ], 422);
+                }
+
+                $validShelves[(int) $boxNumber] = $shelf;
+            }
+
+            DB::transaction(function () use ($request, $transfer, $locations, $validShelves) {
                 foreach ($transfer->boxes as $box) {
-                    $location = $locations->get($box->box_number);
-                    $locationCode = $this->buildPhysicalLocationCode($location);
+                    $locationCode = $this->buildPhysicalLocationCode($validShelves[(int) $box->box_number]);
 
                     $box->update([
                         'location_code' => $locationCode,
@@ -1152,41 +1169,33 @@ class TransferController extends Controller
         }
     }
 
-    private function buildPhysicalLocationCode(array $location): string
+    private function findValidShelf(int $officeId, int $aisleId, int $shelfId): ?PhysicalLocationShelf
     {
-        $aisle = $this->extractAisleCode((string) ($location['aisle'] ?? 'A'));
-        $shelf = $this->extractNumericLocationCode((string) ($location['shelf'] ?? '1'), true);
-        $level = $this->extractNumericLocationCode((string) ($location['level'] ?? '1'), false);
-        $position = $this->extractNumericLocationCode((string) ($location['position'] ?? '1'), true);
-
-        return $aisle . '-' . $shelf . '-' . $level . '-' . $position;
+        return PhysicalLocationShelf::query()
+            ->with('aisle.office')
+            ->where('id', $shelfId)
+            ->where('is_active', true)
+            ->where('physical_location_aisle_id', $aisleId)
+            ->whereHas('aisle', fn ($query) => $query
+                ->where('id', $aisleId)
+                ->where('is_active', true)
+                ->where('physical_location_office_id', $officeId)
+                ->whereHas('office', fn ($office) => $office->where('is_active', true)))
+            ->first();
     }
 
-    private function extractAisleCode(string $value): string
+    private function buildPhysicalLocationCode(PhysicalLocationShelf $shelf): string
     {
-        $normalized = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
-        $text = strtoupper($normalized !== false ? $normalized : $value);
+        $shelf->loadMissing('aisle.office');
 
-        if (preg_match_all('/\b([A-Z])\b/', $text, $matches) && count($matches[1]) > 0) {
-            return end($matches[1]);
-        }
-
-        if (preg_match('/[A-Z]/', $text, $match)) {
-            return $match[0];
-        }
-
-        return 'A';
-    }
-
-    private function extractNumericLocationCode(string $value, bool $pad): string
-    {
-        if (preg_match('/\d+/', $value, $match)) {
-            $number = (int) $match[0];
-
-            return $pad ? str_pad((string) $number, 2, '0', STR_PAD_LEFT) : (string) $number;
-        }
-
-        return $pad ? '01' : '1';
+        return collect([
+            $shelf->aisle?->office?->code,
+            $shelf->aisle?->code,
+            $shelf->code,
+        ])
+            ->map(fn ($code) => strtoupper(trim((string) $code)))
+            ->filter()
+            ->implode('-');
     }
 
     public function deny(Request $request, string $number): JsonResponse

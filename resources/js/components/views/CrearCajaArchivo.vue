@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import axios from 'axios';
@@ -16,10 +16,9 @@ const units = ref([]);
 const seriesOptions = ref([]);
 const supportOptions = ref(['Fisico', 'Digital', 'Mixto']);
 const locationOptions = ref({
+    offices: [],
     aisles: [],
     shelves: [],
-    levels: [],
-    positions: [],
 });
 
 const form = ref({
@@ -28,10 +27,9 @@ const form = ref({
     series_id: null,
     start_year: '',
     end_year: '',
-    aisle: null,
-    shelf: null,
-    level: null,
-    position: null,
+    office_id: null,
+    aisle_id: null,
+    shelf_id: null,
 });
 
 const documents = ref([]);
@@ -70,14 +68,36 @@ const allDocuments = computed(() => [
 ]);
 
 const generatedLocationCode = computed(() => {
-    if (!form.value.aisle || !form.value.shelf || !form.value.level || !form.value.position) {
+    const office = locationOptions.value.offices.find((item) => item.id === form.value.office_id);
+    const aisle = locationOptions.value.aisles.find((item) => item.id === form.value.aisle_id);
+    const shelf = locationOptions.value.shelves.find((item) => item.id === form.value.shelf_id);
+
+    if (!office || !aisle || !shelf) {
         return '';
     }
 
-    const shelf = String(form.value.shelf).padStart(2, '0');
-    const position = String(form.value.position).padStart(2, '0');
+    return `${office.code}-${aisle.code}-${shelf.code}`;
+});
 
-    return `${String(form.value.aisle).toUpperCase()}-${shelf}-${form.value.level}-${position}`;
+const filteredAisles = computed(() => (
+    locationOptions.value.aisles.filter((item) => item.office_id === form.value.office_id)
+));
+
+const filteredShelves = computed(() => (
+    locationOptions.value.shelves.filter((item) => item.aisle_id === form.value.aisle_id)
+));
+
+watch(() => form.value.office_id, () => {
+    if (!filteredAisles.value.some((item) => item.id === form.value.aisle_id)) {
+        form.value.aisle_id = null;
+        form.value.shelf_id = null;
+    }
+});
+
+watch(() => form.value.aisle_id, () => {
+    if (!filteredShelves.value.some((item) => item.id === form.value.shelf_id)) {
+        form.value.shelf_id = null;
+    }
 });
 
 const selectedExcelFileName = computed(() => excelFile.value?.name ?? '');
@@ -111,15 +131,14 @@ const fetchCatalog = async () => {
         seriesOptions.value = Array.isArray(data.series) ? data.series : [];
         supportOptions.value = Array.isArray(data.support_types) ? data.support_types : supportOptions.value;
         locationOptions.value = {
+            offices: data.locations?.offices ?? [],
             aisles: data.locations?.aisles ?? [],
             shelves: data.locations?.shelves ?? [],
-            levels: data.locations?.levels ?? [],
-            positions: data.locations?.positions ?? [],
         };
         form.value.box_number = data.next_box_number ? String(data.next_box_number) : '';
     } catch (error) {
         console.error('Error cargando catalogo:', error);
-        showError(error.response?.data?.message ?? 'No se pudo cargar la informacion para crear la caja.');
+        showError(error.response?.data?.message ?? 'No se pudo cargar la información para crear la caja.');
     } finally {
         isLoading.value = false;
     }
@@ -292,17 +311,17 @@ const previewLabel = () => {
 
 const validateForm = () => {
     if (!form.value.box_number || !form.value.unit_id || !form.value.series_id || !form.value.start_year || !form.value.end_year) {
-        showError('Complete la informacion obligatoria de la caja.');
+        showError('Complete la información obligatoria de la caja.');
         return false;
     }
 
     if (Number(form.value.end_year) < Number(form.value.start_year)) {
-        showError('El ano final no puede ser menor que el ano inicial.');
+        showError('El año final no puede ser menor que el año inicial.');
         return false;
     }
 
     if (!generatedLocationCode.value) {
-        showError('Complete la ubicacion fisica de la caja.');
+        showError('Complete la ubicación física de la caja.');
         return false;
     }
 
@@ -323,10 +342,9 @@ const submitBox = async () => {
             series_id: form.value.series_id,
             start_year: Number(form.value.start_year),
             end_year: Number(form.value.end_year),
-            aisle: form.value.aisle,
-            shelf: String(form.value.shelf),
-            level: String(form.value.level),
-            position: String(form.value.position),
+            office_id: form.value.office_id,
+            aisle_id: form.value.aisle_id,
+            shelf_id: form.value.shelf_id,
             existing_document_ids: selectedExistingDocuments.value.map((document) => document.id),
             documents: documents.value.map((document) => ({
                 series: document.series,
@@ -370,7 +388,7 @@ onMounted(fetchCatalog);
 
         <main class="create-box-main">
             <section class="create-box-section">
-                <h2>Informacion de la Caja</h2>
+                <h2>Información de la Caja</h2>
 
                 <div class="create-box-grid create-box-grid--two">
                     <label>
@@ -419,22 +437,41 @@ onMounted(fetchCatalog);
             <section class="create-box-section">
                 <h2>Ubicacion Fisica</h2>
 
-                <div class="create-box-grid create-box-grid--four">
+                <div class="create-box-grid create-box-grid--three">
+                    <label>
+                        <span>Oficina <b>*</b></span>
+                        <Dropdown
+                            v-model="form.office_id"
+                            :options="locationOptions.offices"
+                            optionLabel="name"
+                            optionValue="id"
+                            placeholder="Seleccionar"
+                            class="w-full"
+                        />
+                    </label>
                     <label>
                         <span>Pasillo <b>*</b></span>
-                        <Dropdown v-model="form.aisle" :options="locationOptions.aisles" placeholder="Seleccionar" class="w-full" />
+                        <Dropdown
+                            v-model="form.aisle_id"
+                            :options="filteredAisles"
+                            optionLabel="name"
+                            optionValue="id"
+                            placeholder="Seleccionar"
+                            class="w-full"
+                            :disabled="!form.office_id"
+                        />
                     </label>
                     <label>
                         <span>Estante <b>*</b></span>
-                        <Dropdown v-model="form.shelf" :options="locationOptions.shelves" placeholder="Seleccionar" class="w-full" />
-                    </label>
-                    <label>
-                        <span>Nivel <b>*</b></span>
-                        <Dropdown v-model="form.level" :options="locationOptions.levels" placeholder="Seleccionar" class="w-full" />
-                    </label>
-                    <label>
-                        <span>Posicion <b>*</b></span>
-                        <Dropdown v-model="form.position" :options="locationOptions.positions" placeholder="Seleccionar" class="w-full" />
+                        <Dropdown
+                            v-model="form.shelf_id"
+                            :options="filteredShelves"
+                            optionLabel="name"
+                            optionValue="id"
+                            placeholder="Seleccionar"
+                            class="w-full"
+                            :disabled="!form.aisle_id"
+                        />
                     </label>
                 </div>
 
@@ -752,6 +789,10 @@ onMounted(fetchCatalog);
 
 .create-box-grid--two {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.create-box-grid--three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .create-box-grid--four {
@@ -1085,6 +1126,7 @@ onMounted(fetchCatalog);
     }
 
     .create-box-grid--two,
+    .create-box-grid--three,
     .create-box-grid--four,
     .archive-existing-search {
         grid-template-columns: 1fr;

@@ -277,6 +277,8 @@ class RequestCatalog
                 'searchStartedBy.person',
                 'searchCompletedBy.person',
                 'documents',
+                'documentModifications.document',
+                'documentModifications.registeredBy.person',
                 'events.actor.person',
                 'events.status',
                 'latestDispatch.deliveredBy.person',
@@ -329,7 +331,7 @@ class RequestCatalog
                 ? 'Solicitud #' . $loan->number . ' - ' . ($loan->unit?->name ?? 'Sin unidad')
                 : 'Detalle de la solicitud'),
             'mode' => $isUnitDirectorReview ? 'unitAuthorization' : ($isManage ? 'manage' : 'detail'),
-            'generalSectionTitle' => ($isManage || $isUnitDirectorReview) ? 'Datos Generales' : 'Informacion General',
+            'generalSectionTitle' => ($isManage || $isUnitDirectorReview) ? 'Datos Generales' : 'Información General',
             'documentsSectionTitle' => $workflowCode === 'loan_status_loaned' ? 'Documentos Prestados' : 'Documentos Solicitados',
             'authorizedBy' => self::userDisplayName($loan->authorizedBy),
             'authorizedAt' => self::formatDateTime($loan->authorized_at),
@@ -376,6 +378,7 @@ class RequestCatalog
             'documentGroups' => $searchCode === 'loan_search_not_found' ? [] : self::mapLoanDocumentGroups($loan),
             'actions' => $isUnitDirectorReview ? self::loanUnitAuthorizationActions() : ($isManage ? self::loanActions($loan) : []),
             'loanRegistration' => $isManage ? self::buildLoanRegistrationConfig($loan) : null,
+            'documentModifications' => self::buildLoanDocumentModificationsConfig($loan, $viewer),
             'returnRegistration' => $isManage ? self::buildReturnRegistrationConfig($loan) : null,
             'history' => self::mapHistory($loan->events),
         ];
@@ -817,6 +820,70 @@ class RequestCatalog
         ];
     }
 
+    private static function buildLoanDocumentModificationsConfig(Loan $loan, ?User $viewer): ?array
+    {
+        $workflowCode = $loan->workflowStatus?->code;
+        $viewerCanEdit = $workflowCode === 'loan_status_loaned'
+            && !self::viewerCanManageUgda($viewer)
+            && $viewer?->activeProfile()?->name === 'Unidad Solicitante'
+            && self::viewerCanAccessRequestUnit($viewer, $loan->unit_id);
+        $modifications = $loan->documentModifications
+            ->sortBy('created_at')
+            ->values();
+
+        if (
+            $loan->authorizationStatus?->code !== 'loan_auth_authorized'
+            || !in_array($workflowCode, ['loan_status_loaned', 'loan_status_returned'], true)
+            || $loan->searchStatus?->code !== 'loan_search_completed'
+            || !self::viewerCanAccessRequestUnit($viewer, $loan->unit_id)
+            || (!$viewerCanEdit && $modifications->isEmpty())
+        ) {
+            return null;
+        }
+
+        $documents = $loan->documents
+            ->where('selected_for_loan', true)
+            ->values();
+
+        if ($documents->isEmpty()) {
+            return null;
+        }
+
+        return [
+            'title' => !$viewerCanEdit
+                ? 'Modificaciones Reportadas por el Solicitante'
+                : 'Modificaciones a Documentos',
+            'returnTitle' => 'Modificaciones reportadas por el solicitante',
+            'description' => !$viewerCanEdit
+                ? 'El solicitante registro ' . $modifications->count() . ' modificacion(es) sobre los documentos durante el periodo del prestamo.'
+                : ($modifications->isEmpty()
+                ? 'Si ha realizado alguna modificacion a los documentos que tiene en prestamo, registrela aqui. La UGDA vera esta información al recibir la devolucion.'
+                : 'Ha registrado modificaciones en documentos prestados. Puede actualizar esta información cuando sea necesario.'),
+            'returnDescription' => 'El solicitante ha reportado las siguientes modificaciones realizadas a los documentos durante el periodo del prestamo:',
+            'buttonLabel' => $modifications->isEmpty() ? 'Registrar modificaciones' : 'Actualizar modificaciones',
+            'canEdit' => $viewerCanEdit,
+            'showInDetail' => $viewerCanEdit || $workflowCode === 'loan_status_returned',
+            'count' => $modifications->count(),
+            'documents' => $documents->map(fn ($document) => [
+                'id' => $document->id,
+                'title' => $document->title,
+                'series' => $document->series_label,
+                'box' => $document->box_code,
+                'year' => $document->year_label,
+                'documentType' => $document->document_type_label,
+                'documentTypeColor' => $document->document_type_tone,
+            ])->values()->all(),
+            'items' => $modifications->map(fn ($modification) => [
+                'id' => $modification->id,
+                'loanDocumentId' => $modification->loan_document_id,
+                'documentTitle' => $modification->document?->title ?? 'Documento',
+                'description' => $modification->description,
+                'registeredBy' => self::userDisplayName($modification->registeredBy),
+                'registeredAt' => self::formatDateTime($modification->created_at),
+            ])->values()->all(),
+        ];
+    }
+
     private static function mapLoanDecisionCard($event): array
     {
         $context = $event->context ?? [];
@@ -972,7 +1039,7 @@ class RequestCatalog
             ->values();
 
         return [
-            'title' => 'Registrar Devolucion de Documentos',
+            'title' => 'Registrar Devolución de Documentos',
             'subtitle' => 'Seleccione los documentos que se estan devolviendo e ingrese los detalles',
             'helperTitle' => 'Seleccione los documentos que se devuelven',
             'helperText' => 'Marque los documentos que el usuario esta devolviendo en este momento',

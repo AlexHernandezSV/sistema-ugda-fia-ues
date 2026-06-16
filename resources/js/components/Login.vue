@@ -338,7 +338,7 @@ const handleErrors = (error) => {
                 toast.add({
                     severity: 'warn',
                     summary: 'Atencion',
-                    detail: error.response.data.message || 'Revise la informacion ingresada.',
+                    detail: error.response.data.message || 'Revise la información ingresada.',
                     life: 4000
                 });
                 return;

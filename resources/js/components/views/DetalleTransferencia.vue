@@ -31,11 +31,11 @@ const transferProcessSubmitting = ref(false);
 const currentDecisionAction = ref(null);
 const activeProcessBox = ref(null);
 const boxLocations = ref({});
-
-const aisleOptions = ref(['Pasillo A', 'Pasillo B', 'Pasillo C', 'Area temporal']);
-const shelfOptions = ref(['Estante 1', 'Estante 2', 'Estante 3', 'Estante 4']);
-const levelOptions = ref(['Nivel 1', 'Nivel 2', 'Nivel 3', 'Nivel 4']);
-const positionOptions = ref(['Posicion 1', 'Posicion 2', 'Posicion 3', 'Posicion 4']);
+const locationOptions = ref({
+    offices: [],
+    aisles: [],
+    shelves: [],
+});
 
 const decisionForm = ref({
     date: null,
@@ -241,13 +241,11 @@ const openLabelsPreview = () => {
 };
 
 const parsePhysicalLocation = (location) => {
-    const parts = String(location ?? '').split('/').map((part) => part.trim());
-
     return {
-        aisle: parts[0] ?? null,
-        shelf: parts[1] ?? null,
-        level: parts[2] ?? null,
-        position: parts[3] ?? null,
+        office_id: null,
+        aisle_id: null,
+        shelf_id: null,
+        savedCode: location || '',
     };
 };
 
@@ -263,12 +261,38 @@ const locationSegmentCode = (value, fallback = '') => {
     return letter.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
 };
 
+const findOfficeOption = (officeId) => locationOptions.value.offices.find((item) => item.id === officeId);
+const findAisleOption = (aisleId) => locationOptions.value.aisles.find((item) => item.id === aisleId);
+const findShelfOption = (shelfId) => locationOptions.value.shelves.find((item) => item.id === shelfId);
+
+const aisleOptionsForLocation = (location) => (
+    locationOptions.value.aisles.filter((item) => item.office_id === location.office_id)
+);
+
+const shelfOptionsForLocation = (location) => (
+    locationOptions.value.shelves.filter((item) => item.aisle_id === location.aisle_id)
+);
+
+const onBoxOfficeChange = (box) => {
+    const location = ensureBoxLocation(box);
+    location.aisle_id = null;
+    location.shelf_id = null;
+};
+
+const onBoxAisleChange = (box) => {
+    ensureBoxLocation(box).shelf_id = null;
+};
+
 const generatedBoxLocationCode = (box) => {
     const location = boxLocations.value[box.number] ?? parsePhysicalLocation(box.physicalLocation);
+    const office = findOfficeOption(location.office_id);
+    const aisle = findAisleOption(location.aisle_id);
+    const shelf = findShelfOption(location.shelf_id);
 
-    if (!location.aisle || !location.shelf || !location.level || !location.position) {
-        return '';
+    if (!office || !aisle || !shelf) {
+        return location.savedCode || '';
     }
+    return `${office.code}-${aisle.code}-${shelf.code}`;
 
     const aisleCode = String(location.aisle).match(/\b([A-Za-zÁÉÍÓÚÑ])\b(?!.*\b[A-Za-zÁÉÍÓÚÑ]\b)/)?.[1]
         ?? locationSegmentCode(location.aisle, 'A');
@@ -290,7 +314,7 @@ const ensureBoxLocation = (box) => {
 const isBoxLocated = (boxNumber) => {
     const location = boxLocations.value[boxNumber] ?? {};
 
-    return Boolean(location.aisle && location.shelf && location.level && location.position);
+    return Boolean(location.office_id && location.aisle_id && location.shelf_id);
 };
 
 const prepareTransferProcess = () => {
@@ -1139,6 +1163,20 @@ const fetchDetail = async () => {
     }
 };
 
+const fetchLocationOptions = async () => {
+    try {
+        const { data } = await axios.get('/api/physical-locations/options');
+        locationOptions.value = {
+            offices: Array.isArray(data.offices) ? data.offices : [],
+            aisles: Array.isArray(data.aisles) ? data.aisles : [],
+            shelves: Array.isArray(data.shelves) ? data.shelves : [],
+        };
+    } catch (error) {
+        console.error('Error cargando ubicaciones fisicas:', error);
+        locationOptions.value = { offices: [], aisles: [], shelves: [] };
+    }
+};
+
 const isReviewMode = computed(() => ['review', 'unitAuthorization'].includes(transfer.value?.mode));
 const isProcessPage = computed(() => route.name === 'solicitudes-transferencia-proceso');
 const canViewBoxLocationLabels = computed(() => Boolean(transfer.value?.canViewBoxLocationLabels));
@@ -1150,7 +1188,9 @@ const showDescription = computed(() => Boolean(transfer.value?.description));
 const showPrintCard = computed(() => canViewBoxLocationLabels.value && Boolean(transfer.value?.showPrintCard) && !transfer.value?.scheduledSummary);
 const hasReviewActions = computed(() => (transfer.value?.actions?.length ?? 0) > 0);
 
-onMounted(fetchDetail);
+onMounted(async () => {
+    await Promise.all([fetchLocationOptions(), fetchDetail()]);
+});
 </script>
 
 <template>
@@ -1256,20 +1296,41 @@ onMounted(fetchDetail);
                         <h4><i class="pi pi-map-marker"></i> Asignar Ubicación Física</h4>
                         <div class="detalle-process-box__fields">
                             <label>
-                                <span>Pasillo/Área *</span>
-                                <Dropdown v-model="ensureBoxLocation(box).aisle" :options="aisleOptions" placeholder="Seleccionar" fluid />
+                                <span>Oficina *</span>
+                                <Dropdown
+                                    v-model="ensureBoxLocation(box).office_id"
+                                    :options="locationOptions.offices"
+                                    optionLabel="name"
+                                    optionValue="id"
+                                    placeholder="Seleccionar"
+                                    fluid
+                                    @change="onBoxOfficeChange(box)"
+                                />
+                            </label>
+                            <label>
+                                <span>Pasillo *</span>
+                                <Dropdown
+                                    v-model="ensureBoxLocation(box).aisle_id"
+                                    :options="aisleOptionsForLocation(ensureBoxLocation(box))"
+                                    optionLabel="name"
+                                    optionValue="id"
+                                    placeholder="Seleccionar"
+                                    fluid
+                                    :disabled="!ensureBoxLocation(box).office_id"
+                                    @change="onBoxAisleChange(box)"
+                                />
                             </label>
                             <label>
                                 <span>Estante *</span>
-                                <Dropdown v-model="ensureBoxLocation(box).shelf" :options="shelfOptions" placeholder="Seleccionar" fluid />
-                            </label>
-                            <label>
-                                <span>Nivel *</span>
-                                <Dropdown v-model="ensureBoxLocation(box).level" :options="levelOptions" placeholder="Seleccionar" fluid />
-                            </label>
-                            <label>
-                                <span>Posición *</span>
-                                <Dropdown v-model="ensureBoxLocation(box).position" :options="positionOptions" placeholder="Seleccionar" fluid />
+                                <Dropdown
+                                    v-model="ensureBoxLocation(box).shelf_id"
+                                    :options="shelfOptionsForLocation(ensureBoxLocation(box))"
+                                    optionLabel="name"
+                                    optionValue="id"
+                                    placeholder="Seleccionar"
+                                    fluid
+                                    :disabled="!ensureBoxLocation(box).aisle_id"
+                                />
                             </label>
                         </div>
                         <div v-if="isBoxLocated(box.number)" class="detalle-process-box__location-code">
@@ -2396,20 +2457,41 @@ onMounted(fetchDetail);
                                 <h4><i class="pi pi-map-marker"></i> Asignar Ubicación Física</h4>
                                 <div class="detalle-process-box__fields">
                                     <label>
-                                        <span>Pasillo/Área *</span>
-                                        <Dropdown v-model="ensureBoxLocation(box).aisle" :options="aisleOptions" placeholder="Seleccionar" fluid />
+                                        <span>Oficina *</span>
+                                        <Dropdown
+                                            v-model="ensureBoxLocation(box).office_id"
+                                            :options="locationOptions.offices"
+                                            optionLabel="name"
+                                            optionValue="id"
+                                            placeholder="Seleccionar"
+                                            fluid
+                                            @change="onBoxOfficeChange(box)"
+                                        />
+                                    </label>
+                                    <label>
+                                        <span>Pasillo *</span>
+                                        <Dropdown
+                                            v-model="ensureBoxLocation(box).aisle_id"
+                                            :options="aisleOptionsForLocation(ensureBoxLocation(box))"
+                                            optionLabel="name"
+                                            optionValue="id"
+                                            placeholder="Seleccionar"
+                                            fluid
+                                            :disabled="!ensureBoxLocation(box).office_id"
+                                            @change="onBoxAisleChange(box)"
+                                        />
                                     </label>
                                     <label>
                                         <span>Estante *</span>
-                                        <Dropdown v-model="ensureBoxLocation(box).shelf" :options="shelfOptions" placeholder="Seleccionar" fluid />
-                                    </label>
-                                    <label>
-                                        <span>Nivel *</span>
-                                        <Dropdown v-model="ensureBoxLocation(box).level" :options="levelOptions" placeholder="Seleccionar" fluid />
-                                    </label>
-                                    <label>
-                                        <span>Posición *</span>
-                                        <Dropdown v-model="ensureBoxLocation(box).position" :options="positionOptions" placeholder="Seleccionar" fluid />
+                                        <Dropdown
+                                            v-model="ensureBoxLocation(box).shelf_id"
+                                            :options="shelfOptionsForLocation(ensureBoxLocation(box))"
+                                            optionLabel="name"
+                                            optionValue="id"
+                                            placeholder="Seleccionar"
+                                            fluid
+                                            :disabled="!ensureBoxLocation(box).aisle_id"
+                                        />
                                     </label>
                                 </div>
                                 <div v-if="isBoxLocated(box.number)" class="detalle-process-box__location-code">
@@ -2827,8 +2909,12 @@ onMounted(fetchDetail);
 }
 
 .detalle-decision-modal__button--danger {
-    background: #eda3a0;
+    background: #ef4444;
     color: #ffffff;
+}
+
+.detalle-decision-modal__button--danger:hover:not(:disabled) {
+    background: #dc2626;
 }
 
 .detalle-decision-modal__button--cancel {

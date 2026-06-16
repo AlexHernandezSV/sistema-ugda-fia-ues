@@ -319,9 +319,9 @@ class SystemNotificationService
     {
         $this->notifyUsers([$loan->user_id], $actor, [
             'type' => 'loan_returned',
-            'title' => 'Devolucion registrada',
-            'short_message' => 'Prestamo #' . $loan->number . ' tiene devolucion registrada.',
-            'body' => 'UGDA registro la devolucion de documentos del prestamo.',
+            'title' => 'Devolución registrada',
+            'short_message' => 'Prestamo #' . $loan->number . ' tiene devolución registrada.',
+            'body' => 'UGDA registro la devolución de documentos del prestamo.',
             'tone' => 'success',
             'action_url' => '/solicitudes/prestamos/' . $loan->number,
             'reference_type' => 'loan',
