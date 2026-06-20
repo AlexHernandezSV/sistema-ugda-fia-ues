@@ -546,7 +546,7 @@ const clearFilter = () => {
             </button>
 
             <div class="series-module-header__copy">
-                <h1 class="series-module-header__title mobile-page-title">Gestion de Series y Subseries Documentales</h1>
+                <h1 class="series-module-header__title mobile-page-title">Gestión de Series y Subseries Documentales</h1>
                 <p class="series-module-header__subtitle mobile-page-title">Administrar el catalogo de series y subseries documentales</p>
             </div>
         </div>

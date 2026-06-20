@@ -158,7 +158,7 @@ class TransferController extends Controller
 
             if ($transfer->authorizationStatus?->code !== 'transfer_auth_pending' || $transfer->workflowStatus?->code !== 'transfer_status_pending') {
                 return response()->json([
-                    'message' => 'Esta transferencia ya no esta pendiente de autorizacion por jefatura.',
+                    'message' => 'Esta transferencia ya no esta pendiente de autorización por jefatura.',
                 ], 422);
             }
 
@@ -235,7 +235,7 @@ class TransferController extends Controller
 
             if ($transfer->authorizationStatus?->code !== 'transfer_auth_pending' || $transfer->workflowStatus?->code !== 'transfer_status_pending') {
                 return response()->json([
-                    'message' => 'Esta transferencia ya no esta pendiente de autorizacion por jefatura.',
+                    'message' => 'Esta transferencia ya no esta pendiente de autorización por jefatura.',
                 ], 422);
             }
 
@@ -473,7 +473,7 @@ class TransferController extends Controller
                     'title' => $isPhysicalCorrection ? 'Subsanada' : 'Corregido y reenviado',
                     'description' => $isPhysicalCorrection
                         ? 'Solicitud corregida por la unidad solicitante y reenviada a UGDA para validar las correcciones.'
-                        : 'Solicitud corregida por la unidad solicitante y reenviada a jefatura para autorizacion.',
+                        : 'Solicitud corregida por la unidad solicitante y reenviada a jefatura para autorización.',
                     'context' => [
                         'previous_status' => $previousWorkflowCode,
                         'correction_notes' => $correctionNotes !== '' ? $correctionNotes : null,

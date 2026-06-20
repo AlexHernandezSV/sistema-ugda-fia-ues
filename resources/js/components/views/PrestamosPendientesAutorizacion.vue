@@ -48,7 +48,7 @@ onMounted(fetchPending);
     <div class="pending-page">
         <header class="pending-header">
             <div>
-                <h1>Solicitudes Pendientes de Autorizacion</h1>
+                <h1>Solicitudes Pendientes de Autorización</h1>
                 <p>Revise y autorice las solicitudes de prestamo documental de su unidad</p>
             </div>
         </header>
@@ -56,7 +56,7 @@ onMounted(fetchPending);
         <section class="pending-metrics">
             <article class="pending-metric">
                 <div>
-                    <span>Pendientes de autorizacion</span>
+                    <span>Pendientes de autorización</span>
                     <strong>{{ summary.pending }}</strong>
                 </div>
                 <i class="pi pi-file-check pending-metric__icon pending-metric__icon--warning"></i>
@@ -80,7 +80,7 @@ onMounted(fetchPending);
         <section v-if="hasItems" class="pending-alert">
             <i class="pi pi-exclamation-circle"></i>
             <div>
-                <strong>Hay {{ summary.pending }} solicitudes esperando su autorizacion</strong>
+                <strong>Hay {{ summary.pending }} solicitudes esperando su autorización</strong>
                 <p>Revise cada solicitud cuidadosamente antes de autorizar o denegar.</p>
             </div>
         </section>
@@ -92,7 +92,7 @@ onMounted(fetchPending);
 
             <div v-else-if="!hasItems" class="pending-empty">
                 <i class="pi pi-check-circle"></i>
-                <strong>No hay prestamos pendientes de autorizacion</strong>
+                <strong>No hay prestamos pendientes de autorización</strong>
                 <span>Cuando una unidad solicitante envie una solicitud, aparecera en esta pantalla.</span>
             </div>
 

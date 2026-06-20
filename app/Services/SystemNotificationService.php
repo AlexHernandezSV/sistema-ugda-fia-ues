@@ -42,7 +42,7 @@ class SystemNotificationService
         $this->notifyUsers($this->unitDirectors($transfer->unit_id), $actor, [
             'type' => 'transfer_pending_unit_authorization',
             'title' => 'Transferencia pendiente de jefatura',
-            'short_message' => 'Transferencia #' . $transfer->code . ' requiere autorizacion.',
+            'short_message' => 'Transferencia #' . $transfer->code . ' requiere autorización.',
             'body' => 'La unidad ' . ($transfer->unit?->name ?? 'solicitante') . ' envio una transferencia documental. Revise la solicitud para autorizarla o denegarla.',
             'tone' => 'warning',
             'action_url' => '/solicitudes/transferencias/' . $transfer->code,
@@ -213,7 +213,7 @@ class SystemNotificationService
         $this->notifyUsers($this->unitDirectors($loan->unit_id), $actor, [
             'type' => 'loan_pending_unit_authorization',
             'title' => 'Prestamo pendiente de jefatura',
-            'short_message' => 'Prestamo #' . $loan->number . ' requiere autorizacion.',
+            'short_message' => 'Prestamo #' . $loan->number . ' requiere autorización.',
             'body' => 'La unidad ' . ($loan->unit?->name ?? 'solicitante') . ' envio una solicitud de prestamo documental. Revise la solicitud para autorizarla o denegarla.',
             'tone' => 'warning',
             'action_url' => '/solicitudes/prestamos/' . $loan->number,

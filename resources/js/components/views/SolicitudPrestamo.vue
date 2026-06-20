@@ -452,7 +452,7 @@ onMounted(fetchCatalog);
                 <div class="prestamo-confirm__body">
                     <div class="prestamo-confirm__notice">
                         <i class="pi pi-info-circle"></i>
-                        <strong>Al confirmar, esta solicitud sera enviada para autorizacion del Director/Jefe y luego sera revisada por el personal de UGDA</strong>
+                        <strong>Al confirmar, esta solicitud será enviada para autorización del Director/Jefe y luego sera revisada por el personal de UGDA</strong>
                     </div>
 
                     <div class="prestamo-confirm__section">

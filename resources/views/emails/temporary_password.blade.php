@@ -8,7 +8,7 @@
     <div style="max-width: 620px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #dbe6f2;">
         <div style="background: #1560bd; color: #ffffff; padding: 22px 26px;">
             <h2 style="margin: 0; font-size: 22px;">Contrasena temporal UGDA</h2>
-            <p style="margin: 8px 0 0; opacity: .9;">Sistema de Gestion Documental</p>
+            <p style="margin: 8px 0 0; opacity: .9;">Sistema de Gestión Documental</p>
         </div>
         <div style="padding: 26px;">
             <p>Hola <strong>{{ $data['name'] }}</strong>,</p>

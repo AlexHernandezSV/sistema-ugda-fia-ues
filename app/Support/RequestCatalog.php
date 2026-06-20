@@ -197,13 +197,13 @@ class RequestCatalog
                     : null),
             'workflowNotice' => $isUnitDirectorReview
                 ? [
-                    'title' => 'Solicitud pendiente de autorizacion',
-                    'description' => 'Esta transferencia debe ser autorizada por la jefatura de la unidad productora antes de pasar a gestion UGDA.',
+                    'title' => 'Solicitud pendiente de autorización',
+                    'description' => 'Esta transferencia debe ser autorizada por la jefatura de la unidad productora antes de pasar a gestión UGDA.',
                 ]
                 : ($isUgdaReview && $workflowCode === 'transfer_status_pending'
                 ? [
-                    'title' => 'Solicitud pendiente de gestion',
-                    'description' => 'Esta solicitud ha sido autorizada por la jefatura de unidad y requiere gestion de la UGDA para continuar el proceso.',
+                    'title' => 'Solicitud pendiente de gestión',
+                    'description' => 'Esta solicitud ha sido autorizada por la jefatura de unidad y requiere gestión de la UGDA para continuar el proceso.',
                 ]
                 : null),
             'physicalObservations' => $isPhysicalReviewFlow && $observations->isNotEmpty()
@@ -338,13 +338,13 @@ class RequestCatalog
             'chips' => self::loanChips($loan),
             'workflowNotice' => $isUnitDirectorReview
                 ? [
-                    'title' => 'Solicitud de prestamo pendiente de autorizacion',
+                    'title' => 'Solicitud de prestamo pendiente de autorización',
                     'description' => 'Revise los documentos solicitados antes de tomar una decision.',
                 ]
                 : ($isManage && $workflowCode === 'loan_status_pending'
                 ? [
-                    'title' => 'Solicitud de prestamo pendiente de gestion',
-                    'description' => 'Esta solicitud ha sido autorizada por el Director y requiere su gestion.',
+                    'title' => 'Solicitud de prestamo pendiente de gestión',
+                    'description' => 'Esta solicitud ha sido autorizada por el Director y requiere su gestión.',
                 ]
                 : null),
             'observationsRegistered' => $observations->isNotEmpty()
@@ -365,8 +365,14 @@ class RequestCatalog
                     'description' => 'Los documentos estan siendo localizados en el archivo',
                 ]
                 : null,
-            'searchCompleted' => $isManage && in_array($searchCode, ['loan_search_completed', 'loan_search_not_found'], true) && $workflowCode === 'loan_status_authorized'
+            'searchCompleted' => in_array($searchCode, ['loan_search_completed', 'loan_search_not_found'], true)
+                && $workflowCode === 'loan_status_authorized'
                 ? self::buildLoanSearchCompleted($loan)
+                : null,
+            'readyForPickup' => !$canManageUgda
+                && in_array($searchCode, ['loan_search_completed', 'loan_search_not_found'], true)
+                && $workflowCode === 'loan_status_authorized'
+                ? self::buildLoanReadyForPickup($loan)
                 : null,
             'loanSummary' => $workflowCode === 'loan_status_loaned'
                 ? self::buildLoanSummary($loan)
@@ -516,14 +522,14 @@ class RequestCatalog
             'alerts' => [
                 'count' => $alerts->count(),
                 'title' => match ($profile) {
-                    'Director/Jefe de Unidad' => 'solicitudes pendientes de autorizacion',
+                    'Director/Jefe de Unidad' => 'solicitudes pendientes de autorización',
                     'Unidad Solicitante' => 'solicitudes pendientes de seguimiento',
-                    default => 'solicitudes pendientes de gestion',
+                    default => 'solicitudes pendientes de gestión',
                 },
                 'description' => match ($profile) {
-                    'Director/Jefe de Unidad' => 'Las siguientes solicitudes requieren tu revision y autorizacion:',
+                    'Director/Jefe de Unidad' => 'Las siguientes solicitudes requieren tu revision y autorización:',
                     'Unidad Solicitante' => 'Las siguientes solicitudes requieren tu atencion o seguimiento:',
-                    default => 'Las siguientes solicitudes requieren gestion desde UGDA:',
+                    default => 'Las siguientes solicitudes requieren gestión desde UGDA:',
                 },
                 'items' => $alerts->map(fn ($item) => [
                     'type' => $item['type'],
@@ -761,6 +767,20 @@ class RequestCatalog
             'groups' => $groups,
             'result' => $isNotFound ? 'not_found' : 'completed',
             'tone' => $isNotFound ? 'danger' : 'warning',
+        ];
+    }
+
+    private static function buildLoanReadyForPickup(Loan $loan): array
+    {
+        return [
+            'title' => 'Documentos Listos para Retiro',
+            'description' => 'El proceso de búsqueda ha finalizado. Los documentos solicitados están disponibles para su retiro.',
+            'instructions' => [
+                'Presente su identificación en el archivo de la UGDA',
+                'Mencione el número de préstamo: ' . $loan->number,
+                'Firme el registro de préstamo de documentos',
+                'Horario de atención: Lunes a Viernes, 8:00 AM - 4:00 PM',
+            ],
         ];
     }
 

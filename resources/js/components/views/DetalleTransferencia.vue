@@ -1687,7 +1687,7 @@ onMounted(async () => {
                                     <div class="detalle-value">{{ transfer.responsible }}</div>
                                 </div>
                                 <div v-if="transfer.authorizedAt">
-                                    <span class="detalle-label">Fecha de autorizacion</span>
+                                    <span class="detalle-label">Fecha de autorización</span>
                                     <div class="detalle-value">{{ transfer.authorizedAt }}</div>
                                 </div>
                             </div>
@@ -1968,7 +1968,7 @@ onMounted(async () => {
                                 <div class="detalle-value">{{ transfer.responsible }}</div>
                             </div>
                             <div v-if="transfer.authorizedAt">
-                                <span class="detalle-label">Fecha de autorizacion</span>
+                                <span class="detalle-label">Fecha de autorización</span>
                                 <div class="detalle-value">{{ transfer.authorizedAt }}</div>
                             </div>
                         </div>

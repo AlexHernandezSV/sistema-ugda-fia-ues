@@ -155,7 +155,7 @@ onMounted(fetchBoxes);
                 Volver
             </button>
             <span class="archive-header-separator"></span>
-            <h1 class="mobile-page-title">Gestion de Archivo General</h1>
+            <h1 class="mobile-page-title">Gestión de Archivo General</h1>
         </header>
 
         <main class="archive-management-main">

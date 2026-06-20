@@ -59,7 +59,7 @@ const routes = [
     { 
         path: '/usuarios', 
         name: 'usuarios', 
-        meta: { title: 'Gestion de Usuarios', permission: 'endpoint.api.users.create' },
+        meta: { title: 'Gestión de Usuarios', permission: 'endpoint.api.users.create' },
         component: Usuarios 
     },
 
@@ -80,7 +80,7 @@ const routes = [
     {
         path: '/archivo-general/gestion',
         name: 'archivo-general-gestion',
-        meta: { title: 'Gestion de Archivo', allowedProfiles: ['Administrador'] },
+        meta: { title: 'Gestión de Archivo', allowedProfiles: ['Administrador'] },
         component: ArchivoGestion
     },
 

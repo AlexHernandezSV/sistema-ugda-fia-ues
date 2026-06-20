@@ -19,7 +19,7 @@
                                 Código de acceso seguro
                             </div>
                             <div style="font-size: 15px; line-height: 1.6; color: rgba(255, 255, 255, 0.9);">
-                                Sistema de Gestion Documental UGDA
+                                Sistema de Gestión Documental UGDA
                             </div>
                         </td>
                     </tr>

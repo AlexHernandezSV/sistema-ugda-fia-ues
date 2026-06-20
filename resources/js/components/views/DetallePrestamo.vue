@@ -325,10 +325,10 @@ const decisionModalConfig = computed(() => {
                 icon: 'pi pi-check-circle',
                 title: 'Autorizar Prestamo',
                 subtitle: loan.value?.mode === 'unitAuthorization'
-                    ? 'La solicitud sera enviada a la UGDA para su gestion'
+                    ? 'La solicitud sera enviada a la UGDA para su gestión'
                     : 'Se iniciara el proceso de busqueda de documentos',
                 label: 'Comentarios (opcional)',
-                placeholder: 'Agregue comentarios sobre la autorizacion...',
+                placeholder: 'Agregue comentarios sobre la autorización...',
                 confirmLabel: 'Autorizar',
                 cancelLabel: 'Cancelar',
                 tone: 'success',
@@ -338,9 +338,9 @@ const decisionModalConfig = computed(() => {
             return {
                 icon: 'pi pi-check-circle',
                 title: 'Autorizar Prestamo',
-                subtitle: 'La solicitud sera enviada a la UGDA para su gestion',
+                subtitle: 'La solicitud sera enviada a la UGDA para su gestión',
                 label: 'Comentarios (opcional)',
-                placeholder: 'Agregue comentarios sobre la autorizacion...',
+                placeholder: 'Agregue comentarios sobre la autorización...',
                 confirmLabel: 'Autorizar',
                 cancelLabel: 'Cancelar',
                 tone: 'success',
@@ -748,6 +748,29 @@ onMounted(fetchDetail);
             </div>
         </div>
 
+        <div v-if="loan.readyForPickup" class="detalle-banner detalle-banner--success">
+            <div class="detalle-banner__head">
+                <div class="detalle-banner__icon detalle-banner__icon--success">
+                    <i class="pi pi-check-circle"></i>
+                </div>
+                <div>
+                    <h2 class="detalle-banner__title m-0">{{ loan.readyForPickup.title }}</h2>
+                    <p class="detalle-banner__text m-0">{{ loan.readyForPickup.description }}</p>
+                </div>
+            </div>
+
+            <div class="detalle-banner__panel">
+                <div class="detalle-banner__instructions">
+                    <div class="font-semibold mb-3 text-900">Instrucciones para el retiro:</div>
+                    <ul class="detalle-banner__instructions-list">
+                        <li v-for="(instruction, idx) in loan.readyForPickup.instructions" :key="idx">
+                            {{ instruction }}
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
         <div v-if="loan.loanSummary" class="detalle-banner detalle-banner--success detalle-loan-summary-banner">
             <div class="detalle-banner__head">
                 <div class="detalle-banner__icon detalle-banner__icon--success">
@@ -947,7 +970,7 @@ onMounted(fetchDetail);
                                 <div class="detalle-value">{{ loan.requestedBy ?? loan.applicant }}</div>
                             </div>
                             <div v-if="loan.authorizedAt">
-                                <span class="detalle-label">Fecha de autorizacion</span>
+                                <span class="detalle-label">Fecha de autorización</span>
                                 <div class="detalle-value">{{ loan.authorizedAt }}</div>
                             </div>
                         </div>
@@ -993,7 +1016,7 @@ onMounted(fetchDetail);
                             <div class="detalle-value">{{ loan.requestedBy ?? loan.applicant }}</div>
                         </div>
                         <div v-if="loan.authorizedAt">
-                            <span class="detalle-label">Fecha de autorizacion</span>
+                            <span class="detalle-label">Fecha de autorización</span>
                             <div class="detalle-value">{{ loan.authorizedAt }}</div>
                         </div>
                     </div>
@@ -3280,5 +3303,37 @@ onMounted(fetchDetail);
     .detalle-modifications-modal__remove {
         align-self: flex-end;
     }
+}
+
+.detalle-banner__instructions {
+    background: linear-gradient(135deg, rgba(40, 176, 75, 0.08), rgba(40, 176, 75, 0.04));
+    border: 1px solid #d1f0d4;
+    border-radius: 0.75rem;
+    padding: 1.25rem;
+}
+
+.detalle-banner__instructions-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.detalle-banner__instructions-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    color: #1f7043;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+.detalle-banner__instructions-list li::before {
+    content: '•';
+    flex-shrink: 0;
+    font-weight: bold;
+    color: #28b04b;
 }
 </style>

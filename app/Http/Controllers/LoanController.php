@@ -214,7 +214,7 @@ class LoanController extends Controller
             app(SystemNotificationService::class)->loanCreated($loan->fresh(['unit']), $request->user());
 
             return response()->json([
-                'message' => 'La solicitud de prestamo #' . $loan->number . ' fue registrada por la Unidad solicitante y enviada a Director de unidad para autorizacion.',
+                'message' => 'La solicitud de prestamo #' . $loan->number . ' fue registrada por la Unidad solicitante y enviada a Director de unidad para autorización.',
                 'number' => $loan->number,
             ], 201);
         } catch (Throwable $exception) {
@@ -234,7 +234,7 @@ class LoanController extends Controller
 
         if ($validator->fails()) {
             return response()->json([
-                'message' => 'Los datos de autorizacion no son validos.',
+                'message' => 'Los datos de autorización no son válidos.',
                 'errors' => $validator->errors(),
             ], 422);
         }
@@ -304,7 +304,7 @@ class LoanController extends Controller
 
         if ($validator->fails()) {
             return response()->json([
-                'message' => 'Los datos de autorizacion no son validos.',
+                'message' => 'Los datos de autorización no son válidos.',
                 'errors' => $validator->errors(),
             ], 422);
         }
@@ -326,7 +326,7 @@ class LoanController extends Controller
             context: trim($request->string('comments')->toString()) !== ''
                 ? ['comments' => trim($request->string('comments')->toString()), 'decision_scope' => 'unit']
                 : ['decision_scope' => 'unit'],
-            successMessage: 'El prestamo #' . $number . ' fue autorizado por Director de unidad y enviado a UGDA para su gestion.',
+            successMessage: 'El prestamo #' . $number . ' fue autorizado por Director de unidad y enviado a UGDA para su gestión.',
         );
     }
 
@@ -872,7 +872,7 @@ class LoanController extends Controller
 
             if ($loan->authorizationStatus?->code !== 'loan_auth_pending' || $loan->workflowStatus?->code !== 'loan_status_pending') {
                 return response()->json([
-                    'message' => 'La solicitud ya no se encuentra pendiente de autorizacion.',
+                    'message' => 'La solicitud ya no se encuentra pendiente de autorización.',
                 ], 422);
             }
 

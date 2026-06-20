@@ -176,7 +176,7 @@ class RequestCatalogTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('mode', 'review')
             ->assertJsonPath('pageTitle', 'Revisar Transferencia Documental')
-            ->assertJsonPath('workflowNotice.title', 'Solicitud pendiente de gestion')
+            ->assertJsonPath('workflowNotice.title', 'Solicitud pendiente de gestión')
             ->assertJsonPath('observationsRegistered.count', 2)
             ->assertJsonPath('documentSummary.totalBoxes', 3)
             ->assertJsonPath('boxes.0.title', 'Caja #001 - Expedientes Academicos');
