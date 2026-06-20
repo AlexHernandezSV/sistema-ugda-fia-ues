@@ -18,6 +18,7 @@ import SolicitudPrestamo from './components/views/SolicitudPrestamo.vue';
 import PrestamosPendientesAutorizacion from './components/views/PrestamosPendientesAutorizacion.vue';
 import DetalleTransferencia from './components/views/DetalleTransferencia.vue';
 import DetallePrestamo from './components/views/DetallePrestamo.vue';
+import EtiquetaTransferencia from './components/views/EtiquetaTransferencia.vue';
 import Reportes from './components/views/Reportes.vue';
 import Notificaciones from './components/views/Notificaciones.vue';
 import MiPerfil from './components/views/MiPerfil.vue';
@@ -166,6 +167,12 @@ const routes = [
         component: DetalleTransferencia
     },
 
+    { path: '/etiquetas/transferencias/:number/cajas/:boxNumber',
+        name: 'etiqueta-transferencia',
+        meta: { title: 'Etiqueta de Ubicacion', allowedProfiles: ['Administrador', 'Usuario UGDA'] },
+        component: EtiquetaTransferencia
+    },
+
     { path: '/solicitudes/prestamos/:number',
         name: 'solicitudes-prestamo-detalle',
         meta: { title: 'Detalle de Prestamo' },
@@ -209,7 +216,7 @@ router.beforeEach(async (to) => {
 
         return true;
     } catch (error) {
-        return { path: '/login' };
+        return { path: '/login', query: { redirect: to.fullPath } };
     }
 });
 

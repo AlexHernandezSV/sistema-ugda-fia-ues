@@ -2,7 +2,7 @@
 
 return [
     'accepted' => 'El campo :attribute debe ser aceptado.',
-    'active_url' => 'El campo :attribute no es una URL valida.',
+    'active_url' => 'El campo :attribute no es una URL válida.',
     'after' => 'El campo :attribute debe ser una fecha posterior a :date.',
     'after_or_equal' => 'El campo :attribute debe ser una fecha posterior o igual a :date.',
     'alpha' => 'El campo :attribute solo puede contener letras.',
@@ -19,7 +19,7 @@ return [
     ],
     'boolean' => 'El campo :attribute debe ser verdadero o falso.',
     'confirmed' => 'La confirmacion de :attribute no coincide.',
-    'date' => 'El campo :attribute no es una fecha valida.',
+    'date' => 'El campo :attribute no es una fecha válida.',
     'email' => 'El campo :attribute debe ser un correo electronico valido.',
     'exists' => 'El valor seleccionado para :attribute no es valido.',
     'file' => 'El campo :attribute debe ser un archivo.',
@@ -60,10 +60,10 @@ return [
     'url' => 'El formato de :attribute no es valido.',
 
     'attributes' => [
-        'code' => 'codigo',
+        'code' => 'código',
         'name' => 'nombre',
-        'email' => 'correo electronico',
-        'password' => 'contrasena',
+        'email' => 'correo electrónico',
+        'password' => 'contraseña',
         'is_active' => 'estado',
     ],
 ];

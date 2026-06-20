@@ -393,19 +393,19 @@ onMounted(() => fetchNotifications());
 .notificaciones-open-action,
 .notificaciones-pagination button {
     align-items: center;
-    border-radius: 0.85rem;
+    border-radius: var(--ugda-radius-md);
     cursor: pointer;
     display: inline-flex;
     font: inherit;
-    font-weight: 700;
+    font-weight: var(--ugda-weight-medium);
     gap: 0.55rem;
     justify-content: center;
 }
 
 .notificaciones-primary-action {
-    background: #2f6f9f;
-    border: 1px solid #2f6f9f;
-    color: #ffffff;
+    background: var(--ugda-brand);
+    border: 1px solid var(--ugda-brand);
+    color: var(--ugda-text-inverse);
     min-height: 2.8rem;
     padding: 0 1rem;
 }
@@ -417,13 +417,14 @@ onMounted(() => fetchNotifications());
 }
 
 .notificaciones-filter-label {
-    color: #111827;
-    font-size: 0.95rem;
-    font-weight: 600;
+    color: var(--ugda-text-primary);
+    font-size: var(--ugda-font-body);
+    font-weight: var(--ugda-weight-medium);
 }
 
 .notificaciones-filter-button {
-    background: #2f6f9f;
+    background: var(--ugda-brand);
+    color: var(--ugda-text-inverse);
 }
 
 :deep(.notificaciones-datepicker),

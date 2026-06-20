@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Codigo de acceso seguro UGDA</title>
+    <title>Código de acceso seguro UGDA</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #eef3f8; font-family: Arial, Helvetica, sans-serif; color: #16324f;">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #eef3f8; margin: 0; padding: 32px 16px;">
@@ -16,7 +16,7 @@
                                 &#128274;
                             </div>
                             <div style="font-size: 26px; font-weight: 700; color: #ffffff; margin-bottom: 8px;">
-                                Codigo de acceso seguro
+                                Código de acceso seguro
                             </div>
                             <div style="font-size: 15px; line-height: 1.6; color: rgba(255, 255, 255, 0.9);">
                                 Sistema de Gestion Documental UGDA
@@ -27,7 +27,7 @@
                     <tr>
                         <td style="padding: 32px;">
                             <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.7; color: #334155; text-align: center;">
-                                Hemos recibido una solicitud para iniciar sesion en tu cuenta. Utiliza el siguiente codigo de verificacion para completar el acceso.
+                                Hemos recibido una solicitud para iniciar sesion en tu cuenta. Utiliza el siguiente código de verificación para completar el acceso.
                             </p>
 
                             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin: 24px 0;">
@@ -35,7 +35,7 @@
                                     <td align="center">
                                         <div style="display: inline-block; min-width: 220px; padding: 18px 28px; border-radius: 18px; background-color: #f4f9fd; border: 2px dashed #2f6f9f; text-align: center;">
                                             <div style="font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: #5f7c99; margin-bottom: 8px;">
-                                                Codigo de verificacion
+                                                Código de verificación
                                             </div>
                                             <div style="font-size: 38px; font-weight: 700; letter-spacing: 0.18em; color: #2f6f9f; text-indent: 0.18em;">
                                                 {{ $code }}
@@ -52,8 +52,8 @@
                                             Recomendaciones de seguridad
                                         </div>
                                         <div style="font-size: 14px; line-height: 1.7; color: #526477;">
-                                            Este codigo expirara en <strong>10 minutos</strong>.<br>
-                                            No compartas este mensaje ni el codigo con otras personas.<br>
+                                            Este código expirara en <strong>10 minutos</strong>.<br>
+                                            No compartas este mensaje ni el código con otras personas.<br>
                                             Si no intentaste iniciar sesion, ignora este correo.
                                         </div>
                                     </td>

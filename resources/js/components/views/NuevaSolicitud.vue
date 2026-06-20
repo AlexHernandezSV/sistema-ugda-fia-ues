@@ -1505,8 +1505,9 @@ const goBack = () => {
 .transfer-request__submit,
 .transfer-docs__add,
 .transfer-docs__save {
-    background: #2d6f9f;
-    border-color: #2d6f9f;
+    background: var(--ugda-brand);
+    border-color: var(--ugda-brand);
+    color: var(--ugda-text-inverse);
 }
 
 .transfer-request__add {
@@ -1535,9 +1536,9 @@ const goBack = () => {
 }
 
 .transfer-request__table :deep(.p-datatable-thead > tr > th) {
-    background: #2d6f9f;
-    color: #ffffff;
-    font-weight: 800;
+    background: var(--ugda-brand);
+    color: var(--ugda-text-inverse);
+    font-weight: var(--ugda-weight-medium);
 }
 
 .transfer-request__series-chips {

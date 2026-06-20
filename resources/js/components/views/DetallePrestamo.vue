@@ -580,7 +580,7 @@ const submitReturnRegistration = async () => {
         returnModalVisible.value = false;
         await fetchDetail();
     } catch (error) {
-        showError(error.response?.data?.message || 'No se pudo registrar la devolucion.');
+        showError(error.response?.data?.message || 'No se pudo registrar la devolución.');
     }
 };
 
@@ -821,7 +821,7 @@ onMounted(fetchDetail);
             <div class="detalle-banner__panel">
                 <div class="grid">
                     <div class="col-12 md:col-6">
-                        <div class="detalle-small-label">Fecha de devolucion</div>
+                        <div class="detalle-small-label">Fecha de devolución</div>
                         <div class="detalle-small-value">{{ loan.returnSummary.returnDate }} • {{ loan.returnSummary.returnTime }}</div>
                     </div>
                     <div class="col-12 md:col-6">
@@ -1528,7 +1528,7 @@ onMounted(fetchDetail);
             <div class="detalle-modifications-modal__body">
                 <div class="detalle-modifications-modal__notice">
                     <i class="pi pi-exclamation-triangle"></i>
-                    <span>Indique que modificaciones se han realizado a los documentos prestados. Esta información estara visible para la UGDA al momento de registrar la devolucion.</span>
+                    <span>Indique que modificaciones se han realizado a los documentos prestados. Esta información estara visible para la UGDA al momento de registrar la devolución.</span>
                 </div>
 
                 <div v-if="documentModificationsForm.items.length === 0" class="detalle-modifications-modal__empty">
@@ -1919,8 +1919,8 @@ onMounted(fetchDetail);
 }
 
 .detalle-decision-modal__button--primary {
-    background: #2f6fae;
-    color: #ffffff;
+    background: var(--ugda-brand);
+    color: var(--ugda-text-inverse);
 }
 
 .detalle-decision-modal__button--warning {
@@ -1951,8 +1951,8 @@ onMounted(fetchDetail);
 }
 
 .detalle-decision-modal__button--cancel-primary {
-    border-color: #2f6fae;
-    color: #2f6fae;
+    border-color: var(--ugda-border-strong);
+    color: var(--ugda-text-secondary);
 }
 
 .detalle-decision-modal__button--cancel-warning {
@@ -2472,8 +2472,8 @@ onMounted(fetchDetail);
 }
 
 .detalle-action--primary {
-    background: #2f6fae;
-    color: #ffffff;
+    background: var(--ugda-brand);
+    color: var(--ugda-text-inverse);
 }
 
 .detalle-action--success {
@@ -2570,6 +2570,11 @@ onMounted(fetchDetail);
     display: flex;
     align-items: flex-start;
     gap: 1rem;
+}
+
+.detalle-form-modal__header h2,
+.detalle-form-modal__header p {
+    color: #ffffff !important;
 }
 
 .detalle-form-modal__header--success {

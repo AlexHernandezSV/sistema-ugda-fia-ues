@@ -180,7 +180,7 @@ const clearFilter = () => {
         <Toast />
 
         <div class="mb-4">
-            <h1 class="text-2xl font-bold mobile-page-title" style="color: #1560bd;">Listado de unidades académicas y administrativas</h1>
+            <h1 class="mobile-page-title">Listado de unidades académicas y administrativas</h1>
         </div>
 
         <div class="surface-card p-4 border-round-xl shadow-1 mb-4">
@@ -203,9 +203,8 @@ const clearFilter = () => {
                             class="w-auto px-3 flex-shrink-0 filters-toolbar__clear" 
                             @click="clearFilter" />
 
-                    <Button label="Agregar" icon="pi pi-plus" 
-                            class="w-auto px-4 font-bold border-none filters-toolbar__primary"
-                            style="background-color: #1560bd;" 
+                    <Button label="Agregar" icon="pi pi-plus"
+                            class="w-auto px-4 border-none filters-toolbar__primary"
                             @click="openCreateModal" />
                 </div>
             </div>
@@ -233,8 +232,8 @@ const clearFilter = () => {
                 <Column header="Dependencia jerárquica" style="width: 35%" headerClass="bg-primary-custom text-white font-semibold">
                     <template #body="slotProps">
                         <div v-if="slotProps.data.parents && slotProps.data.parents.length > 0" class="flex flex-wrap gap-2">
-                            <span v-for="parent in slotProps.data.parents" :key="parent.id" 
-                                  class="bg-blue-50 text-blue-600 px-2 py-1 border-round text-xs font-bold">
+                            <span v-for="parent in slotProps.data.parents" :key="parent.id"
+                                  class="ugda-chip ugda-chip--info">
                                 {{ parent.name }}
                             </span>
                         </div>
@@ -245,7 +244,7 @@ const clearFilter = () => {
                 <Column field="is_active" header="Estado" sortable style="width: 10%" headerClass="bg-primary-custom text-white font-semibold ugda-chip-header" bodyClass="ugda-chip-column">
                     <template #body="slotProps">
                         <div class="ugda-chip-cell">
-                            <span :class="['px-3 py-1 border-round-2xl text-xs font-bold', slotProps.data.is_active ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-600']">
+                            <span :class="['ugda-chip', slotProps.data.is_active ? 'ugda-chip--success' : 'ugda-chip--neutral']">
                                 {{ slotProps.data.is_active ? 'Activa' : 'Inactiva' }}
                             </span>
                         </div>
@@ -270,7 +269,7 @@ const clearFilter = () => {
                 class="p-fluid blue-header-dialog">
             
             <div class="field mt-3">
-                <label for="name" class="font-medium" style="color: #1560bd;">Nombre de la Unidad/Escuela/Departamento *</label>
+                <label for="name" class="form-label">Nombre de la Unidad/Escuela/Departamento *</label>
                 
                 <InputText id="name" v-model="form.name" 
                            @input="validateName" 
@@ -286,7 +285,7 @@ const clearFilter = () => {
             </div>
 
             <div class="field mt-3">
-                <label for="status" class="font-medium" style="color: #1560bd;">Estado *</label>
+                <label for="status" class="form-label">Estado *</label>
                 <Dropdown id="status" v-model="form.is_active" 
                           :options="[{label: 'Activa', value: true}, {label: 'Inactiva', value: false}]" 
                           optionLabel="label" optionValue="value" 
@@ -294,12 +293,12 @@ const clearFilter = () => {
             </div>
 
             <div class="field mt-3">
-                <label class="font-medium" style="color: #1560bd;">Dependencias jerárquicas</label>
+                <label class="form-label">Dependencias jerárquicas</label>
                 <div class="flex gap-2 mt-1">
                     <Dropdown v-model="selectedParent" :options="availableUnits" 
                               optionLabel="label" optionValue="value" filter 
                               placeholder="Seleccione" class="w-full bg-gray-50" />
-                    <Button icon="pi pi-plus" class="w-3rem flex-shrink-0 border-none" style="background-color: #1560bd;" @click="addDependency" />
+                    <Button icon="pi pi-plus" class="w-3rem flex-shrink-0 border-none" @click="addDependency" />
                 </div>
             </div>
 
@@ -324,9 +323,8 @@ const clearFilter = () => {
                             :disabled="isSaving"
                             @click="displayModal = false" />
 
-                    <Button label="Guardar" 
-                            class="flex-1 border-none" 
-                            style="background-color: #1560bd;" 
+                    <Button label="Guardar"
+                            class="flex-1 border-none"
                             :loading="isSaving"
                             @click="saveUnit" />
                 </div>
@@ -338,34 +336,34 @@ const clearFilter = () => {
 /* Estilos globales para el modal */
 .blue-header-dialog .p-dialog-header {
     border-bottom: none !important; 
-    background-color: white !important;
-    border-top-left-radius: 12px !important; 
-    border-top-right-radius: 12px !important;
+    background-color: var(--ugda-surface-card) !important;
+    border-top-left-radius: var(--ugda-radius-lg) !important;
+    border-top-right-radius: var(--ugda-radius-lg) !important;
 }
 
 .blue-header-dialog .p-dialog-title {
-    color: #1560bd !important; 
-    font-weight: 700 !important;
-    font-size: 1.25rem;
+    color: var(--ugda-brand) !important;
+    font-weight: var(--ugda-weight-semibold) !important;
+    font-size: var(--ugda-font-h3);
 }
 
 .blue-header-dialog .p-dialog-header-icons .p-dialog-header-icon {
-    color: #6b7280 !important;
+    color: var(--ugda-text-secondary) !important;
 }
 .blue-header-dialog .p-dialog-header-icons .p-dialog-header-icon:hover {
-    background-color: #f3f4f6 !important;
-    color: #1560bd !important;
+    background-color: var(--ugda-surface-soft) !important;
+    color: var(--ugda-brand) !important;
 }
 
 .blue-header-dialog .p-dialog-content {
-    border-bottom-left-radius: 12px !important;
-    border-bottom-right-radius: 12px !important;
+    border-bottom-left-radius: var(--ugda-radius-lg) !important;
+    border-bottom-right-radius: var(--ugda-radius-lg) !important;
 }
 </style>
 
 <style scoped>
 :deep(.bg-primary-custom) {
-    background-color: #1560bd !important; 
+    background-color: var(--ugda-brand) !important;
     border: none;
 }
 :deep(.p-datatable-thead > tr > th) {
@@ -373,8 +371,32 @@ const clearFilter = () => {
     padding: 1rem;
 }
 .p-error {
-    color: #e24c4c;
-    font-size: 0.875rem;
+    color: var(--ugda-error);
+    font-size: var(--ugda-font-helper);
+}
+
+.ugda-chip {
+    border-radius: 999px;
+    display: inline-flex;
+    font-size: var(--ugda-font-helper);
+    font-weight: var(--ugda-weight-medium);
+    line-height: 1.2;
+    padding: var(--ugda-space-xs) var(--ugda-space-sm);
+}
+
+.ugda-chip--info {
+    background: var(--ugda-info-soft);
+    color: var(--ugda-info-text);
+}
+
+.ugda-chip--success {
+    background: var(--ugda-success-soft);
+    color: var(--ugda-success-text);
+}
+
+.ugda-chip--neutral {
+    background: var(--ugda-surface-soft);
+    color: var(--ugda-text-secondary);
 }
 
 .filters-toolbar {

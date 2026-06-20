@@ -571,7 +571,7 @@ class LoanController extends Controller
                     'actor_name_snapshot' => null,
                     'event_type' => 'status',
                     'title' => 'Prestado',
-                    'description' => 'Documentos entregados a la Unidad solicitante. Fecha de devolucion: ' . $request->string('due_date')->toString(),
+                    'description' => 'Documentos entregados a la Unidad solicitante. Fecha de devolución: ' . $request->string('due_date')->toString(),
                     'context' => null,
                     'occurred_at' => now(),
                 ]);
@@ -580,7 +580,7 @@ class LoanController extends Controller
             app(SystemNotificationService::class)->loanRegistered($loan->fresh(), $request->user());
 
             return response()->json([
-                'message' => 'El prestamo #' . $number . ' fue registrado por UGDA y entregado a la Unidad solicitante. Fecha de devolucion: ' . $request->string('due_date')->toString() . '.',
+                'message' => 'El prestamo #' . $number . ' fue registrado por UGDA y entregado a la Unidad solicitante. Fecha de devolución: ' . $request->string('due_date')->toString() . '.',
             ]);
         } catch (Throwable $exception) {
             report($exception);
@@ -712,7 +712,7 @@ class LoanController extends Controller
 
         if ($validator->fails()) {
             return response()->json([
-                'message' => 'Los datos de la devolucion no son validos.',
+                'message' => 'Los datos de la devolución no son válidos.',
                 'errors' => $validator->errors(),
             ], 422);
         }
@@ -761,13 +761,13 @@ class LoanController extends Controller
             app(SystemNotificationService::class)->loanReturned($loan->fresh(), $request->user());
 
             return response()->json([
-                'message' => 'La devolucion del prestamo #' . $number . ' fue registrada por UGDA. Documentos recibidos por UGDA.',
+                'message' => 'La devolución del prestamo #' . $number . ' fue registrada por UGDA. Documentos recibidos por UGDA.',
             ]);
         } catch (Throwable $exception) {
             report($exception);
 
             return response()->json([
-                'message' => 'No se pudo registrar la devolucion.',
+                'message' => 'No se pudo registrar la devolución.',
             ], 500);
         }
     }

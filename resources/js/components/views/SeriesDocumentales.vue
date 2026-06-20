@@ -142,7 +142,7 @@ const validateSeriesForm = (target = createSeriesForm.value) => {
     normalizeSeriesCode(target);
 
     if (!/^\d+$/.test(target.code)) {
-        seriesErrors.value.code = 'El codigo solo puede contener digitos.';
+        seriesErrors.value.code = 'El código solo puede contener digitos.';
     }
 
     if (!String(target.name ?? '').trim()) {
@@ -157,7 +157,7 @@ const validateSubseriesForm = (target = createSubseriesForm.value) => {
     normalizeSubseriesCode(target);
 
     if (!/^\d+$/.test(target.code)) {
-        subseriesErrors.value.code = 'El codigo solo puede contener digitos.';
+        subseriesErrors.value.code = 'El código solo puede contener digitos.';
     }
 
     if (!String(target.name ?? '').trim()) {
@@ -577,8 +577,7 @@ const clearFilter = () => {
                 <Button
                     label="Nueva Serie"
                     icon="pi pi-plus"
-                    class="w-auto px-4 font-bold border-none filters-toolbar__primary"
-                    style="background-color: #1560bd;"
+                    class="w-auto px-4 border-none filters-toolbar__primary"
                     @click="openCreateSeriesPanel"
                 />
             </div>
@@ -595,7 +594,7 @@ const clearFilter = () => {
 
         <div class="series-create-grid">
             <div class="series-create-grid__field series-create-grid__field--code">
-                <label class="series-field__label">Codigo de Serie</label>
+                <label class="series-field__label">Código de Serie</label>
                 <InputText
                     v-model="createSeriesForm.code"
                     maxlength="20"
@@ -641,7 +640,6 @@ const clearFilter = () => {
                 label="Guardar Serie"
                 icon="pi pi-save"
                 class="border-none"
-                style="background-color: #1560bd;"
                 :disabled="!canSaveSeries"
                 :loading="isSavingSeries"
                 @click="saveSeries"
@@ -719,8 +717,7 @@ const clearFilter = () => {
                         label="Agregar Subserie"
                         icon="pi pi-plus"
                         text
-                        class="font-semibold"
-                        style="color: #1560bd;"
+                        class="subseries-toolbar__add"
                         @click="openCreateSubseriesForm(series)"
                     />
                 </div>
@@ -731,7 +728,7 @@ const clearFilter = () => {
                 >
                     <div class="subseries-inline-form__row">
                         <div>
-                            <label class="series-field__label">Codigo</label>
+                            <label class="series-field__label">Código</label>
                             <InputText
                                 v-model="createSubseriesForm.code"
                                 maxlength="20"
@@ -776,7 +773,6 @@ const clearFilter = () => {
                             label="Guardar"
                             icon="pi pi-save"
                             class="border-none"
-                            style="background-color: #1560bd;"
                             :disabled="!canSaveSubseries"
                             :loading="isSavingSubseries"
                             @click="saveSubseries"
@@ -801,7 +797,7 @@ const clearFilter = () => {
                             <div class="subseries-inline-form subseries-inline-form--edit">
                                 <div class="subseries-inline-form__row">
                                     <div>
-                                        <label class="series-field__label">Codigo</label>
+                                        <label class="series-field__label">Código</label>
                                         <InputText
                                             v-model="editSubseriesForm.code"
                                             maxlength="20"
@@ -856,7 +852,6 @@ const clearFilter = () => {
                                         label="Guardar"
                                         icon="pi pi-save"
                                         class="border-none"
-                                        style="background-color: #1560bd;"
                                         :loading="isSavingSubseries"
                                         @click="updateSubseries"
                                     />
@@ -911,7 +906,7 @@ const clearFilter = () => {
         <div class="series-edit-dialog__content">
             <div class="series-edit-dialog__row">
                 <div class="series-edit-dialog__field series-edit-dialog__field--code">
-                <label class="series-field__label">Codigo de Serie</label>
+                <label class="series-field__label">Código de Serie</label>
                 <InputText
                     v-model="editSeriesForm.code"
                     maxlength="20"
@@ -966,7 +961,6 @@ const clearFilter = () => {
                 <Button
                     label="Guardar Cambios"
                     class="border-none"
-                    style="background-color: #1560bd;"
                     :loading="isSavingSeries"
                     @click="updateSeries"
                 />
@@ -992,7 +986,7 @@ const clearFilter = () => {
                 <Button
                     label="Eliminar"
                     class="border-none"
-                    style="background-color: #e24c4c;"
+                    severity="danger"
                     @click="confirmDelete"
                 />
             </div>
@@ -1003,29 +997,29 @@ const clearFilter = () => {
 <style>
 .blue-header-dialog .p-dialog-header {
     border-bottom: none !important;
-    background-color: white !important;
-    border-top-left-radius: 12px !important;
-    border-top-right-radius: 12px !important;
+    background-color: var(--ugda-surface-card) !important;
+    border-top-left-radius: var(--ugda-radius-lg) !important;
+    border-top-right-radius: var(--ugda-radius-lg) !important;
 }
 
 .blue-header-dialog .p-dialog-title {
-    color: #1560bd !important;
-    font-weight: 700 !important;
-    font-size: 1.25rem;
+    color: var(--ugda-brand) !important;
+    font-weight: var(--ugda-weight-semibold) !important;
+    font-size: var(--ugda-font-h3);
 }
 
 .blue-header-dialog .p-dialog-header-icons .p-dialog-header-icon {
-    color: #6b7280 !important;
+    color: var(--ugda-text-secondary) !important;
 }
 
 .blue-header-dialog .p-dialog-header-icons .p-dialog-header-icon:hover {
-    background-color: #f3f4f6 !important;
-    color: #1560bd !important;
+    background-color: var(--ugda-surface-soft) !important;
+    color: var(--ugda-brand) !important;
 }
 
 .blue-header-dialog .p-dialog-content {
-    border-bottom-left-radius: 12px !important;
-    border-bottom-right-radius: 12px !important;
+    border-bottom-left-radius: var(--ugda-radius-lg) !important;
+    border-bottom-right-radius: var(--ugda-radius-lg) !important;
 }
 </style>
 
@@ -1052,8 +1046,8 @@ const clearFilter = () => {
     gap: 0.6rem;
     border: 0;
     background: transparent;
-    color: #1560bd;
-    font-size: 1rem;
+    color: var(--ugda-brand);
+    font-size: var(--ugda-font-body);
     cursor: pointer;
     padding: 0;
     flex-shrink: 0;
@@ -1061,21 +1055,21 @@ const clearFilter = () => {
 
 .series-module-header__copy {
     min-width: 0;
-    padding-left: 1.5rem;
-    border-left: 1px solid #dbe1ea;
+    padding-left: var(--ugda-space-lg);
+    border-left: 1px solid var(--ugda-border);
 }
 
 .series-module-header__title {
     margin: 0;
-    color: #111827;
-    font-size: 1.2rem;
-    font-weight: 600;
+    color: var(--ugda-text-primary);
+    font-size: var(--ugda-font-card-title);
+    font-weight: var(--ugda-weight-semibold);
 }
 
 .series-module-header__subtitle {
-    margin: 0.4rem 0 0;
-    color: #6b7280;
-    font-size: 0.95rem;
+    margin: var(--ugda-space-xs) 0 0;
+    color: var(--ugda-text-secondary);
+    font-size: var(--ugda-font-secondary);
 }
 
 .series-search-card__icon {
@@ -1127,20 +1121,20 @@ const clearFilter = () => {
 }
 
 .series-status-toggle__text {
-    font-size: 0.95rem;
-    font-weight: 700;
+    font-size: var(--ugda-font-body);
+    font-weight: var(--ugda-weight-medium);
 }
 
 .series-status-toggle.is-active .series-status-toggle__text {
-    color: #15803d;
+    color: var(--ugda-success-text);
 }
 
 .series-status-toggle.is-inactive .series-status-toggle__text {
-    color: #dc2626;
+    color: var(--ugda-error);
 }
 
 :deep(.series-status-toggle.is-active .p-toggleswitch-slider) {
-    background: #16a34a !important;
+    background: var(--ugda-success) !important;
 }
 
 :deep(.series-status-toggle.is-active .p-toggleswitch.p-focus .p-toggleswitch-slider) {
@@ -1148,7 +1142,7 @@ const clearFilter = () => {
 }
 
 :deep(.series-status-toggle.is-inactive .p-toggleswitch-slider) {
-    background: #dc2626 !important;
+    background: var(--ugda-error) !important;
 }
 
 :deep(.series-status-toggle.is-inactive .p-toggleswitch.p-focus .p-toggleswitch-slider) {
@@ -1183,24 +1177,24 @@ const clearFilter = () => {
 
 .series-form-card__title {
     margin: 0;
-    color: #111827;
-    font-size: 1.1rem;
-    font-weight: 700;
+    color: var(--ugda-text-primary);
+    font-size: var(--ugda-font-card-title);
+    font-weight: var(--ugda-weight-medium);
 }
 
 .series-field__label {
     display: block;
-    margin-bottom: 0.5rem;
-    color: #4b5563;
-    font-size: 0.92rem;
-    font-weight: 500;
+    margin-bottom: var(--ugda-space-sm);
+    color: var(--ugda-text-primary);
+    font-size: var(--ugda-font-body);
+    font-weight: var(--ugda-weight-medium);
 }
 
 .series-field__hint {
-    color: #8a94a6;
+    color: var(--ugda-text-muted);
     display: block;
-    font-size: 0.78rem;
-    margin-top: 0.45rem;
+    font-size: var(--ugda-font-helper);
+    margin-top: var(--ugda-space-xs);
 }
 
 .series-units-field {
@@ -1253,8 +1247,8 @@ const clearFilter = () => {
 
 .series-delete-dialog__message {
     margin: 0;
-    color: #4b5563;
-    font-size: 0.98rem;
+    color: var(--ugda-text-secondary);
+    font-size: var(--ugda-font-body);
     line-height: 1.6;
 }
 
@@ -1278,24 +1272,24 @@ const clearFilter = () => {
     border: none;
     border-radius: 9999px;
     background: transparent;
-    color: #4b5563;
+    color: var(--ugda-text-secondary);
     cursor: pointer;
 }
 
 .series-panel__toggle:hover {
-    background: #eff6ff;
-    color: #1560bd;
+    background: var(--ugda-brand-soft);
+    color: var(--ugda-brand);
 }
 
 .series-panel__code {
     min-width: 4.2rem;
     padding: 0.95rem 0.75rem;
-    border-radius: 0.85rem;
-    background: #1560bd;
-    color: white;
+    border-radius: var(--ugda-radius-lg);
+    background: var(--ugda-brand);
+    color: var(--ugda-text-inverse);
     text-align: center;
-    font-size: 1.1rem;
-    font-weight: 700;
+    font-size: var(--ugda-font-card-title);
+    font-weight: var(--ugda-weight-semibold);
     line-height: 1;
 }
 
@@ -1305,23 +1299,23 @@ const clearFilter = () => {
 
 .series-panel__title {
     margin: 0;
-    color: #111827;
-    font-size: 1rem;
-    font-weight: 700;
+    color: var(--ugda-text-primary);
+    font-size: var(--ugda-font-card-title);
+    font-weight: var(--ugda-weight-medium);
 }
 
 .series-panel__meta {
     display: inline-block;
     margin-top: 0.35rem;
-    color: #6b7280;
-    font-size: 0.92rem;
+    color: var(--ugda-text-secondary);
+    font-size: var(--ugda-font-secondary);
 }
 
 .series-panel__units {
-    color: #8a94a6;
+    color: var(--ugda-text-muted);
     display: block;
-    font-size: 0.8rem;
-    margin-top: 0.25rem;
+    font-size: var(--ugda-font-helper);
+    margin-top: var(--ugda-space-xs);
 }
 
 .series-panel__actions {
@@ -1333,7 +1327,7 @@ const clearFilter = () => {
 }
 
 .series-panel__body {
-    border-top: 1px solid #e5e7eb;
+    border-top: 1px solid var(--ugda-border);
     padding: 1.25rem;
 }
 
@@ -1347,13 +1341,13 @@ const clearFilter = () => {
 
 .subseries-toolbar__title {
     margin: 0;
-    color: #111827;
-    font-size: 1rem;
-    font-weight: 700;
+    color: var(--ugda-text-primary);
+    font-size: var(--ugda-font-card-title);
+    font-weight: var(--ugda-weight-medium);
 }
 
 .subseries-form-card {
-    background: #fff;
+    background: var(--ugda-surface-card);
 }
 
 .subseries-inline-form {
@@ -1389,8 +1383,8 @@ const clearFilter = () => {
     grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 1rem;
     align-items: center;
-    border: 1px solid #e5e7eb;
-    border-radius: 1rem;
+    border: 1px solid var(--ugda-border);
+    border-radius: var(--ugda-radius-lg);
     padding: 0.9rem 1rem;
 }
 
@@ -1402,12 +1396,12 @@ const clearFilter = () => {
 .subseries-item__code {
     min-width: 3.25rem;
     padding: 0.8rem 0.6rem;
-    border-radius: 0.75rem;
-    background: #eef4ff;
-    color: #1d4ed8;
+    border-radius: var(--ugda-radius-md);
+    background: var(--ugda-info-soft);
+    color: var(--ugda-info-text);
     text-align: center;
-    font-size: 1rem;
-    font-weight: 700;
+    font-size: var(--ugda-font-body);
+    font-weight: var(--ugda-weight-medium);
 }
 
 .subseries-item__details {
@@ -1415,17 +1409,17 @@ const clearFilter = () => {
 }
 
 .subseries-item__name {
-    color: #111827;
-    font-size: 0.98rem;
-    font-weight: 500;
+    color: var(--ugda-text-primary);
+    font-size: var(--ugda-font-body);
+    font-weight: var(--ugda-weight-medium);
     word-break: break-word;
 }
 
 .subseries-item__units {
-    color: #8a94a6;
+    color: var(--ugda-text-muted);
     display: block;
-    font-size: 0.78rem;
-    margin-top: 0.3rem;
+    font-size: var(--ugda-font-helper);
+    margin-top: var(--ugda-space-xs);
 }
 
 .subseries-item__actions {
@@ -1437,8 +1431,8 @@ const clearFilter = () => {
 }
 
 .p-error {
-    color: #e24c4c;
-    font-size: 0.875rem;
+    color: var(--ugda-error);
+    font-size: var(--ugda-font-helper);
 }
 
 .series-status-chip {
@@ -1448,20 +1442,25 @@ const clearFilter = () => {
     min-height: 1.7rem;
     padding: 0.15rem 0.7rem;
     border-radius: 9999px;
-    font-size: 0.78rem;
-    font-weight: 700;
+    font-size: var(--ugda-font-helper);
+    font-weight: var(--ugda-weight-medium);
     line-height: 1;
     width: fit-content;
 }
 
 .series-status-chip--active {
-    background: #dcfce7;
-    color: #15803d;
+    background: var(--ugda-success-soft);
+    color: var(--ugda-success-text);
 }
 
 .series-status-chip--inactive {
-    background: #fee2e2;
-    color: #dc2626;
+    background: var(--ugda-error-soft);
+    color: var(--ugda-error-text);
+}
+
+.subseries-toolbar__add {
+    color: var(--ugda-brand) !important;
+    font-weight: var(--ugda-weight-medium) !important;
 }
 
 @media (max-width: 991px) {

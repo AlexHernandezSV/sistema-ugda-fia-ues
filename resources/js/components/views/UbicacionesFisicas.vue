@@ -139,7 +139,7 @@ const payloadForType = () => {
 
 const validateForm = () => {
     if (!form.value.name.trim() || !form.value.code.trim()) {
-        showError('Ingrese nombre y codigo.');
+        showError('Ingrese nombre y código.');
         return false;
     }
 
@@ -229,7 +229,7 @@ onMounted(fetchCatalog);
                 </div>
                 <DataTable :value="offices" :loading="loading" responsiveLayout="scroll" stripedRows>
                     <Column field="name" header="Nombre" />
-                    <Column field="code" header="Codigo" />
+                    <Column field="code" header="Código" />
                     <Column header="Estado">
                         <template #body="{ data }">
                             <span :class="data.is_active ? 'locations-status locations-status--active' : 'locations-status'">
@@ -257,7 +257,7 @@ onMounted(fetchCatalog);
                 <DataTable :value="aisles" :loading="loading" responsiveLayout="scroll" stripedRows>
                     <Column field="office_name" header="Oficina" />
                     <Column field="name" header="Nombre" />
-                    <Column field="code" header="Codigo" />
+                    <Column field="code" header="Código" />
                     <Column header="Estado">
                         <template #body="{ data }">
                             <span :class="data.is_active ? 'locations-status locations-status--active' : 'locations-status'">
@@ -286,7 +286,7 @@ onMounted(fetchCatalog);
                     <Column field="office_name" header="Oficina" />
                     <Column field="aisle_name" header="Pasillo" />
                     <Column field="name" header="Nombre" />
-                    <Column field="code" header="Codigo" />
+                    <Column field="code" header="Código" />
                     <Column header="Estado">
                         <template #body="{ data }">
                             <span :class="data.is_active ? 'locations-status locations-status--active' : 'locations-status'">
@@ -334,8 +334,8 @@ onMounted(fetchCatalog);
                     <InputText v-model="form.name" class="w-full" placeholder="Nombre visible" />
                 </label>
                 <label>
-                    <span>Codigo</span>
-                    <InputText v-model="form.code" class="w-full" placeholder="Codigo para ubicacion" />
+                    <span>Código</span>
+                    <InputText v-model="form.code" class="w-full" placeholder="Código para ubicacion" />
                 </label>
                 <label class="locations-check">
                     <Checkbox v-model="form.is_active" binary />

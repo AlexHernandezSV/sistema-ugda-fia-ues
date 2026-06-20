@@ -46,7 +46,7 @@ const twoFactorMethod = computed(() => profile.value.two_factor_method || 'email
 const twoFactorLabel = computed(() => {
     if (twoFactorMethod.value === 'authenticator') return 'Google Authenticator';
     if (twoFactorMethod.value === 'disabled') return 'Sin segundo factor';
-    return 'Codigo por correo';
+    return 'Código por correo';
 });
 
 const fetchProfile = async () => {
@@ -138,7 +138,7 @@ const prepareAuthenticator = async () => {
         toast.add({
             severity: 'warn',
             summary: 'Confirmacion requerida',
-            detail: 'Ingrese su contrasena para generar el codigo QR.',
+            detail: 'Ingrese su contrasena para generar el código QR.',
             life: 3200,
         });
         return;
@@ -192,7 +192,7 @@ const confirmAuthenticator = async () => {
         qrImage.value = '';
         await fetchProfile();
     } catch (error) {
-        showRequestError(error, 'No se pudo confirmar el codigo del autenticador.');
+        showRequestError(error, 'No se pudo confirmar el código del autenticador.');
     } finally {
         authenticatorConfirming.value = false;
     }
@@ -383,7 +383,7 @@ onMounted(fetchProfile);
                         <div class="perfil-methods">
                             <button type="button" :class="{ active: twoFactorMethod === 'email' }" @click="changeTwoFactor('email')">
                                 <i class="pi pi-envelope"></i>
-                                <span>Codigo por correo</span>
+                                <span>Código por correo</span>
                             </button>
                             <button type="button" :class="{ active: twoFactorMethod === 'disabled' }" @click="changeTwoFactor('disabled')">
                                 <i class="pi pi-lock-open"></i>
@@ -394,13 +394,13 @@ onMounted(fetchProfile);
                         <div class="perfil-authenticator">
                             <div>
                                 <strong>Google Authenticator</strong>
-                                <small>Escanea el QR y confirma con un codigo de 6 digitos.</small>
+                                <small>Escanea el QR y confirma con un código de 6 digitos.</small>
                             </div>
                             <Button label="Generar QR" icon="pi pi-qrcode" severity="secondary" outlined :loading="authenticatorPreparing" @click="prepareAuthenticator" />
                         </div>
 
                         <div v-if="qrImage" class="perfil-qr">
-                            <img :src="qrImage" alt="Codigo QR para Google Authenticator" />
+                            <img :src="qrImage" alt="Código QR para Google Authenticator" />
                             <div>
                                 <small>Clave manual</small>
                                 <strong>{{ authenticatorSecret }}</strong>
@@ -408,7 +408,7 @@ onMounted(fetchProfile);
                         </div>
 
                         <label v-if="qrImage">
-                            <span>Codigo del autenticador</span>
+                            <span>Código del autenticador</span>
                             <InputText v-model="authenticatorForm.code" maxlength="6" inputmode="numeric" />
                         </label>
 
@@ -724,8 +724,9 @@ onMounted(fetchProfile);
     width: max-content;
     max-width: 100%;
     border: none !important;
-    background: #1560bd !important;
-    font-weight: 800 !important;
+    background: var(--ugda-brand) !important;
+    color: var(--ugda-text-inverse) !important;
+    font-weight: var(--ugda-weight-medium) !important;
 }
 
 .perfil-methods {

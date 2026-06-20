@@ -205,7 +205,7 @@ class RequestCatalogTest extends TestCase
         $response->assertOk();
         $response->assertHeader('content-disposition', 'attachment; filename=EXP-GRAD-2024.pdf');
         $this->assertStringContainsString('Transferencia: 000964', $response->streamedContent());
-        $this->assertStringContainsString('Codigo: EXP-GRAD-2024', $response->streamedContent());
+        $this->assertStringContainsString('Código: EXP-GRAD-2024', $response->streamedContent());
     }
 
     public function test_dashboard_alert_routes_point_to_loan_detail_when_alert_is_for_a_loan(): void

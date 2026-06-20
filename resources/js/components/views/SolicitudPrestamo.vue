@@ -537,7 +537,7 @@ onMounted(fetchCatalog);
 .prestamo-title,
 .prestamo-section h2 {
     color: #2f6f9f;
-    font-weight: 800;
+    font-weight: var(--ugda-weight-medium);
 }
 
 .prestamo-title {
@@ -846,9 +846,9 @@ onMounted(fetchCatalog);
 }
 
 .prestamo-primary {
-    background: #2f6f9f;
-    border: 1px solid #2f6f9f;
-    color: #ffffff;
+    background: var(--ugda-brand);
+    border: 1px solid var(--ugda-brand);
+    color: var(--ugda-text-inverse);
 }
 
 .prestamo-primary:disabled {
@@ -857,9 +857,9 @@ onMounted(fetchCatalog);
 }
 
 .prestamo-secondary {
-    background: #ffffff;
-    border: 1px solid #cbd5e1;
-    color: #475569;
+    background: var(--ugda-surface-card);
+    border: 1px solid var(--ugda-border-strong);
+    color: var(--ugda-text-secondary);
 }
 
 :global(.prestamo-confirm-dialog .p-dialog-header) {

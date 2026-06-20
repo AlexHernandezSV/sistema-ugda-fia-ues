@@ -477,7 +477,7 @@ onMounted(fetchCatalog);
 
                 <div v-if="generatedLocationCode" class="create-box-location">
                     <div>
-                        <span>Codigo de Ubicacion Generado:</span>
+                        <span>Código de Ubicacion Generado:</span>
                         <strong>{{ generatedLocationCode }}</strong>
                     </div>
                     <button type="button" @click="previewLabel">
@@ -522,11 +522,11 @@ onMounted(fetchCatalog);
                     class="create-box-documents-table"
                 >
                     <Column field="series" header="Serie Documental" />
-                    <Column field="code" header="Codigo" />
+                    <Column field="code" header="Código" />
                     <Column field="name" header="Nombre" />
-                    <Column field="year" header="Ano" />
+                    <Column field="year" header="Año" />
                     <Column field="support" header="Soporte" />
-                    <Column field="pages" header="N Paginas" />
+                    <Column field="pages" header="N° Paginas" />
                     <Column header="Acciones">
                         <template #body="{ data }">
                             <button type="button" class="create-box-remove" @click="removeDocument(data)">
@@ -577,7 +577,7 @@ onMounted(fetchCatalog);
 
                 <div class="create-box-grid create-box-grid--two">
                     <label>
-                        <span>Codigo del Documento <b>*</b></span>
+                        <span>Código del Documento <b>*</b></span>
                         <InputText v-model="docForm.code" placeholder="Ej: EXP-2024-001" class="w-full" />
                     </label>
                     <label>
@@ -619,9 +619,9 @@ onMounted(fetchCatalog);
                     class="archive-doc-added__table"
                 >
                     <Column field="series" header="Serie" />
-                    <Column field="code" header="Codigo" />
+                    <Column field="code" header="Código" />
                     <Column field="name" header="Nombre" />
-                    <Column field="year" header="Ano" />
+                    <Column field="year" header="Año" />
                     <Column field="support" header="Soporte" />
                     <Column header="Acciones">
                         <template #body="{ data }">
@@ -691,7 +691,7 @@ onMounted(fetchCatalog);
 
         <Dialog v-model:visible="searchDialogVisible" modal :draggable="false" header="Buscar documentos existentes" :style="{ width: 'min(900px, 94vw)' }">
             <form class="archive-existing-search" @submit.prevent="searchExistingDocuments">
-                <InputText v-model="documentSearch" placeholder="Buscar por codigo, nombre, serie, caja o ubicacion" class="w-full" />
+                <InputText v-model="documentSearch" placeholder="Buscar por código, nombre, serie, caja o ubicacion" class="w-full" />
                 <button type="submit" class="create-box-primary" :disabled="isSearchingDocuments">
                     {{ isSearchingDocuments ? 'Buscando...' : 'Buscar' }}
                 </button>
@@ -699,7 +699,7 @@ onMounted(fetchCatalog);
 
             <DataTable :value="documentSearchResults" responsiveLayout="scroll" class="archive-existing-table">
                 <Column field="series" header="Serie" />
-                <Column field="code" header="Codigo" />
+                <Column field="code" header="Código" />
                 <Column field="title" header="Nombre" />
                 <Column header="Caja Actual">
                     <template #body="{ data }">
@@ -849,7 +849,7 @@ onMounted(fetchCatalog);
 .create-box-outline,
 .create-box-cancel {
     align-items: center;
-    border-radius: 0.42rem;
+    border-radius: var(--ugda-radius-md);
     cursor: pointer;
     display: inline-flex;
     font: inherit;
@@ -861,9 +861,9 @@ onMounted(fetchCatalog);
 
 .create-box-primary,
 .create-box-location button {
-    background: #0f4c8f;
-    border: 1px solid #0f4c8f;
-    color: #ffffff;
+    background: var(--ugda-brand);
+    border: 1px solid var(--ugda-brand);
+    color: var(--ugda-text-inverse);
 }
 
 .create-box-primary--large {
@@ -876,14 +876,14 @@ onMounted(fetchCatalog);
 
 .create-box-outline,
 .create-box-cancel {
-    background: #ffffff;
-    border: 1px solid #0f4c8f;
-    color: #0f4c8f;
+    background: var(--ugda-surface-card);
+    border: 1px solid var(--ugda-border-strong);
+    color: var(--ugda-text-secondary);
 }
 
 .create-box-cancel {
-    border-color: #d8e1ec;
-    color: #0f172a;
+    border-color: var(--ugda-border);
+    color: var(--ugda-text-primary);
 }
 
 .create-box-primary:disabled,

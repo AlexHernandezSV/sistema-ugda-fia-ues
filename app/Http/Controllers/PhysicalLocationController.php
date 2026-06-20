@@ -393,8 +393,8 @@ class PhysicalLocationController extends Controller
     {
         return [
             'name.required' => 'El nombre es obligatorio.',
-            'code.required' => 'El codigo es obligatorio.',
-            'code.unique' => 'Ya existe un registro con este codigo en el mismo nivel.',
+            'code.required' => 'El código es obligatorio.',
+            'code.unique' => 'Ya existe un registro con este código en el mismo nivel.',
             'office_id.required' => 'Debe seleccionar la oficina.',
             'office_id.exists' => 'La oficina seleccionada no existe.',
             'aisle_id.required' => 'Debe seleccionar el pasillo.',

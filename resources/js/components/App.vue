@@ -3,7 +3,6 @@ import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import Toast from 'primevue/toast';
 
-// Importamos el Sidebar
 import AppSidebar from './layout/AppSidebar.vue';
 
 const route = useRoute();
@@ -17,15 +16,14 @@ const toggleMobileSidebar = () => {
 
 <template>
     <div class="min-h-screen flex font-custom" :class="{ 'bg-gray-50': !isLoginPage }">
-        
         <Toast position="top-right" />
-        
+
         <AppSidebar v-if="!isLoginPage" />
 
-        <div class="flex flex-column transition-all transition-duration-200 app-shell" 
-             :class="[isLoginPage ? 'w-full' : 'flex-grow-1']"
-             style="max-width: 100%; overflow-x: hidden;">
-            
+        <div
+            class="flex flex-column transition-all transition-duration-200 app-shell"
+            :class="[isLoginPage ? 'w-full' : 'flex-grow-1']"
+        >
             <div class="h-full flex flex-column" :class="[isLoginPage ? 'p-0' : 'app-shell__content']">
                 <div v-if="!isLoginPage" class="mobile-page-header">
                     <button type="button" class="mobile-page-header__toggle" @click="toggleMobileSidebar">
@@ -35,72 +33,14 @@ const toggleMobileSidebar = () => {
                 </div>
                 <router-view />
             </div>
-            
         </div>
     </div>
 </template>
 
 <style>
-/* 1. CONFIGURACIÓN GLOBAL DE FUENTE */
-:root {
-    /* ¡IMPORTANTE! Cambia 'NombreDeTuFuente' por el nombre real que usa tu clase font-custom */
-    /* Ejemplos comunes: 'Poppins', 'Inter', 'Roboto', 'Lato' */
-    --font-family: 'NombreDeTuFuente', sans-serif; 
-}
-
-/* 2. APLICAR AL BODY (Para todo el sitio) */
-body {
-    margin: 0;
-    background-color: #f9fafb;
-    font-family: var(--font-family); /* Usa la variable definida arriba */
-    -webkit-font-smoothing: antialiased;
-}
-
-#app {
-    width: 100%;
-}
-
-/* 3. FORZAR EN COMPONENTES DE PRIMEVUE (Modales, Inputs, Botones) */
-/* Esto asegura que el modal, que vive fuera de tu div principal, tenga la fuente correcta */
-.p-component, 
-.p-dialog, 
-.p-inputtext, 
-.p-button, 
-.p-dropdown-item,
-.p-toast-message {
-    font-family: var(--font-family) !important;
-}
-
-/* 4. Corrección para inputs y dropdowns */
-.p-inputtext, .p-dropdown {
-    font-family: var(--font-family) !important;
-}
-
-/* --- 4. CORRECCIÓN ESPECÍFICA PARA EL TOAST (NOTIFICACIONES) --- */
-
-/* Forzamos la fuente en el contenedor del Toast */
-.p-toast {
-    font-family: var(--font-family) !important;
-    opacity: 0.95; /* Un toque de transparencia para que se vea más moderno */
-}
-
-/* TÍTULO DEL TOAST (Ej: "Incompleto") */
-.p-toast-summary {
-    font-family: var(--font-family) !important;
-    font-weight: 600 !important; /* Grosor medio (SemiBold), para que no se vea tan tosco */
-    font-size: 1rem !important;
-}
-
-/* MENSAJE DEL TOAST (Ej: "Ingresa los 6 dígitos...") */
-.p-toast-detail {
-    font-family: var(--font-family) !important;
-    font-weight: 400 !important; /* Normal */
-    font-size: 0.9rem !important;
-}
-
-/* ICONO DEL TOAST */
-.p-toast-message-icon {
-    font-size: 1.2rem !important;
+.app-shell {
+    max-width: 100%;
+    overflow-x: hidden;
 }
 
 .mobile-page-header {
@@ -108,48 +48,47 @@ body {
 }
 
 .app-shell__content {
-    padding: 1.5rem;
+    padding: var(--ugda-space-lg);
 }
 
 @media (max-width: 991px) {
     .app-shell__content {
-        padding: 1rem;
+        padding: var(--ugda-space-md);
     }
 
     .mobile-page-header {
-        display: flex;
         align-items: center;
-        gap: 1rem;
-        margin-bottom: 1rem;
-        padding: 0.25rem 0 0.5rem;
+        display: flex;
+        gap: var(--ugda-space-md);
+        margin-bottom: var(--ugda-space-md);
+        padding: var(--ugda-space-xs) 0 var(--ugda-space-sm);
     }
 
     .mobile-page-header__toggle {
-        width: 3rem;
-        height: 3rem;
-        border: 0;
-        border-radius: 1rem;
-        background: #1560bd;
-        color: #fff;
-        display: inline-flex;
         align-items: center;
-        justify-content: center;
-        box-shadow: 0 16px 32px rgba(21, 96, 189, 0.22);
-        flex-shrink: 0;
+        background: var(--ugda-brand);
+        border: 0;
+        border-radius: var(--ugda-radius-lg);
+        color: var(--ugda-text-inverse);
         cursor: pointer;
+        display: inline-flex;
+        flex-shrink: 0;
+        height: var(--ugda-control-height-lg);
+        justify-content: center;
+        width: var(--ugda-control-height-lg);
     }
 
     .mobile-page-header__toggle .pi {
-        font-size: 1.15rem;
+        font-size: var(--ugda-font-card-title);
     }
 
     .mobile-page-header__title {
-        margin: 0;
-        color: #1560bd;
-        font-size: 1.55rem;
+        color: var(--ugda-brand);
+        font-size: var(--ugda-font-h2);
+        font-weight: var(--ugda-weight-semibold);
+        letter-spacing: 0;
         line-height: 1.05;
-        font-weight: 700;
-        letter-spacing: -0.02em;
+        margin: 0;
     }
 
     .mobile-page-title {
@@ -157,16 +96,16 @@ body {
     }
 
     .p-dialog-mask {
-        padding: 1rem !important;
         align-items: center !important;
         justify-content: center !important;
+        padding: var(--ugda-space-md) !important;
     }
 
     .p-dialog {
-        width: min(42rem, calc(100vw - 2rem)) !important;
-        max-width: calc(100vw - 2rem) !important;
-        max-height: calc(100vh - 2rem) !important;
         margin: 0 !important;
+        max-height: calc(100vh - (var(--ugda-space-md) * 2)) !important;
+        max-width: calc(100vw - (var(--ugda-space-md) * 2)) !important;
+        width: min(42rem, calc(100vw - (var(--ugda-space-md) * 2))) !important;
     }
 
     .p-dialog-header,
@@ -175,10 +114,10 @@ body {
     }
 
     .p-dialog-content {
-        max-height: calc(100vh - 10rem) !important;
-        overflow-y: auto !important;
-        overflow-x: hidden !important;
         -webkit-overflow-scrolling: touch;
+        max-height: calc(100vh - 160px) !important;
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
     }
 
     .p-dialog .grid {
@@ -188,22 +127,18 @@ body {
 }
 
 @media (max-width: 640px) {
-    .app-shell__content {
-        padding: 0.85rem;
-    }
-
     .mobile-page-header {
-        gap: 0.75rem;
+        gap: var(--ugda-space-sm);
     }
 
     .mobile-page-header__toggle {
-        width: 2.65rem;
-        height: 2.65rem;
-        border-radius: 0.85rem;
+        border-radius: var(--ugda-radius-md);
+        height: 42px;
+        width: 42px;
     }
 
     .mobile-page-header__title {
-        font-size: 1.3rem;
+        font-size: var(--ugda-font-h3);
     }
 }
 </style>

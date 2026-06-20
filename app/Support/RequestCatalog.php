@@ -857,7 +857,7 @@ class RequestCatalog
             'description' => !$viewerCanEdit
                 ? 'El solicitante registro ' . $modifications->count() . ' modificacion(es) sobre los documentos durante el periodo del prestamo.'
                 : ($modifications->isEmpty()
-                ? 'Si ha realizado alguna modificacion a los documentos que tiene en prestamo, registrela aqui. La UGDA vera esta información al recibir la devolucion.'
+                ? 'Si ha realizado alguna modificacion a los documentos que tiene en prestamo, registrela aqui. La UGDA vera esta información al recibir la devolución.'
                 : 'Ha registrado modificaciones en documentos prestados. Puede actualizar esta información cuando sea necesario.'),
             'returnDescription' => 'El solicitante ha reportado las siguientes modificaciones realizadas a los documentos durante el periodo del prestamo:',
             'buttonLabel' => $modifications->isEmpty() ? 'Registrar modificaciones' : 'Actualizar modificaciones',
@@ -977,7 +977,7 @@ class RequestCatalog
 
         if ($workflowCode === 'loan_status_loaned') {
             return [
-                ['key' => 'registerReturn', 'label' => 'Registrar devolucion', 'icon' => 'pi pi-check-circle', 'variant' => 'muted'],
+                ['key' => 'registerReturn', 'label' => 'Registrar devolución', 'icon' => 'pi pi-check-circle', 'variant' => 'muted'],
                 ['key' => 'back', 'label' => 'Volver', 'icon' => null, 'variant' => 'secondary'],
             ];
         }
@@ -1045,7 +1045,7 @@ class RequestCatalog
             'helperText' => 'Marque los documentos que el usuario esta devolviendo en este momento',
             'selectAllLabel' => 'Seleccionar todos',
             'documentsTitle' => $documents->first()->group_title ?? 'Documentos prestados',
-            'selectionSummary' => 'Documentos seleccionados para devolucion: {count} de {total}',
+            'selectionSummary' => 'Documentos seleccionados para devolución: {count} de {total}',
             'defaultCondition' => 'Documentos devueltos en buen estado',
             'documents' => $documents->map(fn ($document) => [
                 'id' => $document->id,

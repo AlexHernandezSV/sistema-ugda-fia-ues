@@ -303,7 +303,7 @@ const clearFilter = () => {
 <template>
         <Toast />
         <div class="mb-4">
-            <h1 class="text-2xl font-bold mobile-page-title" style="color: #1560bd;">Gestión de Usuarios</h1>
+            <h1 class="mobile-page-title">Gestión de Usuarios</h1>
         </div>
 
         <div class="surface-card p-4 border-round-xl shadow-1 mb-4">
@@ -314,7 +314,7 @@ const clearFilter = () => {
                 </div>
                 <div class="filters-toolbar__actions">
                     <Button icon="pi pi-times" label="Limpiar" severity="secondary" outlined class="w-auto px-3 flex-shrink-0 filters-toolbar__clear" @click="clearFilter" />
-                    <Button label="Nuevo Usuario" icon="pi pi-user-plus" class="w-auto px-4 font-bold border-none filters-toolbar__primary" style="background-color: #1560bd;" @click="openCreateModal" />
+                    <Button label="Nuevo Usuario" icon="pi pi-user-plus" class="w-auto px-4 border-none filters-toolbar__primary" @click="openCreateModal" />
                 </div>
             </div>
         </div>
@@ -344,14 +344,14 @@ const clearFilter = () => {
                 <Column header="Unidad / Rol" style="width: 25%" headerClass="bg-primary-custom text-white font-semibold">
                     <template #body="slotProps">
                         <div class="flex flex-column gap-1">
-                            <span class="text-sm font-bold text-gray-700">
+                            <span class="user-table__unit">
                                 {{
                                     slotProps.data.units?.length
                                         ? slotProps.data.units.map(unit => unit.name).join(', ')
                                         : 'Sin Unidad'
                                 }}
                             </span>
-                            <span class="bg-blue-50 text-blue-600 px-2 py-1 border-round text-xs font-bold w-max">
+                            <span class="ugda-chip ugda-chip--info w-max">
                                 {{ slotProps.data.role }}
                             </span>
                         </div>
@@ -361,7 +361,7 @@ const clearFilter = () => {
                 <Column field="is_active" header="Estado" style="width: 10%" headerClass="bg-primary-custom text-white font-semibold ugda-chip-header" bodyClass="ugda-chip-column">
                     <template #body="slotProps">
                         <div class="ugda-chip-cell">
-                            <span :class="['px-3 py-1 border-round-2xl text-xs font-bold', slotProps.data.is_active ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-600']">
+                            <span :class="['ugda-chip', slotProps.data.is_active ? 'ugda-chip--success' : 'ugda-chip--neutral']">
                                 {{ slotProps.data.is_active ? 'Activo' : 'Inactivo' }}
                             </span>
                         </div>
@@ -384,7 +384,7 @@ const clearFilter = () => {
             <div class="grid formgrid p-2">
                 
                 <div class="col-12 md:col-6 field mb-3">
-                    <label class="font-medium" style="color: #1560bd;">Primer Nombre *</label>
+                    <label class="form-label">Primer Nombre *</label>
                     <InputText v-model="form.first_name" 
                                @input="validateNameField('first_name')" 
                                :class="{ 'p-invalid': nameErrors.first_name }"
@@ -396,7 +396,7 @@ const clearFilter = () => {
                 </div>
 
                 <div class="col-12 md:col-6 field mb-3">
-                    <label class="font-medium" style="color: #1560bd;">Segundo Nombre</label>
+                    <label class="form-label">Segundo Nombre</label>
                     <InputText v-model="form.second_name" 
                                @input="validateNameField('second_name')"
                                :class="{ 'p-invalid': nameErrors.second_name }"
@@ -408,7 +408,7 @@ const clearFilter = () => {
                 </div>
 
                 <div class="col-12 md:col-6 field mb-3">
-                    <label class="font-medium" style="color: #1560bd;">Primer Apellido *</label>
+                    <label class="form-label">Primer Apellido *</label>
                     <InputText v-model="form.first_last_name" 
                                @input="validateNameField('first_last_name')"
                                :class="{ 'p-invalid': nameErrors.first_last_name }"
@@ -420,7 +420,7 @@ const clearFilter = () => {
                 </div>
 
                 <div class="col-12 md:col-6 field mb-3">
-                    <label class="font-medium" style="color: #1560bd;">Segundo Apellido</label>
+                    <label class="form-label">Segundo Apellido</label>
                     <InputText v-model="form.second_last_name" 
                                @input="validateNameField('second_last_name')"
                                :class="{ 'p-invalid': nameErrors.second_last_name }"
@@ -432,7 +432,7 @@ const clearFilter = () => {
                 </div>
 
                 <div class="col-12 md:col-6 field mb-3">
-                    <label class="font-medium" style="color: #1560bd;">Carnet</label>
+                    <label class="form-label">Carnet</label>
                     <InputText v-model="form.carnet" 
                                @input="validateCarnet"
                                :class="{ 'p-invalid': carnetError }"
@@ -441,7 +441,7 @@ const clearFilter = () => {
                 </div>
 
                 <div class="col-12 md:col-6 field mb-3">
-                    <label class="font-medium" style="color: #1560bd;">Correo Electrónico *</label>
+                    <label class="form-label">Correo Electrónico *</label>
                     <InputText v-model="form.email" 
                                @input="validateEmailFormat"
                                :class="{ 'p-invalid': emailError || emailFormatError }"
@@ -456,7 +456,7 @@ const clearFilter = () => {
                 </div>
 
                 <div class="col-12 md:col-6 field mb-3">
-                    <label class="font-medium" style="color: #1560bd;">Unidades *</label>
+                    <label class="form-label">Unidades *</label>
                     <div class="flex gap-2 mt-1 user-units-selector-row">
                         <Dropdown
                             v-model="selectedUnitId"
@@ -470,7 +470,6 @@ const clearFilter = () => {
                         <Button
                             icon="pi pi-plus"
                             class="w-3rem flex-shrink-0 border-none user-units-selector-button"
-                            style="background-color: #1560bd;"
                             @click="addUnitToForm"
                         />
                     </div>
@@ -484,8 +483,8 @@ const clearFilter = () => {
                             class="flex align-items-center justify-content-between p-3 border-1 border-gray-200 border-round bg-white"
                         >
                             <div class="flex flex-column">
-                                <span class="text-gray-800 text-sm font-medium">{{ unit.label }}</span>
-                                <small v-if="index === 0" class="text-blue-600 font-semibold">Unidad principal</small>
+                                <span class="text-gray-800 text-sm">{{ unit.label }}</span>
+                                <small v-if="index === 0" class="user-primary-unit">Unidad principal</small>
                             </div>
                             <i
                                 class="pi pi-trash text-red-500 cursor-pointer hover:text-red-700"
@@ -498,7 +497,7 @@ const clearFilter = () => {
                     </div>
                 </div>
                 <div class="col-12 md:col-6 field mb-3">
-                    <label class="font-medium" style="color: #1560bd;">Rol de Usuario *</label>
+                    <label class="form-label">Rol de Usuario *</label>
                     <Dropdown
                         v-model="form.role"
                         :options="profilesList"
@@ -514,7 +513,7 @@ const clearFilter = () => {
                 </div>
 
                 <div class="col-12 field mb-3" v-if="isEditing">
-                    <label class="font-medium" style="color: #1560bd;">Estado</label>
+                    <label class="form-label">Estado</label>
                     <Dropdown v-model="form.is_active" :options="[{label:'Activo', value:true}, {label:'Inactivo', value:false}]" optionLabel="label" optionValue="value" class="w-full bg-gray-50" />
                 </div>
             </div>
@@ -522,7 +521,7 @@ const clearFilter = () => {
             <template #footer>
                 <div class="flex justify-content-between gap-3 mt-2 w-full">
                     <Button label="Cancelar" severity="secondary" outlined class="flex-1" :disabled="isSaving" @click="displayModal = false" />
-                    <Button label="Guardar Usuario" class="flex-1 border-none" style="background-color: #1560bd;" :loading="isSaving" @click="saveUser" />
+                    <Button label="Guardar Usuario" class="flex-1 border-none" :loading="isSaving" @click="saveUser" />
                 </div>
             </template>
         </Dialog>
@@ -550,7 +549,7 @@ const clearFilter = () => {
             </div>
 
             <div class="field mt-3">
-                <label class="font-medium" style="color: #1560bd;">Su contrasena *</label>
+                <label class="form-label">Su contrasena *</label>
                 <InputText
                     v-model="adminPasswordForReset"
                     type="password"
@@ -564,7 +563,7 @@ const clearFilter = () => {
             <template #footer>
                 <div class="flex justify-content-between gap-3 mt-2 w-full reset-password-footer">
                     <Button label="Cancelar" severity="secondary" outlined class="flex-1" :disabled="isResettingPassword" @click="resetPasswordModal = false" />
-                    <Button label="Enviar temporal" icon="pi pi-send" class="flex-1 border-none" style="background-color: #1560bd;" :loading="isResettingPassword" @click="resetUserPassword" />
+                    <Button label="Enviar temporal" icon="pi pi-send" class="flex-1 border-none" :loading="isResettingPassword" @click="resetUserPassword" />
                 </div>
             </template>
         </Dialog>
@@ -575,38 +574,39 @@ const clearFilter = () => {
 
 .blue-header-dialog .p-dialog-header {
     border-bottom: none !important; 
-    background-color: white !important;
-    border-top-left-radius: 12px !important; 
-    border-top-right-radius: 12px !important;
+    background-color: var(--ugda-surface-card) !important;
+    border-top-left-radius: var(--ugda-radius-lg) !important;
+    border-top-right-radius: var(--ugda-radius-lg) !important;
 }
 
 .blue-header-dialog .p-dialog-title {
-    color: #1560bd !important; 
-    font-weight: 700 !important;
-    font-size: 1.25rem;
+    color: var(--ugda-brand) !important;
+    font-weight: var(--ugda-weight-semibold) !important;
+    font-size: var(--ugda-font-h3);
 }
 
 /* Icono de cerrar */
 .blue-header-dialog .p-dialog-header-icons .p-dialog-header-icon {
-    color: #6b7280 !important;
+    color: var(--ugda-text-secondary) !important;
 }
 
 /* Hover del icono de cerrar */
 .blue-header-dialog .p-dialog-header-icons .p-dialog-header-icon:hover {
-    background-color: #f3f4f6 !important;
-    color: #1560bd !important;
+    background-color: var(--ugda-surface-soft) !important;
+    color: var(--ugda-brand) !important;
 }
 
 .blue-header-dialog .p-dialog-content {
-    border-bottom-left-radius: 12px !important;
-    border-bottom-right-radius: 12px !important;
+    border-bottom-left-radius: var(--ugda-radius-lg) !important;
+    border-bottom-right-radius: var(--ugda-radius-lg) !important;
 }
 </style>
 
 <style scoped>
 /* Estilos solo para la tabla o botones internos */
 :deep(.bg-primary-custom) {
-    background-color: #1560bd !important; border: none;
+    background-color: var(--ugda-brand) !important;
+    border: none;
 }
 
 .user-units-selector-row {
@@ -619,7 +619,7 @@ const clearFilter = () => {
 }
 
 .user-units-selector-button {
-    height: 2.25rem;
+    height: var(--ugda-control-height);
 }
 
 .filters-toolbar {
@@ -650,33 +650,69 @@ const clearFilter = () => {
 .reset-password-content {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
-    gap: 1rem;
+    gap: var(--ugda-space-md);
     align-items: flex-start;
-    padding: 0.25rem 0;
+    padding: var(--ugda-space-xs) 0;
 }
 
 .reset-password-content h3 {
-    margin: 0 0 0.35rem;
-    color: #111827;
-    font-size: 1rem;
+    margin: 0 0 var(--ugda-space-xs);
+    color: var(--ugda-text-primary);
+    font-size: var(--ugda-font-card-title);
+    font-weight: var(--ugda-weight-medium);
 }
 
 .reset-password-content p {
     margin: 0;
-    color: #526173;
+    color: var(--ugda-text-secondary);
     line-height: 1.6;
 }
 
 .reset-password-icon {
-    width: 2.8rem;
-    height: 2.8rem;
+    width: var(--ugda-control-height-lg);
+    height: var(--ugda-control-height-lg);
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 12px;
-    background: #e8f2ff;
-    color: #1560bd;
+    border-radius: var(--ugda-radius-lg);
+    background: var(--ugda-brand-soft);
+    color: var(--ugda-brand);
     flex: 0 0 auto;
+}
+
+.user-table__unit {
+    color: var(--ugda-text-primary);
+    font-size: var(--ugda-font-body);
+}
+
+.user-primary-unit {
+    color: var(--ugda-brand);
+    font-size: var(--ugda-font-helper);
+    font-weight: var(--ugda-weight-medium);
+}
+
+.ugda-chip {
+    border-radius: 999px;
+    display: inline-flex;
+    font-size: var(--ugda-font-helper);
+    font-weight: var(--ugda-weight-medium);
+    line-height: 1.2;
+    padding: var(--ugda-space-xs) var(--ugda-space-sm);
+}
+
+.ugda-chip--info {
+    background: var(--ugda-info-soft);
+    color: var(--ugda-info-text);
+}
+
+.ugda-chip--success {
+    background: var(--ugda-success-soft);
+    color: var(--ugda-success-text);
+}
+
+.ugda-chip--neutral {
+    background: var(--ugda-surface-soft);
+    color: var(--ugda-text-secondary);
 }
 
 @media (max-width: 991px) {

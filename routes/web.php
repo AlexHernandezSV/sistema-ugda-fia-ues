@@ -163,6 +163,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/api/transfers/import-documents', [TransferController::class, 'importDocuments']);
     Route::post('/api/transfers', [TransferController::class, 'store']);
     Route::get('/api/transfers/{number}', [RequestCatalogController::class, 'showTransfer']);
+    Route::get('/api/transfers/{number}/boxes/{boxNumber}/label', [RequestCatalogController::class, 'showTransferBoxLabel']);
     Route::get('/api/transfers/{number}/edit-data', [TransferController::class, 'editData']);
     Route::put('/api/transfers/{number}/resubmit-correction', [TransferController::class, 'resubmitCorrection']);
     Route::get('/api/transfers/{number}/documents/{code}/download', [RequestCatalogController::class, 'downloadTransferDocument']);

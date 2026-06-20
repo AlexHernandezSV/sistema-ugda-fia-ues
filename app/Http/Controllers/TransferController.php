@@ -95,7 +95,7 @@ class TransferController extends Controller
 
                 if ($name === '' || $code === '' || $support === '') {
                     return response()->json([
-                        'message' => 'La fila ' . ($index + 2) . ' debe tener Nombre del documento, Codigo y Soporte valido.',
+                        'message' => 'La fila ' . ($index + 2) . ' debe tener Nombre del documento, Código y Soporte válido.',
                     ], 422);
                 }
 
