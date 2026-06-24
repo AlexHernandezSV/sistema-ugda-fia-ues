@@ -3,19 +3,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: sistema-ugda-fia-ues-app:latest
     working_dir: /var/www/html
     volumes:
-      - type: bind
-        source: .
-        target: /var/www/html
-      - type: volume
-        source: app_vendor
-        target: /var/www/html/vendor
+      - .:/var/www/html # Mapea tu código directamente para verlo en tiempo real
     environment:
       APP_NAME: "Sistema UGDA"
       APP_ENV: local
-      APP_KEY: base64:W5I6LIKfVQeHxTuJ2is7/KmFtj6MELulEjXGcUI8LrY=
+      #APP_KEY: base64:W5I6LIKfVQeHxTuJ2is7/KmFtj6MELulEjXGcUI8LrY=
       APP_DEBUG: "true"
       APP_URL: http://localhost:8000
       APP_LOCALE: es
@@ -43,28 +37,23 @@ services:
         condition: service_started
     ports:
       - "8000:8000"
-    command: ["sh", "/var/www/html/docker/start-app.sh"]
+    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"] # Comando estándar para levantar Laravel
 
   vite:
-    image: sistema-ugda-fia-ues-app:latest
+    image: node:20-alpine # Cambiamos la imagen de PHP por una de Node oficial para Vite
     working_dir: /var/www/html
     volumes:
-      - type: bind
-        source: .
-        target: /var/www/html
-      - type: volume
-        source: app_node_modules
-        target: /var/www/html/node_modules
+      - .:/var/www/html
     environment:
       APP_NAME: "Sistema UGDA"
       APP_ENV: local
-      APP_KEY: base64:W5I6LIKfVQeHxTuJ2is7/KmFtj6MELulEjXGcUI8LrY=
+      #APP_KEY: base64:W5I6LIKfVQeHxTuJ2is7/KmFtj6MELulEjXGcUI8LrY=
       APP_DEBUG: "true"
       APP_URL: http://localhost:8000
       CHOKIDAR_USEPOLLING: "true"
     ports:
       - "5173:5173"
-    command: ["sh", "/var/www/html/docker/start-vite.sh"]
+    command: ["npm", "run", "dev"] # Comando estándar para levantar el servidor de Vite
 
   postgres:
     image: postgres:16
@@ -90,6 +79,4 @@ services:
       - "8025:8025"
 
 volumes:
-  postgres_data:
-  app_vendor:
-  app_node_modules:
+  postgres_data: # Únicamente dejamos el volumen de la Base de Datos para que no pierdas tu información
