@@ -42,6 +42,69 @@ class RequestCatalogController extends Controller
         }
     }
 
+    public function showTransferBoxLabel(Request $request, string $number, string $boxNumber)
+    {
+        try {
+            $detail = RequestCatalog::transferDetail($number, $request->user());
+
+            if ($detail === null) {
+                return response()->json([
+                    'message' => 'Transferencia no encontrada.',
+                ], 404);
+            }
+
+            if (!($detail['canViewBoxLocationLabels'] ?? false)) {
+                return response()->json([
+                    'message' => 'No tiene permisos para consultar esta etiqueta.',
+                ], 403);
+            }
+
+            $normalizedBoxNumber = str_pad((string) ((int) $boxNumber), 3, '0', STR_PAD_LEFT);
+            $box = collect($detail['boxes'] ?? [])
+                ->first(fn ($item) => ($item['number'] ?? null) === $normalizedBoxNumber);
+
+            if (!$box) {
+                return response()->json([
+                    'message' => 'Caja no encontrada para esta transferencia.',
+                ], 404);
+            }
+
+            $content = $box['title'] ?? ('Caja #' . $normalizedBoxNumber);
+
+            if (str_contains($content, ' - ')) {
+                $content = trim(collect(explode(' - ', $content))->slice(1)->implode(' - '));
+            }
+
+            if ($content === '') {
+                $firstDocument = collect($box['documents'] ?? [])->first();
+                $content = $firstDocument['series'] ?? $firstDocument['name'] ?? ('Documentacion de caja ' . $normalizedBoxNumber);
+            }
+
+            return response()->json([
+                'transferNumber' => $detail['number'],
+                'transferDate' => $detail['completion']['date'] ?? $detail['receivedAt'] ?? null,
+                'unit' => $detail['unit'],
+                'authorizationStatus' => $detail['auth'],
+                'workflowStatus' => $detail['status'],
+                'boxNumber' => $box['number'],
+                'boxLabel' => '#' . $box['number'],
+                'labelCode' => $detail['number'] . '-' . $box['number'],
+                'locationCode' => $box['physicalLocation'],
+                'period' => $box['period'],
+                'content' => $content,
+                'assignedBy' => $detail['completion']['completedBy'] ?? $detail['authorizedBy'] ?? 'UGDA',
+                'assignedAt' => trim(($detail['completion']['date'] ?? '') . ' ' . ($detail['completion']['time'] ?? '')) ?: ($detail['authorizedAt'] ?? null),
+                'documents' => $box['documents'] ?? [],
+            ]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudo cargar la informacion de la etiqueta.',
+            ], 500);
+        }
+    }
+
     public function showLoan(Request $request, string $number)
     {
         try {
@@ -80,12 +143,12 @@ class RequestCatalogController extends Controller
                 'Documento de transferencia documental',
                 'Transferencia: ' . $number,
                 'Caja: ' . ($document['boxNumber'] ?? 'N/D'),
-                'Codigo: ' . ($document['code'] ?? 'N/D'),
+                'Código: ' . ($document['code'] ?? 'N/D'),
                 'Nombre: ' . ($document['name'] ?? 'N/D'),
                 'Serie: ' . ($document['series'] ?? 'N/D'),
                 'Soporte: ' . ($document['support'] ?? 'N/D'),
-                'Ano: ' . ($document['year'] ?? 'N/D'),
-                'Paginas: ' . ($document['pages'] ?? 'N/D'),
+                'Año: ' . ($document['year'] ?? 'N/D'),
+                'Páginas: ' . ($document['pages'] ?? 'N/D'),
             ]);
 
             return response()->streamDownload(

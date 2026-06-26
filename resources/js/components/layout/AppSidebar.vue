@@ -90,7 +90,7 @@ const menuItems = computed(() => {
             icon: 'pi pi-box',
             children: [
                 { label: 'Buscar Documentos', icon: 'pi pi-search', to: '/archivo-general' },
-                { label: 'Gestion de Archivo', icon: 'pi pi-folder-plus', to: '/archivo-general/gestion' },
+                { label: 'Gestión de Archivo', icon: 'pi pi-folder-plus', to: '/archivo-general/gestion' },
             ],
         });
     }
@@ -103,6 +103,7 @@ const menuItems = computed(() => {
         hasPermission('endpoint.api.units.create') ? { label: 'Unidades', icon: 'pi pi-building', to: '/unidades' } : null,
         hasPermission('endpoint.api.users.create') ? { label: 'Usuarios', icon: 'pi pi-users', to: '/usuarios' } : null,
         hasPermission('endpoint.api.documentary-series.create') ? { label: 'Series Documentales', icon: 'pi pi-clone', to: '/series-documentales' } : null,
+        { label: 'Ubicaciones Fisicas', icon: 'pi pi-map-marker', to: '/archivo-general/ubicaciones' },
     ].filter(Boolean);
 
     if (configurationChildren.length > 0) {
@@ -128,7 +129,7 @@ const sidebarShellWidth = computed(() => {
 const profileMenuWidth = computed(() => isMobile.value ? 'calc(100vw - 2rem)' : '280px');
 const sidebarStyle = computed(() => ({
     width: isMobile.value ? '100vw' : sidebarShellWidth.value,
-    backgroundColor: '#1560bd',
+    backgroundColor: 'var(--ugda-brand)',
     color: 'white',
     position: isMobile.value ? 'fixed' : 'sticky',
     top: '0',
@@ -614,13 +615,13 @@ onBeforeUnmount(() => {
     align-items: center;
     background-color: rgba(255, 255, 255, 0.05);
     border: 1px solid;
-    border-radius: 0.75rem;
+    border-radius: var(--ugda-radius-md);
     box-sizing: border-box;
-    color: #ffffff;
+    color: var(--ugda-text-inverse);
     cursor: pointer;
     display: flex;
     font: inherit;
-    min-height: 4.1rem;
+    min-height: 64px;
     text-align: left;
     transition: background-color 0.2s ease, border-color 0.2s ease;
     width: 100%;
@@ -634,7 +635,7 @@ onBeforeUnmount(() => {
 .sidebar-notifications-trigger__icon {
     align-items: center;
     background: rgba(255, 255, 255, 0.1);
-    border-radius: 0.55rem;
+    border-radius: var(--ugda-radius-md);
     display: inline-flex;
     flex-shrink: 0;
     height: 2rem;
@@ -645,13 +646,13 @@ onBeforeUnmount(() => {
 
 .sidebar-notifications-trigger__badge {
     align-items: center;
-    background: #dc2626;
-    border: 2px solid #ffffff;
+    background: var(--ugda-error);
+    border: 2px solid var(--ugda-text-inverse);
     border-radius: 999px;
-    color: #ffffff;
+    color: var(--ugda-text-inverse);
     display: inline-flex;
-    font-size: 0.68rem;
-    font-weight: 800;
+    font-size: var(--ugda-font-helper);
+    font-weight: var(--ugda-weight-medium);
     height: 1.2rem;
     justify-content: center;
     line-height: 1;
@@ -663,46 +664,47 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-notifications-panel {
-    background: #ffffff;
-    border-radius: 0.85rem;
-    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.24);
-    color: #1f2937;
-    margin-bottom: 0.75rem;
+    background: var(--ugda-surface-card);
+    border-radius: var(--ugda-radius-lg);
+    box-shadow: var(--ugda-shadow-dialog);
+    color: var(--ugda-text-primary);
+    margin-bottom: var(--ugda-space-sm);
     overflow: hidden;
 }
 
 .sidebar-notifications-panel__header {
     align-items: center;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--ugda-border);
     display: flex;
     justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.9rem 1rem;
+    gap: var(--ugda-space-sm);
+    padding: var(--ugda-space-md);
 }
 
 .sidebar-notifications-panel__header strong,
 .sidebar-notification-item strong {
     display: block;
-    font-size: 0.9rem;
+    font-size: var(--ugda-font-body);
+    font-weight: var(--ugda-weight-medium);
     line-height: 1.3;
 }
 
 .sidebar-notifications-panel__header span {
-    color: #64748b;
+    color: var(--ugda-text-secondary);
     display: block;
-    font-size: 0.75rem;
-    margin-top: 0.2rem;
+    font-size: var(--ugda-font-helper);
+    margin-top: var(--ugda-space-xs);
 }
 
 .sidebar-notifications-panel__mark {
-    background: #edf3fa;
+    background: var(--ugda-surface-soft);
     border: 0;
     border-radius: 999px;
-    color: #2f6f9f;
+    color: var(--ugda-brand);
     cursor: pointer;
-    font-size: 0.72rem;
-    font-weight: 800;
-    padding: 0.35rem 0.65rem;
+    font-size: var(--ugda-font-helper);
+    font-weight: var(--ugda-weight-medium);
+    padding: var(--ugda-space-xs) var(--ugda-space-sm);
 }
 
 .sidebar-notifications-panel__mark:disabled {
@@ -717,26 +719,26 @@ onBeforeUnmount(() => {
 
 .sidebar-notification-item {
     align-items: flex-start;
-    background: #ffffff;
+    background: var(--ugda-surface-card);
     border: 0;
-    border-bottom: 1px solid #edf2f7;
-    color: #334155;
+    border-bottom: 1px solid var(--ugda-border);
+    color: var(--ugda-text-primary);
     cursor: pointer;
     display: flex;
     font: inherit;
-    gap: 0.65rem;
-    padding: 0.85rem 1rem;
+    gap: var(--ugda-space-sm);
+    padding: var(--ugda-space-md);
     text-align: left;
     width: 100%;
 }
 
 .sidebar-notification-item:hover,
 .sidebar-notification-item--unread {
-    background: #f8fbff;
+    background: var(--ugda-brand-soft);
 }
 
 .sidebar-notification-item__dot {
-    background: #cbd5e1;
+    background: var(--ugda-border-strong);
     border-radius: 999px;
     flex-shrink: 0;
     height: 0.55rem;
@@ -745,7 +747,7 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-notification-item--unread .sidebar-notification-item__dot {
-    background: #dc2626;
+    background: var(--ugda-error);
 }
 
 .sidebar-notification-item__body {
@@ -753,37 +755,37 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-notification-item small {
-    color: #64748b;
+    color: var(--ugda-text-secondary);
     display: block;
-    font-size: 0.78rem;
+    font-size: var(--ugda-font-secondary);
     line-height: 1.35;
-    margin-top: 0.25rem;
+    margin-top: var(--ugda-space-xs);
 }
 
 .sidebar-notification-item em {
-    color: #94a3b8;
+    color: var(--ugda-text-muted);
     display: block;
-    font-size: 0.72rem;
+    font-size: var(--ugda-font-helper);
     font-style: normal;
-    margin-top: 0.35rem;
+    margin-top: var(--ugda-space-xs);
 }
 
 .sidebar-notifications-panel__empty {
-    color: #64748b;
-    font-size: 0.85rem;
-    padding: 1.1rem;
+    color: var(--ugda-text-secondary);
+    font-size: var(--ugda-font-secondary);
+    padding: var(--ugda-space-md);
     text-align: center;
 }
 
 .sidebar-notifications-panel__all {
-    background: #f8fafc;
+    background: var(--ugda-surface-page);
     border: 0;
-    color: #2f6f9f;
+    color: var(--ugda-brand);
     cursor: pointer;
     font: inherit;
-    font-size: 0.86rem;
-    font-weight: 800;
-    padding: 0.85rem 1rem;
+    font-size: var(--ugda-font-secondary);
+    font-weight: var(--ugda-weight-medium);
+    padding: var(--ugda-space-md);
     width: 100%;
 }
 

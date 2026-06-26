@@ -12,11 +12,13 @@ const loan = ref(null);
 const loading = ref(true);
 const loanModalVisible = ref(false);
 const returnModalVisible = ref(false);
+const documentModificationsModalVisible = ref(false);
 const decisionModalVisible = ref(false);
 const searchStartModalVisible = ref(false);
 const finishSearchModalVisible = ref(false);
 const searchStartSubmitting = ref(false);
 const finishSearchSubmitting = ref(false);
+const documentModificationsSubmitting = ref(false);
 const decisionSubmitting = ref(false);
 const currentDecisionAction = ref(null);
 
@@ -33,6 +35,10 @@ const returnForm = reactive({
     returnDate: null,
     condition: '',
     observations: '',
+});
+
+const documentModificationsForm = reactive({
+    items: [],
 });
 
 const decisionForm = reactive({
@@ -72,6 +78,15 @@ const resetReturnForm = () => {
     returnForm.observations = '';
 };
 
+const resetDocumentModificationsForm = () => {
+    const registeredItems = loan.value?.documentModifications?.items ?? [];
+
+    documentModificationsForm.items = registeredItems.map((item) => ({
+        loanDocumentId: item.loanDocumentId,
+        description: item.description,
+    }));
+};
+
 const resetDecisionForm = () => {
     decisionForm.comments = '';
     currentDecisionAction.value = null;
@@ -82,6 +97,9 @@ const resetFinishSearchForm = () => {
     finishSearchForm.comments = '';
     finishSearchForm.selectedIds = searchResultDocuments.value.map((document) => document.id);
 };
+
+const documentModificationTitle = (id) => documentModificationDocuments.value
+    .find((document) => document.id === id)?.title ?? 'Documento';
 
 const toneClass = (tone) => {
     switch (tone) {
@@ -307,10 +325,10 @@ const decisionModalConfig = computed(() => {
                 icon: 'pi pi-check-circle',
                 title: 'Autorizar Prestamo',
                 subtitle: loan.value?.mode === 'unitAuthorization'
-                    ? 'La solicitud sera enviada a la UGDA para su gestion'
+                    ? 'La solicitud sera enviada a la UGDA para su gestión'
                     : 'Se iniciara el proceso de busqueda de documentos',
                 label: 'Comentarios (opcional)',
-                placeholder: 'Agregue comentarios sobre la autorizacion...',
+                placeholder: 'Agregue comentarios sobre la autorización...',
                 confirmLabel: 'Autorizar',
                 cancelLabel: 'Cancelar',
                 tone: 'success',
@@ -320,9 +338,9 @@ const decisionModalConfig = computed(() => {
             return {
                 icon: 'pi pi-check-circle',
                 title: 'Autorizar Prestamo',
-                subtitle: 'La solicitud sera enviada a la UGDA para su gestion',
+                subtitle: 'La solicitud sera enviada a la UGDA para su gestión',
                 label: 'Comentarios (opcional)',
-                placeholder: 'Agregue comentarios sobre la autorizacion...',
+                placeholder: 'Agregue comentarios sobre la autorización...',
                 confirmLabel: 'Autorizar',
                 cancelLabel: 'Cancelar',
                 tone: 'success',
@@ -490,6 +508,60 @@ const submitLoanRegistration = async () => {
     }
 };
 
+const openDocumentModificationsModal = () => {
+    resetDocumentModificationsForm();
+    documentModificationsModalVisible.value = true;
+};
+
+const addDocumentModification = () => {
+    const usedIds = new Set(documentModificationsForm.items.map((item) => item.loanDocumentId));
+    const firstAvailable = documentModificationDocuments.value.find((document) => !usedIds.has(document.id));
+
+    documentModificationsForm.items.push({
+        loanDocumentId: firstAvailable?.id ?? documentModificationDocuments.value[0]?.id ?? null,
+        description: '',
+    });
+};
+
+const removeDocumentModification = (index) => {
+    documentModificationsForm.items = documentModificationsForm.items.filter((_, itemIndex) => itemIndex !== index);
+};
+
+const submitDocumentModifications = async () => {
+    const modifications = documentModificationsForm.items
+        .map((item) => ({
+            loan_document_id: item.loanDocumentId,
+            description: item.description.trim(),
+        }))
+        .filter((item) => item.loan_document_id && item.description !== '');
+
+    if (modifications.length === 0) {
+        showError('Agregue al menos una modificacion con su descripcion.');
+        return;
+    }
+
+    documentModificationsSubmitting.value = true;
+
+    try {
+        const { data } = await axios.post(`/api/loans/${loan.value.number}/document-modifications`, {
+            modifications,
+        });
+
+        toast.add({
+            severity: 'success',
+            summary: 'Modificaciones registradas',
+            detail: data.message,
+            life: 3000,
+        });
+        documentModificationsModalVisible.value = false;
+        await fetchDetail();
+    } catch (error) {
+        showError(error.response?.data?.message || 'No se pudieron registrar las modificaciones.');
+    } finally {
+        documentModificationsSubmitting.value = false;
+    }
+};
+
 const submitReturnRegistration = async () => {
     try {
         const { data } = await axios.post(`/api/loans/${loan.value.number}/return`, {
@@ -501,14 +573,14 @@ const submitReturnRegistration = async () => {
 
         toast.add({
             severity: 'success',
-            summary: 'Devolucion registrada',
+            summary: 'Devolución registrada',
             detail: data.message,
             life: 3000,
         });
         returnModalVisible.value = false;
         await fetchDetail();
     } catch (error) {
-        showError(error.response?.data?.message || 'No se pudo registrar la devolucion.');
+        showError(error.response?.data?.message || 'No se pudo registrar la devolución.');
     }
 };
 
@@ -531,11 +603,18 @@ const pageTitle = computed(() => loan.value?.pageTitle ?? (loan.value ? `Prestam
 const pageSubtitle = computed(() => loan.value?.pageSubtitle ?? 'Detalle de la solicitud');
 const loanRegistrationDocuments = computed(() => loan.value?.loanRegistration?.documents ?? []);
 const returnRegistrationDocuments = computed(() => loan.value?.returnRegistration?.documents ?? []);
+const documentModificationDocuments = computed(() => loan.value?.documentModifications?.documents ?? []);
+const canSaveDocumentModifications = computed(() => documentModificationsForm.items
+    .some((item) => item.loanDocumentId && item.description.trim() !== ''));
 const searchResultDocuments = computed(() => (loan.value?.documentGroups ?? [])
     .flatMap((group) => (group.items ?? []).map((item) => ({
         ...item,
         groupTitle: group.title,
     }))));
+const loanAllSelected = computed(() => loanRegistrationDocuments.value.length > 0
+    && loanForm.selectedIds.length === loanRegistrationDocuments.value.length);
+const returnAllSelected = computed(() => returnRegistrationDocuments.value.length > 0
+    && returnForm.selectedIds.length === returnRegistrationDocuments.value.length);
 const finishSearchAllSelected = computed(() => searchResultDocuments.value.length > 0
     && finishSearchForm.selectedIds.length === searchResultDocuments.value.length);
 
@@ -669,6 +748,29 @@ onMounted(fetchDetail);
             </div>
         </div>
 
+        <div v-if="loan.readyForPickup" class="detalle-banner detalle-banner--success">
+            <div class="detalle-banner__head">
+                <div class="detalle-banner__icon detalle-banner__icon--success">
+                    <i class="pi pi-check-circle"></i>
+                </div>
+                <div>
+                    <h2 class="detalle-banner__title m-0">{{ loan.readyForPickup.title }}</h2>
+                    <p class="detalle-banner__text m-0">{{ loan.readyForPickup.description }}</p>
+                </div>
+            </div>
+
+            <div class="detalle-banner__panel">
+                <div class="detalle-banner__instructions">
+                    <div class="font-semibold mb-3 text-900">Instrucciones para el retiro:</div>
+                    <ul class="detalle-banner__instructions-list">
+                        <li v-for="(instruction, idx) in loan.readyForPickup.instructions" :key="idx">
+                            {{ instruction }}
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
         <div v-if="loan.loanSummary" class="detalle-banner detalle-banner--success detalle-loan-summary-banner">
             <div class="detalle-banner__head">
                 <div class="detalle-banner__icon detalle-banner__icon--success">
@@ -687,7 +789,7 @@ onMounted(fetchDetail);
                         <div class="detalle-small-value">{{ loan.loanSummary.loanDate }}</div>
                     </div>
                     <div class="col-12 md:col-6">
-                        <div class="detalle-small-label"><i class="pi pi-calendar mr-2"></i>Fecha de devolucion programada</div>
+                        <div class="detalle-small-label"><i class="pi pi-calendar mr-2"></i>Fecha de devolución programada</div>
                         <div class="detalle-small-value">{{ loan.loanSummary.dueDate }}</div>
                     </div>
                     <div class="col-12 md:col-6">
@@ -742,7 +844,7 @@ onMounted(fetchDetail);
             <div class="detalle-banner__panel">
                 <div class="grid">
                     <div class="col-12 md:col-6">
-                        <div class="detalle-small-label">Fecha de devolucion</div>
+                        <div class="detalle-small-label">Fecha de devolución</div>
                         <div class="detalle-small-value">{{ loan.returnSummary.returnDate }} • {{ loan.returnSummary.returnTime }}</div>
                     </div>
                     <div class="col-12 md:col-6">
@@ -758,6 +860,52 @@ onMounted(fetchDetail);
                 <div class="detalle-divider"></div>
                 <div class="detalle-small-label mb-2">Observaciones</div>
                 <p class="m-0 detalle-note-text">{{ loan.returnSummary.observations }}</p>
+            </div>
+        </div>
+
+        <div v-if="loan.documentModifications?.showInDetail" class="detalle-document-modifications">
+            <div class="detalle-document-modifications__head">
+                <div class="detalle-document-modifications__intro">
+                    <div class="detalle-document-modifications__icon">
+                        <i class="pi pi-file-edit"></i>
+                    </div>
+                    <div>
+                        <div class="detalle-document-modifications__title">
+                            <span>{{ loan.documentModifications.title }}</span>
+                            <span v-if="loan.documentModifications.count > 0" class="detalle-document-modifications__badge">
+                                {{ loan.documentModifications.count }}
+                            </span>
+                        </div>
+                        <p class="detalle-document-modifications__text m-0">{{ loan.documentModifications.description }}</p>
+                    </div>
+                </div>
+
+                <button
+                    v-if="loan.documentModifications.canEdit"
+                    type="button"
+                    class="detalle-document-modifications__button"
+                    @click="openDocumentModificationsModal"
+                >
+                    <i class="pi pi-file-edit"></i>
+                    <span>{{ loan.documentModifications.buttonLabel }}</span>
+                </button>
+            </div>
+
+            <div v-if="(loan.documentModifications.items?.length ?? 0) > 0" class="detalle-document-modifications__list">
+                <div
+                    v-for="item in loan.documentModifications.items"
+                    :key="item.id"
+                    class="detalle-document-modifications__item"
+                >
+                    <div class="detalle-document-modifications__item-title">
+                        <i class="pi pi-file-edit"></i>
+                        <span>{{ item.documentTitle }}</span>
+                    </div>
+                    <p class="detalle-document-modifications__item-text m-0">{{ item.description }}</p>
+                    <div class="detalle-document-modifications__item-meta">
+                        Registrado por {{ item.registeredBy || 'Usuario' }} - {{ item.registeredAt }}
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -822,7 +970,7 @@ onMounted(fetchDetail);
                                 <div class="detalle-value">{{ loan.requestedBy ?? loan.applicant }}</div>
                             </div>
                             <div v-if="loan.authorizedAt">
-                                <span class="detalle-label">Fecha de autorizacion</span>
+                                <span class="detalle-label">Fecha de autorización</span>
                                 <div class="detalle-value">{{ loan.authorizedAt }}</div>
                             </div>
                         </div>
@@ -868,7 +1016,7 @@ onMounted(fetchDetail);
                             <div class="detalle-value">{{ loan.requestedBy ?? loan.applicant }}</div>
                         </div>
                         <div v-if="loan.authorizedAt">
-                            <span class="detalle-label">Fecha de autorizacion</span>
+                            <span class="detalle-label">Fecha de autorización</span>
                             <div class="detalle-value">{{ loan.authorizedAt }}</div>
                         </div>
                     </div>
@@ -1156,9 +1304,9 @@ onMounted(fetchDetail);
                 <div class="mb-3">
                     <label class="detalle-form-label">Resultado de la busqueda <span>*</span></label>
                     <select v-model="finishSearchForm.result" class="detalle-input">
-                        <option value="all">Todos los documentos fueron encontrados</option>
-                        <option value="partial">Solo algunos documentos fueron encontrados</option>
-                        <option value="none">No se encontraron documentos disponibles</option>
+                        <option value="all">✓ Todos los documentos fueron encontrados</option>
+                        <option value="partial">● Solo algunos documentos fueron encontrados</option>
+                        <option value="none">✕ No se encontraron documentos disponibles</option>
                     </select>
                 </div>
 
@@ -1179,7 +1327,7 @@ onMounted(fetchDetail);
                             :disabled="searchResultDocuments.length === 0"
                             @click="toggleFinishSearchDocuments"
                         >
-                            {{ finishSearchAllSelected ? 'Quitar todos' : 'Seleccionar todos' }}
+                            {{ finishSearchAllSelected ? 'Deseleccionar todos' : 'Seleccionar todos' }}
                         </button>
                     </div>
 
@@ -1281,7 +1429,7 @@ onMounted(fetchDetail);
                             </div>
                         </div>
                         <button type="button" class="detalle-mini-action detalle-mini-action--success" @click="toggleLoanDocuments">
-                            {{ loan.loanRegistration?.selectAllLabel }}
+                            {{ loanAllSelected ? 'Deseleccionar todos' : loan.loanRegistration?.selectAllLabel }}
                         </button>
                     </div>
 
@@ -1344,7 +1492,7 @@ onMounted(fetchDetail);
                         />
                     </div>
                     <div class="col-12 md:col-6">
-                        <label class="detalle-form-label">Fecha de devolucion programada <span>*</span></label>
+                        <label class="detalle-form-label">Fecha de devolución programada <span>*</span></label>
                         <DatePicker
                             v-model="loanForm.dueDate"
                             showIcon
@@ -1370,6 +1518,116 @@ onMounted(fetchDetail);
                 <button type="button" class="detalle-action detalle-action--success" @click="submitLoanRegistration">
                     <i class="pi pi-box"></i>
                     <span>Registrar Prestamo</span>
+                </button>
+            </div>
+        </div>
+    </Dialog>
+
+    <Dialog
+        v-model:visible="documentModificationsModalVisible"
+        modal
+        :draggable="false"
+        :closable="false"
+        :showHeader="false"
+        :style="{ width: 'min(720px, 94vw)' }"
+        :contentStyle="{ padding: '0', overflow: 'hidden' }"
+    >
+        <div class="detalle-modifications-modal">
+            <div class="detalle-modifications-modal__header">
+                <div class="detalle-modifications-modal__title-wrap">
+                    <div class="detalle-modifications-modal__icon">
+                        <i class="pi pi-file-edit"></i>
+                    </div>
+                    <div>
+                        <h2 class="m-0">Registrar Modificaciones</h2>
+                        <p class="m-0 mt-1">Solicitud #{{ loan.number }}</p>
+                    </div>
+                </div>
+                <button type="button" class="detalle-modifications-modal__close" @click="documentModificationsModalVisible = false">
+                    <i class="pi pi-times"></i>
+                </button>
+            </div>
+
+            <div class="detalle-modifications-modal__body">
+                <div class="detalle-modifications-modal__notice">
+                    <i class="pi pi-exclamation-triangle"></i>
+                    <span>Indique que modificaciones se han realizado a los documentos prestados. Esta información estara visible para la UGDA al momento de registrar la devolución.</span>
+                </div>
+
+                <div v-if="documentModificationsForm.items.length === 0" class="detalle-modifications-modal__empty">
+                    No hay modificaciones registradas. Haga clic en "Agregar documento" para comenzar.
+                </div>
+
+                <div class="detalle-modifications-modal__items">
+                    <div
+                        v-for="(item, index) in documentModificationsForm.items"
+                        :key="index"
+                        class="detalle-modifications-modal__item"
+                    >
+                        <div class="detalle-modifications-modal__field-row">
+                            <div class="detalle-modifications-modal__field">
+                                <label class="detalle-form-label">Documento <span>*</span></label>
+                                <select v-model="item.loanDocumentId" class="detalle-input">
+                                    <option
+                                        v-for="document in documentModificationDocuments"
+                                        :key="document.id"
+                                        :value="document.id"
+                                        :disabled="documentModificationsForm.items.some((entry, entryIndex) => entryIndex !== index && entry.loanDocumentId === document.id)"
+                                    >
+                                        {{ document.title }}
+                                    </option>
+                                </select>
+                            </div>
+                            <button
+                                type="button"
+                                class="detalle-modifications-modal__remove"
+                                :aria-label="`Quitar modificacion de ${documentModificationTitle(item.loanDocumentId)}`"
+                                @click="removeDocumentModification(index)"
+                            >
+                                <i class="pi pi-trash"></i>
+                            </button>
+                        </div>
+
+                        <div>
+                            <label class="detalle-form-label">Descripcion de la modificacion <span>*</span></label>
+                            <textarea
+                                v-model="item.description"
+                                rows="4"
+                                class="detalle-textarea"
+                                placeholder="Describa que modificacion se realizo a este documento..."
+                            ></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <button
+                    type="button"
+                    class="detalle-modifications-modal__add"
+                    :disabled="documentModificationsForm.items.length >= documentModificationDocuments.length"
+                    @click="addDocumentModification"
+                >
+                    <i class="pi pi-plus"></i>
+                    <span>Agregar documento</span>
+                </button>
+            </div>
+
+            <div class="detalle-modifications-modal__footer">
+                <button
+                    type="button"
+                    class="detalle-action detalle-action--secondary"
+                    :disabled="documentModificationsSubmitting"
+                    @click="documentModificationsModalVisible = false"
+                >
+                    Cancelar
+                </button>
+                <button
+                    type="button"
+                    class="detalle-action detalle-action--warning"
+                    :disabled="documentModificationsSubmitting || !canSaveDocumentModifications"
+                    @click="submitDocumentModifications"
+                >
+                    <i class="pi pi-check-circle"></i>
+                    <span>{{ documentModificationsSubmitting ? 'Guardando...' : 'Guardar modificaciones' }}</span>
                 </button>
             </div>
         </div>
@@ -1408,7 +1666,7 @@ onMounted(fetchDetail);
                             </div>
                         </div>
                         <button type="button" class="detalle-mini-action detalle-mini-action--muted" @click="toggleReturnDocuments">
-                            {{ loan.returnRegistration?.selectAllLabel }}
+                            {{ returnAllSelected ? 'Deseleccionar todos' : loan.returnRegistration?.selectAllLabel }}
                         </button>
                     </div>
 
@@ -1449,9 +1707,38 @@ onMounted(fetchDetail);
                     </div>
                 </div>
 
+                <div
+                    v-if="(loan.documentModifications?.items?.length ?? 0) > 0"
+                    class="detalle-return-modifications"
+                >
+                    <div class="detalle-return-modifications__title">
+                        <i class="pi pi-exclamation-triangle"></i>
+                        <span>{{ loan.documentModifications.returnTitle }}</span>
+                        <span class="detalle-return-modifications__count">({{ loan.documentModifications.count }})</span>
+                    </div>
+                    <p class="detalle-return-modifications__text m-0">{{ loan.documentModifications.returnDescription }}</p>
+
+                    <div class="detalle-return-modifications__list">
+                        <div
+                            v-for="item in loan.documentModifications.items"
+                            :key="item.id"
+                            class="detalle-return-modifications__item"
+                        >
+                            <div class="detalle-return-modifications__item-title">
+                                <i class="pi pi-file-edit"></i>
+                                <span>{{ item.documentTitle }}</span>
+                            </div>
+                            <p class="detalle-return-modifications__item-text m-0">{{ item.description }}</p>
+                            <div class="detalle-return-modifications__item-meta">
+                                Registrado por {{ item.registeredBy || 'Usuario' }} - {{ item.registeredAt }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="grid mt-4">
                     <div class="col-12">
-                        <label class="detalle-form-label">Fecha de devolucion <span>*</span></label>
+                        <label class="detalle-form-label">Fecha de devolución <span>*</span></label>
                         <DatePicker
                             v-model="returnForm.returnDate"
                             showIcon
@@ -1462,12 +1749,12 @@ onMounted(fetchDetail);
                         />
                     </div>
                     <div class="col-12">
-                        <label class="detalle-form-label">Condicion de los documentos <span>*</span></label>
-                        <input v-model="returnForm.condition" type="text" class="detalle-input" placeholder="Condicion de los documentos" />
+                        <label class="detalle-form-label">Condición de los documentos <span>*</span></label>
+                        <input v-model="returnForm.condition" type="text" class="detalle-input" placeholder="Condición de los documentos" />
                     </div>
                     <div class="col-12">
                         <label class="detalle-form-label">Observaciones (opcional)</label>
-                        <textarea v-model="returnForm.observations" rows="4" class="detalle-textarea" placeholder="Agregue observaciones sobre la devolucion..."></textarea>
+                        <textarea v-model="returnForm.observations" rows="4" class="detalle-textarea" placeholder="Agregue observaciones sobre la devolución..."></textarea>
                     </div>
                 </div>
             </div>
@@ -1476,7 +1763,7 @@ onMounted(fetchDetail);
                 <button type="button" class="detalle-action detalle-action--secondary" @click="returnModalVisible = false">Cancelar</button>
                 <button type="button" class="detalle-action detalle-action--muted" @click="submitReturnRegistration">
                     <i class="pi pi-check-circle"></i>
-                    <span>Registrar Devolucion</span>
+                    <span>Registrar Devolución</span>
                 </button>
             </div>
         </div>
@@ -1505,8 +1792,11 @@ onMounted(fetchDetail);
 }
 
 .detalle-subtitle {
+    display: block;
+    margin-top: 0.25rem;
     color: #64748b;
     font-size: 1rem;
+    line-height: 1.35;
 }
 
 .detalle-decision-modal {
@@ -1652,18 +1942,26 @@ onMounted(fetchDetail);
 }
 
 .detalle-decision-modal__button--primary {
-    background: #2f6fae;
-    color: #ffffff;
+    background: var(--ugda-brand);
+    color: var(--ugda-text-inverse);
 }
 
 .detalle-decision-modal__button--warning {
-    background: #f7d18a;
+    background: #f59e0b;
     color: #ffffff;
 }
 
+.detalle-decision-modal__button--warning:hover:not(:disabled) {
+    background: #d97706;
+}
+
 .detalle-decision-modal__button--danger {
-    background: #eda3a0;
+    background: #ef4444;
     color: #ffffff;
+}
+
+.detalle-decision-modal__button--danger:hover:not(:disabled) {
+    background: #dc2626;
 }
 
 .detalle-decision-modal__button--cancel {
@@ -1676,8 +1974,8 @@ onMounted(fetchDetail);
 }
 
 .detalle-decision-modal__button--cancel-primary {
-    border-color: #2f6fae;
-    color: #2f6fae;
+    border-color: var(--ugda-border-strong);
+    color: var(--ugda-text-secondary);
 }
 
 .detalle-decision-modal__button--cancel-warning {
@@ -2197,8 +2495,8 @@ onMounted(fetchDetail);
 }
 
 .detalle-action--primary {
-    background: #2f6fae;
-    color: #ffffff;
+    background: var(--ugda-brand);
+    color: var(--ugda-text-inverse);
 }
 
 .detalle-action--success {
@@ -2295,6 +2593,11 @@ onMounted(fetchDetail);
     display: flex;
     align-items: flex-start;
     gap: 1rem;
+}
+
+.detalle-form-modal__header h2,
+.detalle-form-modal__header p {
+    color: #ffffff !important;
 }
 
 .detalle-form-modal__header--success {
@@ -2556,6 +2859,342 @@ onMounted(fetchDetail);
     width: 100%;
 }
 
+.detalle-document-modifications {
+    background: #ffffff;
+    border: 2px solid #f6ad3c;
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+}
+
+.detalle-document-modifications__head {
+    align-items: center;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+}
+
+.detalle-document-modifications__intro {
+    align-items: flex-start;
+    display: flex;
+    gap: 1rem;
+    min-width: 0;
+}
+
+.detalle-document-modifications__icon {
+    align-items: center;
+    background: #f6ad3c;
+    border-radius: 0.7rem;
+    color: #ffffff;
+    display: inline-flex;
+    flex-shrink: 0;
+    font-size: 1.35rem;
+    height: 3rem;
+    justify-content: center;
+    width: 3rem;
+}
+
+.detalle-document-modifications__title {
+    align-items: center;
+    color: #0f172a;
+    display: flex;
+    flex-wrap: wrap;
+    font-size: 1.25rem;
+    font-weight: 800;
+    gap: 0.6rem;
+    line-height: 1.25;
+    margin-bottom: 0.45rem;
+}
+
+.detalle-document-modifications__badge {
+    align-items: center;
+    background: #f6ad3c;
+    border-radius: 999px;
+    color: #ffffff;
+    display: inline-flex;
+    font-size: 0.82rem;
+    height: 1.45rem;
+    justify-content: center;
+    min-width: 1.45rem;
+    padding: 0 0.45rem;
+}
+
+.detalle-document-modifications__text {
+    color: #475569;
+    line-height: 1.55;
+    max-width: 42rem;
+}
+
+.detalle-document-modifications__button {
+    align-items: center;
+    background: #f6ad3c;
+    border: none;
+    border-radius: 0.65rem;
+    color: #ffffff;
+    cursor: pointer;
+    display: inline-flex;
+    flex-shrink: 0;
+    font-weight: 800;
+    gap: 0.65rem;
+    justify-content: center;
+    min-height: 3rem;
+    padding: 0.85rem 1.35rem;
+    white-space: nowrap;
+}
+
+.detalle-document-modifications__list {
+    border-top: 1px solid #f5d39b;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+}
+
+.detalle-document-modifications__item {
+    background: #fff9e8;
+    border: 1px solid #ffd48a;
+    border-radius: 0.65rem;
+    padding: 0.9rem 1rem;
+}
+
+.detalle-document-modifications__item-title {
+    align-items: center;
+    color: #9a4b00;
+    display: flex;
+    gap: 0.55rem;
+    font-weight: 800;
+    margin-bottom: 0.45rem;
+}
+
+.detalle-document-modifications__item-text {
+    color: #7a4d0b;
+    line-height: 1.5;
+}
+
+.detalle-document-modifications__item-meta {
+    color: #b45309;
+    font-size: 0.85rem;
+    margin-top: 0.55rem;
+}
+
+.detalle-return-modifications {
+    background: #fff9e8;
+    border: 2px solid #f6ad3c;
+    border-radius: 0.75rem;
+    margin-top: 1.5rem;
+    padding: 1rem;
+}
+
+.detalle-return-modifications__title {
+    align-items: center;
+    color: #9a4b00;
+    display: flex;
+    flex-wrap: wrap;
+    font-size: 1.05rem;
+    font-weight: 800;
+    gap: 0.45rem;
+    margin-bottom: 0.8rem;
+}
+
+.detalle-return-modifications__count {
+    color: #9a4b00;
+}
+
+.detalle-return-modifications__text {
+    color: #9a4b00;
+    line-height: 1.5;
+    margin-bottom: 0.9rem;
+}
+
+.detalle-return-modifications__list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    margin-top: 0.9rem;
+}
+
+.detalle-return-modifications__item {
+    background: #ffffff;
+    border: 1px solid #ffd48a;
+    border-radius: 0.65rem;
+    padding: 0.85rem 1rem;
+}
+
+.detalle-return-modifications__item-title {
+    align-items: center;
+    color: #9a4b00;
+    display: flex;
+    gap: 0.55rem;
+    font-weight: 800;
+    margin-bottom: 0.45rem;
+}
+
+.detalle-return-modifications__item-text {
+    color: #7a4d0b;
+    line-height: 1.5;
+}
+
+.detalle-return-modifications__item-meta {
+    color: #b45309;
+    font-size: 0.85rem;
+    margin-top: 0.55rem;
+}
+
+.detalle-modifications-modal {
+    background: #ffffff;
+    display: flex;
+    flex-direction: column;
+    max-height: min(92vh, 760px);
+    overflow: hidden;
+}
+
+.detalle-modifications-modal__header {
+    align-items: center;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    padding: 1.4rem 1.5rem;
+}
+
+.detalle-modifications-modal__title-wrap {
+    align-items: center;
+    display: flex;
+    gap: 0.9rem;
+}
+
+.detalle-modifications-modal__title-wrap h2 {
+    color: #0f172a;
+    font-size: 1.25rem;
+}
+
+.detalle-modifications-modal__title-wrap p {
+    color: #64748b;
+}
+
+.detalle-modifications-modal__icon {
+    align-items: center;
+    background: #fff3df;
+    border-radius: 0.7rem;
+    color: #d97706;
+    display: inline-flex;
+    flex-shrink: 0;
+    font-size: 1.2rem;
+    height: 2.4rem;
+    justify-content: center;
+    width: 2.4rem;
+}
+
+.detalle-modifications-modal__close {
+    align-items: center;
+    background: transparent;
+    border: none;
+    color: #64748b;
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 1.15rem;
+    height: 2.35rem;
+    justify-content: center;
+    width: 2.35rem;
+}
+
+.detalle-modifications-modal__body {
+    overflow-y: auto;
+    padding: 1rem 1.5rem;
+}
+
+.detalle-modifications-modal__notice {
+    align-items: flex-start;
+    background: #fff8ed;
+    border: 1px solid #f6ad3c;
+    border-radius: 0.7rem;
+    color: #9a4b00;
+    display: flex;
+    gap: 0.75rem;
+    line-height: 1.55;
+    padding: 0.95rem 1rem;
+}
+
+.detalle-modifications-modal__notice .pi {
+    margin-top: 0.2rem;
+}
+
+.detalle-modifications-modal__empty {
+    color: #64748b;
+    padding: 3rem 1rem 2.5rem;
+    text-align: center;
+}
+
+.detalle-modifications-modal__items {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.detalle-modifications-modal__item {
+    background: #f8fafc;
+    border: 1px solid #d7dde6;
+    border-radius: 0.85rem;
+    padding: 1rem;
+}
+
+.detalle-modifications-modal__field-row {
+    align-items: flex-end;
+    display: flex;
+    gap: 0.85rem;
+    margin-bottom: 0.85rem;
+}
+
+.detalle-modifications-modal__field {
+    flex: 1;
+    min-width: 0;
+}
+
+.detalle-modifications-modal__remove {
+    align-items: center;
+    background: transparent;
+    border: none;
+    color: #ef4444;
+    cursor: pointer;
+    display: inline-flex;
+    flex-shrink: 0;
+    font-size: 1rem;
+    height: 2.75rem;
+    justify-content: center;
+    width: 2.75rem;
+}
+
+.detalle-modifications-modal__add {
+    align-items: center;
+    background: #ffffff;
+    border: 2px dashed #9cc4f0;
+    border-radius: 0.75rem;
+    color: #2f6fae;
+    cursor: pointer;
+    display: flex;
+    font-weight: 800;
+    gap: 0.65rem;
+    justify-content: center;
+    margin-top: 1rem;
+    min-height: 3rem;
+    width: 100%;
+}
+
+.detalle-modifications-modal__add:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.detalle-modifications-modal__footer {
+    background: #ffffff;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    flex-shrink: 0;
+    gap: 0.85rem;
+    justify-content: flex-end;
+    padding: 1rem 1.5rem;
+}
+
 @media (max-width: 991px) {
     .detalle-title {
         font-size: 1.8rem;
@@ -2587,6 +3226,15 @@ onMounted(fetchDetail);
 
     .detalle-form-modal__footer {
         flex-direction: column-reverse;
+    }
+
+    .detalle-document-modifications__head {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .detalle-document-modifications__button {
+        width: 100%;
     }
 }
 
@@ -2637,5 +3285,55 @@ onMounted(fetchDetail);
         gap: 0.55rem;
         flex-direction: column;
     }
+
+    .detalle-document-modifications,
+    .detalle-modifications-modal__body,
+    .detalle-modifications-modal__footer,
+    .detalle-modifications-modal__header {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    .detalle-modifications-modal__field-row,
+    .detalle-modifications-modal__footer {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .detalle-modifications-modal__remove {
+        align-self: flex-end;
+    }
+}
+
+.detalle-banner__instructions {
+    background: linear-gradient(135deg, rgba(40, 176, 75, 0.08), rgba(40, 176, 75, 0.04));
+    border: 1px solid #d1f0d4;
+    border-radius: 0.75rem;
+    padding: 1.25rem;
+}
+
+.detalle-banner__instructions-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.detalle-banner__instructions-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    color: #1f7043;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+.detalle-banner__instructions-list li::before {
+    content: '•';
+    flex-shrink: 0;
+    font-weight: bold;
+    color: #28b04b;
 }
 </style>

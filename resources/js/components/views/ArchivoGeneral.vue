@@ -129,7 +129,7 @@ onMounted(() => fetchArchive());
                 </div>
                 <div>
                     <h2>Buscar Documentos</h2>
-                    <p>Busque por nombre, codigo, serie documental, caja, unidad productora, ubicacion, transferencia o fecha</p>
+                    <p>Busque por nombre, código, serie documental, caja, unidad productora, ubicación, transferencia o fecha</p>
                 </div>
             </div>
 
@@ -197,7 +197,7 @@ onMounted(() => fetchArchive());
                             <div class="archive-document__main">
                                 <div>
                                     <h3>{{ document.title }}</h3>
-                                    <p>Codigo: {{ document.code || 'N/D' }}</p>
+                                    <p>Código: {{ document.code || 'N/D' }}</p>
                                 </div>
                                 <span class="archive-document__support">{{ document.support || 'Sin soporte' }}</span>
                             </div>
@@ -246,7 +246,7 @@ onMounted(() => fetchArchive());
 
                             <div class="archive-document__location">
                                 <i class="pi pi-map-marker"></i>
-                                <span>Ubicacion fisica</span>
+                                <span>Ubicación fisica</span>
                                 <strong>{{ document.box?.location || 'Pendiente de registrar' }}</strong>
                             </div>
                         </div>
@@ -273,8 +273,8 @@ onMounted(() => fetchArchive());
                     </div>
                     <div>
                         <i class="pi pi-hashtag"></i>
-                        <strong>Codigo o numero de caja</strong>
-                        <span>Identifique por codigo unico</span>
+                        <strong>Código o numero de caja</strong>
+                        <span>Identifique por código unico</span>
                     </div>
                     <div>
                         <i class="pi pi-clone"></i>

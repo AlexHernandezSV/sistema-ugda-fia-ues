@@ -663,7 +663,7 @@ const submitTransfer = async () => {
             summary: isEditMode.value ? 'Solicitud corregida exitosamente' : 'Solicitud creada exitosamente',
             detail: isEditMode.value
                 ? `La solicitud #${data.number} ha sido corregida y reenviada a UGDA para revision.`
-                : `La solicitud #${data.number} ha sido creada y enviada para autorizacion.`,
+                : `La solicitud #${data.number} ha sido creada y enviada para autorización.`,
             life: 3200,
         });
 
@@ -937,7 +937,7 @@ const goBack = () => {
                 <section class="transfer-confirm__notice">
                     <i class="pi pi-info-circle"></i>
                     <span>
-                        {{ isEditMode ? 'Al confirmar, esta solicitud corregida será reenviada a UGDA para su revisión.' : 'Al confirmar, esta solicitud sera enviada al Director/Jefe de la unidad para su autorizacion.' }}
+                        {{ isEditMode ? 'Al confirmar, esta solicitud corregida será reenviada a UGDA para su revisión.' : 'Al confirmar, esta solicitud sera enviada al Director/Jefe de la unidad para su autorización.' }}
                     </span>
                 </section>
 
@@ -1505,8 +1505,9 @@ const goBack = () => {
 .transfer-request__submit,
 .transfer-docs__add,
 .transfer-docs__save {
-    background: #2d6f9f;
-    border-color: #2d6f9f;
+    background: var(--ugda-brand);
+    border-color: var(--ugda-brand);
+    color: var(--ugda-text-inverse);
 }
 
 .transfer-request__add {
@@ -1535,9 +1536,9 @@ const goBack = () => {
 }
 
 .transfer-request__table :deep(.p-datatable-thead > tr > th) {
-    background: #2d6f9f;
-    color: #ffffff;
-    font-weight: 800;
+    background: var(--ugda-brand);
+    color: var(--ugda-text-inverse);
+    font-weight: var(--ugda-weight-medium);
 }
 
 .transfer-request__series-chips {

@@ -140,7 +140,7 @@ class UserProfileController extends Controller
             'two_factor_confirmed_at' => null,
         ])->save();
 
-        $label = $request->method === 'email' ? 'Codigo por correo' : 'Sin segundo factor';
+        $label = $request->method === 'email' ? 'Código por correo' : 'Sin segundo factor';
 
         $this->activityLogger->log(
             $user,
@@ -191,8 +191,8 @@ class UserProfileController extends Controller
             'code' => ['required', 'string', 'size:6'],
         ], [
             'current_password.required' => 'Ingrese su contrasena para confirmar el cambio.',
-            'code.required' => 'Ingrese el codigo del autenticador.',
-            'code.size' => 'El codigo debe tener 6 digitos.',
+            'code.required' => 'Ingrese el código del autenticador.',
+            'code.size' => 'El código debe tener 6 digitos.',
         ]);
 
         $user = $request->user();
@@ -202,7 +202,7 @@ class UserProfileController extends Controller
         }
 
         if (!$this->authenticatorCodes->verify($user->two_factor_secret, $request->code)) {
-            return response()->json(['message' => 'El codigo del autenticador no es valido.'], 422);
+            return response()->json(['message' => 'El código del autenticador no es valido.'], 422);
         }
 
         $user->forceFill([
@@ -215,7 +215,7 @@ class UserProfileController extends Controller
             $user,
             'two_factor_changed',
             'Google Authenticator activado',
-            'Configuro la verificacion con aplicacion autenticadora.',
+            'Configuró la verificación con aplicación autenticadora.',
             $request
         );
 

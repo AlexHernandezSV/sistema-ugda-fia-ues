@@ -88,6 +88,11 @@ class Loan extends Model
         return $this->hasMany(LoanDocument::class)->orderBy('sort_order');
     }
 
+    public function documentModifications()
+    {
+        return $this->hasMany(LoanDocumentModification::class)->latest();
+    }
+
     public function events()
     {
         return $this->hasMany(LoanEvent::class)->orderByDesc('occurred_at');

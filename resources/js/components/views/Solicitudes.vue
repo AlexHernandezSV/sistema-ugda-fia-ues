@@ -305,7 +305,7 @@ onMounted(async () => {
         </div>
 
         <div class="flex flex-wrap gap-3 mt-3">
-            <Button label="Filtrar" class="border-none px-4 py-2" style="background-color: #2f6f9f;" />
+            <Button label="Filtrar" class="border-none px-4 py-2" />
             <Button label="Limpiar" severity="secondary" outlined class="px-4 py-2" @click="clearFilters" />
         </div>
     </div>
@@ -406,15 +406,16 @@ onMounted(async () => {
 
 <style scoped>
 .solicitudes-page__title {
-    color: #2f6f9f;
-    font-size: 2.05rem;
+    color: var(--ugda-brand);
+    font-size: var(--ugda-font-h1);
+    font-weight: var(--ugda-weight-semibold);
     line-height: 1.15;
 }
 
 .solicitudes-tabs-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 1rem;
+    gap: var(--ugda-space-md);
 }
 
 .solicitudes-tabs-grid__item {
@@ -424,26 +425,26 @@ onMounted(async () => {
 .solicitudes-tab {
     width: 100%;
     max-width: 100%;
-    min-height: 3rem;
+    min-height: var(--ugda-control-height-lg);
     border: none;
-    border-radius: 0.85rem;
-    background: #ffffff;
-    color: #4b5563;
+    border-radius: var(--ugda-radius-lg);
+    background: var(--ugda-surface-card);
+    color: var(--ugda-text-secondary);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.7rem;
-    padding: 0.85rem 1.25rem;
-    font-size: 1rem;
-    font-weight: 700;
+    gap: var(--ugda-space-sm);
+    padding: var(--ugda-space-sm) var(--ugda-space-md);
+    font-size: var(--ugda-font-body);
+    font-weight: var(--ugda-weight-medium);
     cursor: pointer;
     transition: all 0.2s ease;
 }
 
 .solicitudes-tab--active {
-    background: #2f6f9f;
-    color: #ffffff;
-    box-shadow: 0 8px 18px rgba(47, 111, 159, 0.18);
+    background: var(--ugda-brand);
+    color: var(--ugda-text-inverse);
+    box-shadow: var(--ugda-shadow-card);
 }
 
 .solicitudes-tab__badge {
@@ -455,14 +456,14 @@ onMounted(async () => {
     padding: 0 0.35rem;
     border-radius: 9999px;
     background: rgba(255, 255, 255, 0.2);
-    font-size: 0.76rem;
-    font-weight: 700;
+    font-size: var(--ugda-font-helper);
+    font-weight: var(--ugda-weight-medium);
 }
 
 .solicitudes-filter__label {
-    color: #111827;
-    font-size: 0.95rem;
-    font-weight: 500;
+    color: var(--ugda-text-primary);
+    font-size: var(--ugda-font-body);
+    font-weight: var(--ugda-weight-medium);
 }
 
 :deep(.solicitudes-datepicker),
@@ -475,47 +476,47 @@ onMounted(async () => {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 1.9rem;
+    min-height: 28px;
     min-width: 6.4rem;
-    padding: 0.28rem 0.9rem;
+    padding: var(--ugda-space-xs) var(--ugda-space-sm);
     border-radius: 9999px;
-    font-size: 0.82rem;
-    font-weight: 600;
+    font-size: var(--ugda-font-helper);
+    font-weight: var(--ugda-weight-medium);
     line-height: 1;
     white-space: nowrap;
 }
 
 .solicitudes-chip--success {
-    background: #c9f2e8;
-    color: #0c8a66;
+    background: var(--ugda-success-soft);
+    color: var(--ugda-success-text);
 }
 
 .solicitudes-chip--danger {
-    background: #fee2e2;
-    color: #dc2626;
+    background: var(--ugda-error-soft);
+    color: var(--ugda-error-text);
 }
 
 .solicitudes-chip--warning {
-    background: #fde9a9;
-    color: #b45309;
+    background: var(--ugda-warning-soft);
+    color: var(--ugda-warning-text);
 }
 
 .solicitudes-chip--neutral {
-    background: #d9dee7;
-    color: #64748b;
+    background: var(--ugda-surface-soft);
+    color: var(--ugda-text-secondary);
 }
 
 .solicitudes-chip--info {
-    background: #dbeafe;
-    color: #2563eb;
+    background: var(--ugda-info-soft);
+    color: var(--ugda-info-text);
 }
 
 :deep(.bg-primary-custom) {
-    background-color: #2f6f9f !important;
+    background-color: var(--ugda-brand) !important;
 }
 
 :deep(.p-datatable-thead > tr > th) {
-    padding: 1rem;
+    padding: var(--ugda-space-md);
     border-width: 0 0 1px 0;
 }
 
@@ -525,7 +526,7 @@ onMounted(async () => {
 
 @media (max-width: 991px) {
     .solicitudes-page__title {
-        font-size: 1.65rem;
+        font-size: var(--ugda-font-h2);
     }
 
     .solicitudes-tabs-grid {

@@ -2,9 +2,11 @@
 import { ref, nextTick, computed, onBeforeUnmount } from 'vue';
 import Button from 'primevue/button';
 import { useToast } from 'primevue/usetoast';
+import { useRoute } from 'vue-router';
 import axios from 'axios';
 
 const toast = useToast();
+const route = useRoute();
 
 const step = ref(1);
 const loading = ref(false);
@@ -82,15 +84,33 @@ const warnIfLocked = () => {
 
 const verificationSubtitle = () => {
     if (twoFactorMethod.value === 'authenticator') {
-        return 'Ingresa el codigo generado por tu aplicacion autenticadora.';
+        return 'Ingresa el código generado por tu aplicación autenticadora.';
     }
 
-    return 'Ingresa el codigo enviado a tu correo electronico.';
+    return 'Ingresa el código enviado a tu correo electrónico.';
 };
+
+const loginRedirectTarget = computed(() => {
+    const redirect = Array.isArray(route.query.redirect)
+        ? route.query.redirect[0]
+        : route.query.redirect;
+
+    if (!redirect || typeof redirect !== 'string' || !redirect.startsWith('/') || redirect.startsWith('//')) {
+        return null;
+    }
+
+    if (redirect === '/login' || redirect.startsWith('/login?')) {
+        return null;
+    }
+
+    return redirect;
+});
+
+const resolveLoginRedirect = (fallback = '/dashboard') => loginRedirectTarget.value || fallback || '/dashboard';
 
 const handleLoginResponse = (data) => {
     if (data.redirect) {
-        window.location.href = data.redirect;
+        window.location.href = resolveLoginRedirect(data.redirect);
         return;
     }
 
@@ -227,7 +247,7 @@ const handleTemporaryPasswordChange = async () => {
         toast.add({
             severity: 'success',
             summary: 'Contrasena actualizada',
-            detail: 'Continua con la verificacion de acceso.',
+            detail: 'Continua con la verificación de acceso.',
             life: 3000
         });
 
@@ -275,7 +295,7 @@ const handleVerifyCode = async () => {
         });
 
         setTimeout(() => {
-            window.location.href = response.data.redirect;
+            window.location.href = resolveLoginRedirect(response.data.redirect);
         }, 1000);
     } catch (error) {
         if (error.response && error.response.status === 429) {
@@ -338,7 +358,7 @@ const handleErrors = (error) => {
                 toast.add({
                     severity: 'warn',
                     summary: 'Atencion',
-                    detail: error.response.data.message || 'Revise la informacion ingresada.',
+                    detail: error.response.data.message || 'Revise la información ingresada.',
                     life: 4000
                 });
                 return;
@@ -1104,6 +1124,7 @@ onBeforeUnmount(() => {
     border-radius: 12px !important;
     background: linear-gradient(180deg, #3879b6 0%, #2f6fad 100%) !important;
     box-shadow: 0 10px 20px rgba(35, 94, 150, 0.25) !important;
+    color: #ffffff !important;
     font-size: 15px !important;
     font-weight: 800 !important;
 }
@@ -1148,13 +1169,29 @@ onBeforeUnmount(() => {
 }
 
 .login-secondary-button {
-    min-height: 50px;
-    margin-top: 12px;
-    border-radius: 12px !important;
-    border-color: #cfd8e6 !important;
-    color: #57759a !important;
-    font-size: 15px !important;
-    font-weight: 700 !important;
+    min-height: var(--ugda-control-height-lg);
+    margin-top: var(--ugda-space-sm);
+    background: #ffffff !important;
+    border: 1px solid var(--ugda-border-strong) !important;
+    border-radius: var(--ugda-radius-md) !important;
+    border-color: var(--ugda-border-strong) !important;
+    color: var(--ugda-text-secondary) !important;
+    font-size: var(--ugda-font-body) !important;
+    font-weight: var(--ugda-weight-medium) !important;
+}
+
+.login-secondary-button:hover:not(:disabled) {
+    background: #f8fafc !important;
+    border-color: #9db4d1 !important;
+    color: #2f6fad !important;
+}
+
+.login-secondary-button:focus,
+.login-secondary-button:focus-visible {
+    background: #ffffff !important;
+    border-color: #2c6fbf !important;
+    box-shadow: 0 0 0 3px rgba(44, 111, 191, 0.12) !important;
+    color: #2f6fad !important;
 }
 
 .login-lockout-message {

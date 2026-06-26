@@ -568,7 +568,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                     $this->loanDocPayload('system', 'Documentos del Sistema (1)', 'Contratos y Convenios 2021-2023', 'Documentación Administrativa', 'CAJA-028', '2021-2023', null, 'Original', 'warning', null, null, true, true),
                 ],
                 'events' => [
-                    $this->loanEventPayload('status', 'Prestado', 'Documentos entregados a Arq. Luis Fernando Ramirez. Fecha de devolucion: 15/02/2026', '12/02/2026 11:15', 'carlos_rodriguez_ugda', 'loan_status_loaned'),
+                    $this->loanEventPayload('status', 'Prestado', 'Documentos entregados a Arq. Luis Fernando Ramirez. Fecha de devolución: 15/02/2026', '12/02/2026 11:15', 'carlos_rodriguez_ugda', 'loan_status_loaned'),
                     $this->loanEventPayload('status', 'Busqueda finalizada', 'La busqueda de los documentos ha sido completada. Documentos listos para retiro.', '12/02/2026 14:30', 'carlos_rodriguez_ugda', 'loan_search_completed'),
                     $this->loanEventPayload('status', 'Busqueda en proceso', 'UGDA ha iniciado el proceso de busqueda y localizacion fisica de los documentos solicitados.', '11/02/2026 10:00', 'carlos_rodriguez_ugda', 'loan_search_in_progress'),
                     $this->loanEventPayload('status', 'Autorizado UGDA', 'Solicitud autorizada por UGDA para iniciar busqueda de documentos.', '11/02/2026 09:30', 'carlos_rodriguez_ugda', 'loan_status_authorized'),
@@ -608,7 +608,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 ],
                 'events' => [
                     $this->loanEventPayload('status', 'Devuelto', 'Documentos devueltos por Carlos Rodriguez (UGDA). Documentos devueltos en buen estado', '15/02/2026 10:45', 'carlos_rodriguez_ugda', 'loan_status_returned'),
-                    $this->loanEventPayload('status', 'Prestado', 'Documentos entregados a Lic. Sandra Beatriz Morales. Fecha de devolucion: 15/02/2026', '12/02/2026 11:15', 'carlos_rodriguez_ugda', 'loan_status_loaned'),
+                    $this->loanEventPayload('status', 'Prestado', 'Documentos entregados a Lic. Sandra Beatriz Morales. Fecha de devolución: 15/02/2026', '12/02/2026 11:15', 'carlos_rodriguez_ugda', 'loan_status_loaned'),
                     $this->loanEventPayload('status', 'Busqueda finalizada', 'La busqueda de los documentos ha sido completada. Documentos listos para retiro.', '12/02/2026 14:30', 'carlos_rodriguez_ugda', 'loan_search_completed'),
                     $this->loanEventPayload('status', 'Busqueda en proceso', 'UGDA ha iniciado el proceso de busqueda y localizacion fisica de los documentos solicitados.', '11/02/2026 10:00', 'carlos_rodriguez_ugda', 'loan_search_in_progress'),
                     $this->loanEventPayload('status', 'Autorizado UGDA', 'Solicitud autorizada por UGDA para iniciar busqueda de documentos.', '11/02/2026 09:30', 'carlos_rodriguez_ugda', 'loan_status_authorized'),
@@ -627,7 +627,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                     'return_date' => '15/02/2026',
                     'received_by' => 'carlos_rodriguez_ugda',
                     'condition_label' => 'Documentos devueltos en buen estado',
-                    'observations' => 'Devolucion realizada antes de la hora establecida. Documentos verificados y en perfectas condiciones.',
+                    'observations' => 'Devolución realizada antes de la hora establecida. Documentos verificados y en perfectas condiciones.',
                     'document_titles' => ['Proyectos de Investigacion 2020'],
                 ],
             ],

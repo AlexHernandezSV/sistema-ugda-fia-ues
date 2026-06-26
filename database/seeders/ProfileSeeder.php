@@ -17,7 +17,7 @@ class ProfileSeeder extends Seeder
         $now = now();
         $profiles = [
             ['name' => 'Administrador', 'description' => 'Acceso administrativo completo'],
-            ['name' => 'Usuario UGDA', 'description' => 'Perfil operativo para consulta de reportes y gestion documental UGDA'],
+            ['name' => 'Usuario UGDA', 'description' => 'Perfil operativo para consulta de reportes y gestión documental UGDA'],
             ['name' => 'Unidad Solicitante', 'description' => 'Perfil para crear y dar seguimiento a solicitudes de transferencia'],
             ['name' => 'Director/Jefe de Unidad', 'description' => 'Perfil para revisión y autorización de solicitudes de su unidad'],
         ];

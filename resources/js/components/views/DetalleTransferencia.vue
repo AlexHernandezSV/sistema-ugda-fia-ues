@@ -21,6 +21,12 @@ const labelsPreviewRef = ref(null);
 const labelPreviewCards = ref([]);
 const labelPreviewItems = ref([]);
 const labelsBusy = ref(false);
+const labelSize = {
+    widthCm: 10,
+    heightCm: 18,
+    widthMm: 100,
+    heightMm: 180,
+};
 const decisionModalVisible = ref(false);
 const unitAuthorizeModalVisible = ref(false);
 const transferProcessModalVisible = ref(false);
@@ -31,11 +37,11 @@ const transferProcessSubmitting = ref(false);
 const currentDecisionAction = ref(null);
 const activeProcessBox = ref(null);
 const boxLocations = ref({});
-
-const aisleOptions = ref(['Pasillo A', 'Pasillo B', 'Pasillo C', 'Area temporal']);
-const shelfOptions = ref(['Estante 1', 'Estante 2', 'Estante 3', 'Estante 4']);
-const levelOptions = ref(['Nivel 1', 'Nivel 2', 'Nivel 3', 'Nivel 4']);
-const positionOptions = ref(['Posicion 1', 'Posicion 2', 'Posicion 3', 'Posicion 4']);
+const locationOptions = ref({
+    offices: [],
+    aisles: [],
+    shelves: [],
+});
 
 const decisionForm = ref({
     date: null,
@@ -204,6 +210,13 @@ const buildQrDataUrl = async (seed) => QRCode.toDataURL(seed, {
     },
 });
 
+const buildLabelAccessUrl = (transferNumber, boxNumber) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const normalizedBoxNumber = String(Number(boxNumber) || boxNumber).padStart(3, '0');
+
+    return `${origin}/etiquetas/transferencias/${encodeURIComponent(transferNumber)}/cajas/${encodeURIComponent(normalizedBoxNumber)}`;
+};
+
 const buildLabelPreviewItems = async (data) => {
     const transferDate = compactDate(data.completion?.date || data.receivedAt);
     const assignedDate = data.completion
@@ -225,7 +238,7 @@ const buildLabelPreviewItems = async (data) => {
         labelCode: `${data.number}-${box.number}`,
         assignedBy,
         assignedAt: assignedDate,
-        qrDataUrl: await buildQrDataUrl(`${data.number}-${box.number}-${data.unit}`),
+        qrDataUrl: await buildQrDataUrl(buildLabelAccessUrl(data.number, box.number)),
     })));
 };
 
@@ -241,13 +254,11 @@ const openLabelsPreview = () => {
 };
 
 const parsePhysicalLocation = (location) => {
-    const parts = String(location ?? '').split('/').map((part) => part.trim());
-
     return {
-        aisle: parts[0] ?? null,
-        shelf: parts[1] ?? null,
-        level: parts[2] ?? null,
-        position: parts[3] ?? null,
+        office_id: null,
+        aisle_id: null,
+        shelf_id: null,
+        savedCode: location || '',
     };
 };
 
@@ -263,12 +274,38 @@ const locationSegmentCode = (value, fallback = '') => {
     return letter.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
 };
 
+const findOfficeOption = (officeId) => locationOptions.value.offices.find((item) => item.id === officeId);
+const findAisleOption = (aisleId) => locationOptions.value.aisles.find((item) => item.id === aisleId);
+const findShelfOption = (shelfId) => locationOptions.value.shelves.find((item) => item.id === shelfId);
+
+const aisleOptionsForLocation = (location) => (
+    locationOptions.value.aisles.filter((item) => item.office_id === location.office_id)
+);
+
+const shelfOptionsForLocation = (location) => (
+    locationOptions.value.shelves.filter((item) => item.aisle_id === location.aisle_id)
+);
+
+const onBoxOfficeChange = (box) => {
+    const location = ensureBoxLocation(box);
+    location.aisle_id = null;
+    location.shelf_id = null;
+};
+
+const onBoxAisleChange = (box) => {
+    ensureBoxLocation(box).shelf_id = null;
+};
+
 const generatedBoxLocationCode = (box) => {
     const location = boxLocations.value[box.number] ?? parsePhysicalLocation(box.physicalLocation);
+    const office = findOfficeOption(location.office_id);
+    const aisle = findAisleOption(location.aisle_id);
+    const shelf = findShelfOption(location.shelf_id);
 
-    if (!location.aisle || !location.shelf || !location.level || !location.position) {
-        return '';
+    if (!office || !aisle || !shelf) {
+        return location.savedCode || '';
     }
+    return `${office.code}-${aisle.code}-${shelf.code}`;
 
     const aisleCode = String(location.aisle).match(/\b([A-Za-zÁÉÍÓÚÑ])\b(?!.*\b[A-Za-zÁÉÍÓÚÑ]\b)/)?.[1]
         ?? locationSegmentCode(location.aisle, 'A');
@@ -290,7 +327,7 @@ const ensureBoxLocation = (box) => {
 const isBoxLocated = (boxNumber) => {
     const location = boxLocations.value[boxNumber] ?? {};
 
-    return Boolean(location.aisle && location.shelf && location.level && location.position);
+    return Boolean(location.office_id && location.aisle_id && location.shelf_id);
 };
 
 const prepareTransferProcess = () => {
@@ -388,7 +425,7 @@ const setLabelPreviewCard = (element, index) => {
 
 const buildLabelsDocument = () => {
     const items = labelPreviewItems.value;
-    const title = transfer.value ? `Etiquetas de transferencia ${transfer.value.number}` : 'Etiquetas de identificacion';
+    const title = transfer.value ? `Etiquetas de transferencia ${transfer.value.number}` : 'Etiquetas de identificación';
     const cards = items.map((label) => `
         <article class="print-label-card">
             <div class="print-label-card__header">
@@ -404,17 +441,17 @@ const buildLabelsDocument = () => {
 
             <div class="print-label-card__hero">
                 <div class="print-label-card__qr">
-                    <img src="${label.qrDataUrl}" alt="Codigo QR ${escapeHtml(label.labelCode)}" />
-                    <span>Codigo: ${escapeHtml(label.labelCode)}</span>
+                    <img src="${label.qrDataUrl}" alt="Código QR ${escapeHtml(label.labelCode)}" />
+                    <span>Código: ${escapeHtml(label.labelCode)}</span>
                 </div>
 
                 <div class="print-label-card__hero-main">
                     <div class="print-label-card__location">
-                        <span>CODIGO DE UBICACION</span>
+                        <span>CÓDIGO DE UBICACIÓN</span>
                         <strong>${escapeHtml(label.locationCode)}</strong>
                     </div>
                     <div class="print-label-card__box">
-                        <span>Numero de caja</span>
+                        <span>N° de caja</span>
                         <strong>${escapeHtml(label.boxLabel)}</strong>
                     </div>
                 </div>
@@ -453,49 +490,70 @@ const buildLabelsDocument = () => {
                 <title>${escapeHtml(title)}</title>
                 <style>
                     * { box-sizing: border-box; }
+                    @page {
+                        size: ${labelSize.widthCm}cm ${labelSize.heightCm}cm;
+                        margin: 0;
+                    }
+                    html,
+                    body {
+                        width: ${labelSize.widthCm}cm;
+                        min-height: ${labelSize.heightCm}cm;
+                    }
                     body {
                         margin: 0;
-                        font-family: Arial, Helvetica, sans-serif;
-                        background: #f3f6fb;
+                        font-family: 'Instrument Sans', Arial, Helvetica, sans-serif;
+                        background: #ffffff;
                         color: #0f172a;
-                        padding: 20px;
                     }
                     .print-sheet {
-                        display: flex;
-                        flex-direction: column;
-                        gap: 24px;
+                        display: block;
+                        width: ${labelSize.widthCm}cm;
                     }
                     .print-label-card {
+                        width: ${labelSize.widthCm}cm;
+                        height: ${labelSize.heightCm}cm;
+                        min-height: ${labelSize.heightCm}cm;
                         background: #ffffff;
                         border: 2px solid #1f2937;
-                        border-radius: 24px;
-                        padding: 24px;
+                        border-radius: 0.5cm;
+                        display: flex;
+                        flex-direction: column;
+                        overflow: hidden;
                         page-break-inside: avoid;
+                        break-inside: avoid;
+                        page-break-after: always;
+                        break-after: page;
+                    }
+                    .print-label-card:last-child {
+                        page-break-after: auto;
+                        break-after: auto;
                     }
                     .print-label-card__header,
                     .print-label-card__hero,
                     .print-label-card__details {
-                        display: flex;
-                        justify-content: space-between;
-                        gap: 24px;
+                        display: grid;
+                        gap: 0.35cm;
                     }
                     .print-label-card__header {
+                        grid-template-columns: 1fr auto;
                         align-items: flex-start;
-                        padding-bottom: 18px;
+                        padding: 0.58cm 0.55cm 0.36cm;
                         border-bottom: 1px solid #d9e2ec;
                     }
                     .print-label-card__university {
-                        font-size: 28px;
-                        font-weight: 800;
-                        letter-spacing: 0.01em;
+                        font-size: 0.44cm;
+                        font-weight: 700;
+                        line-height: 1.15;
+                        letter-spacing: 0;
                     }
                     .print-label-card__faculty {
-                        margin-top: 8px;
+                        margin-top: 0.12cm;
                         color: #64748b;
-                        font-size: 16px;
+                        font-size: 0.28cm;
+                        line-height: 1.25;
                     }
                     .print-label-card__date {
-                        min-width: 220px;
+                        min-width: 2.25cm;
                         text-align: right;
                     }
                     .print-label-card__date span,
@@ -504,105 +562,89 @@ const buildLabelsDocument = () => {
                     .print-label-card__assigned,
                     .print-label-card__qr span {
                         color: #64748b;
-                        font-size: 14px;
+                        font-size: 0.25cm;
+                        line-height: 1.25;
                     }
                     .print-label-card__date strong {
                         display: block;
-                        margin-top: 8px;
+                        margin-top: 0.12cm;
                         color: #0f172a;
-                        font-size: 24px;
+                        font-size: 0.34cm;
+                        line-height: 1.2;
                     }
                     .print-label-card__hero {
+                        grid-template-columns: 1fr;
                         align-items: center;
-                        padding: 20px 0;
+                        padding: 0.42cm 0.55cm;
                         border-bottom: 1px solid #d9e2ec;
                     }
                     .print-label-card__qr {
-                        width: 160px;
                         text-align: center;
-                        flex-shrink: 0;
                     }
                     .print-label-card__qr img {
-                        width: 120px;
-                        height: 120px;
+                        width: 2.8cm;
+                        height: 2.8cm;
                         display: block;
-                        margin: 0 auto 10px;
-                    }
-                    .print-label-card__hero-main {
-                        flex: 1;
+                        margin: 0 auto 0.12cm;
                     }
                     .print-label-card__location {
                         background: #2f6f9f;
-                        border-radius: 18px;
-                        padding: 18px 24px;
+                        border-radius: 0.32cm;
+                        padding: 0.34cm 0.36cm;
                         text-align: center;
                         color: #ffffff;
                     }
                     .print-label-card__location span {
                         display: block;
-                        font-size: 14px;
+                        font-size: 0.25cm;
                         font-weight: 700;
-                        letter-spacing: 0.04em;
+                        letter-spacing: 0;
                     }
                     .print-label-card__location strong {
                         display: block;
-                        margin-top: 8px;
-                        font-size: 34px;
-                        font-weight: 800;
-                        letter-spacing: 0.08em;
+                        margin-top: 0.14cm;
+                        font-size: 0.7cm;
+                        font-weight: 700;
+                        letter-spacing: 0;
+                        line-height: 1.05;
                     }
                     .print-label-card__box {
-                        margin-top: 16px;
-                        border-radius: 16px;
+                        margin-top: 0.28cm;
+                        border-radius: 0.28cm;
                         background: #edf3fa;
-                        padding: 14px 18px;
+                        padding: 0.3cm 0.36cm;
                     }
                     .print-label-card__box strong {
                         display: block;
-                        margin-top: 4px;
+                        margin-top: 0.1cm;
                         color: #0f172a;
-                        font-size: 28px;
+                        font-size: 0.58cm;
+                        line-height: 1.1;
                     }
                     .print-label-card__details {
-                        flex-wrap: wrap;
-                        padding: 20px 0 10px;
-                    }
-                    .print-label-card__details > div {
-                        flex: 1 1 240px;
+                        grid-template-columns: 1fr;
+                        padding: 0.42cm 0.55cm 0.24cm;
                     }
                     .print-label-card__details strong {
                         display: block;
-                        margin-top: 8px;
-                        font-size: 20px;
+                        margin-top: 0.08cm;
+                        font-size: 0.33cm;
                         color: #0f172a;
-                    }
-                    .print-label-card__details--full {
-                        flex-basis: 100%;
+                        line-height: 1.25;
                     }
                     .print-label-card__assigned {
-                        padding-top: 14px;
+                        margin: 0 0.55cm;
+                        padding: 0.3cm 0;
                         border-top: 1px solid #d9e2ec;
                     }
                     .print-label-card__footer {
-                        margin-top: 18px;
+                        margin-top: auto;
                         background: #fff7db;
-                        border-radius: 0 0 18px 18px;
-                        padding: 12px 16px;
+                        padding: 0.28cm 0.55cm;
                         color: #b45309;
-                        font-size: 13px;
-                        font-weight: 600;
-                    }
-                    @media print {
-                        body {
-                            background: #ffffff;
-                            padding: 0;
-                        }
-                        .print-sheet {
-                            gap: 18px;
-                        }
-                        .print-label-card {
-                            margin: 0;
-                        }
+                        font-size: 0.24cm;
+                        font-weight: 700;
+                        line-height: 1.3;
                     }
                 </style>
             </head>
@@ -618,7 +660,7 @@ const printLabels = () => {
         return;
     }
 
-    const popup = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=900');
+    const popup = window.open('', '_blank', 'width=1200,height=900');
 
     if (!popup) {
         toast.add({
@@ -651,21 +693,15 @@ const downloadLabelsPdf = async () => {
     try {
         const pdf = new jsPDF({
             orientation: 'portrait',
-            unit: 'pt',
-            format: 'letter',
+            unit: 'mm',
+            format: [labelSize.widthMm, labelSize.heightMm],
         });
-
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = pdf.internal.pageSize.getHeight();
-        const margin = 22;
-        const maxWidth = pageWidth - (margin * 2);
-        const maxHeight = pageHeight - (margin * 2);
 
         exportHost = document.createElement('div');
         exportHost.style.position = 'fixed';
         exportHost.style.left = '-10000px';
         exportHost.style.top = '0';
-        exportHost.style.width = '1100px';
+        exportHost.style.width = `${labelSize.widthCm}cm`;
         exportHost.style.pointerEvents = 'none';
         exportHost.style.zIndex = '-1';
         document.body.appendChild(exportHost);
@@ -674,7 +710,8 @@ const downloadLabelsPdf = async () => {
             const card = labelPreviewCards.value[index];
             const exportCard = card.cloneNode(true);
             exportCard.classList.add('transfer-label--export');
-            exportCard.style.width = `${card.clientWidth}px`;
+            exportCard.style.width = `${labelSize.widthCm}cm`;
+            exportCard.style.height = `${labelSize.heightCm}cm`;
             exportHost.appendChild(exportCard);
 
             const exportImages = Array.from(exportCard.querySelectorAll('img'));
@@ -696,17 +733,12 @@ const downloadLabelsPdf = async () => {
             });
 
             const imageData = canvas.toDataURL('image/png');
-            const ratio = Math.min(maxWidth / canvas.width, maxHeight / canvas.height);
-            const renderWidth = canvas.width * ratio;
-            const renderHeight = canvas.height * ratio;
-            const offsetX = (pageWidth - renderWidth) / 2;
-            const offsetY = (pageHeight - renderHeight) / 2;
 
             if (index > 0) {
-                pdf.addPage();
+                pdf.addPage([labelSize.widthMm, labelSize.heightMm], 'portrait');
             }
 
-            pdf.addImage(imageData, 'PNG', offsetX, offsetY, renderWidth, renderHeight, undefined, 'FAST');
+            pdf.addImage(imageData, 'PNG', 0, 0, labelSize.widthMm, labelSize.heightMm, undefined, 'FAST');
             exportCard.remove();
         }
 
@@ -1139,6 +1171,20 @@ const fetchDetail = async () => {
     }
 };
 
+const fetchLocationOptions = async () => {
+    try {
+        const { data } = await axios.get('/api/physical-locations/options');
+        locationOptions.value = {
+            offices: Array.isArray(data.offices) ? data.offices : [],
+            aisles: Array.isArray(data.aisles) ? data.aisles : [],
+            shelves: Array.isArray(data.shelves) ? data.shelves : [],
+        };
+    } catch (error) {
+        console.error('Error cargando ubicaciones fisicas:', error);
+        locationOptions.value = { offices: [], aisles: [], shelves: [] };
+    }
+};
+
 const isReviewMode = computed(() => ['review', 'unitAuthorization'].includes(transfer.value?.mode));
 const isProcessPage = computed(() => route.name === 'solicitudes-transferencia-proceso');
 const canViewBoxLocationLabels = computed(() => Boolean(transfer.value?.canViewBoxLocationLabels));
@@ -1150,7 +1196,9 @@ const showDescription = computed(() => Boolean(transfer.value?.description));
 const showPrintCard = computed(() => canViewBoxLocationLabels.value && Boolean(transfer.value?.showPrintCard) && !transfer.value?.scheduledSummary);
 const hasReviewActions = computed(() => (transfer.value?.actions?.length ?? 0) > 0);
 
-onMounted(fetchDetail);
+onMounted(async () => {
+    await Promise.all([fetchLocationOptions(), fetchDetail()]);
+});
 </script>
 
 <template>
@@ -1256,20 +1304,41 @@ onMounted(fetchDetail);
                         <h4><i class="pi pi-map-marker"></i> Asignar Ubicación Física</h4>
                         <div class="detalle-process-box__fields">
                             <label>
-                                <span>Pasillo/Área *</span>
-                                <Dropdown v-model="ensureBoxLocation(box).aisle" :options="aisleOptions" placeholder="Seleccionar" fluid />
+                                <span>Oficina *</span>
+                                <Dropdown
+                                    v-model="ensureBoxLocation(box).office_id"
+                                    :options="locationOptions.offices"
+                                    optionLabel="name"
+                                    optionValue="id"
+                                    placeholder="Seleccionar"
+                                    fluid
+                                    @change="onBoxOfficeChange(box)"
+                                />
+                            </label>
+                            <label>
+                                <span>Pasillo *</span>
+                                <Dropdown
+                                    v-model="ensureBoxLocation(box).aisle_id"
+                                    :options="aisleOptionsForLocation(ensureBoxLocation(box))"
+                                    optionLabel="name"
+                                    optionValue="id"
+                                    placeholder="Seleccionar"
+                                    fluid
+                                    :disabled="!ensureBoxLocation(box).office_id"
+                                    @change="onBoxAisleChange(box)"
+                                />
                             </label>
                             <label>
                                 <span>Estante *</span>
-                                <Dropdown v-model="ensureBoxLocation(box).shelf" :options="shelfOptions" placeholder="Seleccionar" fluid />
-                            </label>
-                            <label>
-                                <span>Nivel *</span>
-                                <Dropdown v-model="ensureBoxLocation(box).level" :options="levelOptions" placeholder="Seleccionar" fluid />
-                            </label>
-                            <label>
-                                <span>Posición *</span>
-                                <Dropdown v-model="ensureBoxLocation(box).position" :options="positionOptions" placeholder="Seleccionar" fluid />
+                                <Dropdown
+                                    v-model="ensureBoxLocation(box).shelf_id"
+                                    :options="shelfOptionsForLocation(ensureBoxLocation(box))"
+                                    optionLabel="name"
+                                    optionValue="id"
+                                    placeholder="Seleccionar"
+                                    fluid
+                                    :disabled="!ensureBoxLocation(box).aisle_id"
+                                />
                             </label>
                         </div>
                         <div v-if="isBoxLocated(box.number)" class="detalle-process-box__location-code">
@@ -1481,8 +1550,8 @@ onMounted(fetchDetail);
                         <i class="pi pi-print text-xl"></i>
                     </div>
                     <div>
-                        <h3 class="m-0 text-900 text-xl font-bold">Etiquetas de Identificacion</h3>
-                        <p class="m-0 text-600 mt-2">Imprima las etiquetas con codigos QR para identificar y ubicar facilmente las cajas</p>
+                        <h3 class="m-0 text-900 text-xl font-bold">Etiquetas de Identificación</h3>
+                        <p class="m-0 text-600 mt-2">Imprima las etiquetas con códigos QR para identificar y ubicar facilmente las cajas</p>
                     </div>
                 </div>
                 <Button label="Imprimir etiquetas" icon="pi pi-print" class="detalle-print-card__button" @click="openLabelsPreview" />
@@ -1618,7 +1687,7 @@ onMounted(fetchDetail);
                                     <div class="detalle-value">{{ transfer.responsible }}</div>
                                 </div>
                                 <div v-if="transfer.authorizedAt">
-                                    <span class="detalle-label">Fecha de autorizacion</span>
+                                    <span class="detalle-label">Fecha de autorización</span>
                                     <div class="detalle-value">{{ transfer.authorizedAt }}</div>
                                 </div>
                             </div>
@@ -1761,7 +1830,7 @@ onMounted(fetchDetail);
                                         <thead>
                                             <tr>
                                                 <th>Nombre del documento</th>
-                                                <th>Codigo</th>
+                                                <th>Código</th>
                                                 <th>Serie del documento</th>
                                                 <th class="ugda-chip-table-cell">Soporte</th>
                                                 <th>Año</th>
@@ -1899,7 +1968,7 @@ onMounted(fetchDetail);
                                 <div class="detalle-value">{{ transfer.responsible }}</div>
                             </div>
                             <div v-if="transfer.authorizedAt">
-                                <span class="detalle-label">Fecha de autorizacion</span>
+                                <span class="detalle-label">Fecha de autorización</span>
                                 <div class="detalle-value">{{ transfer.authorizedAt }}</div>
                             </div>
                         </div>
@@ -2007,7 +2076,7 @@ onMounted(fetchDetail);
                                     <thead>
                                         <tr>
                                             <th>Nombre del documento</th>
-                                            <th>Codigo</th>
+                                            <th>Código</th>
                                             <th>Serie del documento</th>
                                             <th class="ugda-chip-table-cell">Soporte</th>
                                             <th>Año</th>
@@ -2396,20 +2465,41 @@ onMounted(fetchDetail);
                                 <h4><i class="pi pi-map-marker"></i> Asignar Ubicación Física</h4>
                                 <div class="detalle-process-box__fields">
                                     <label>
-                                        <span>Pasillo/Área *</span>
-                                        <Dropdown v-model="ensureBoxLocation(box).aisle" :options="aisleOptions" placeholder="Seleccionar" fluid />
+                                        <span>Oficina *</span>
+                                        <Dropdown
+                                            v-model="ensureBoxLocation(box).office_id"
+                                            :options="locationOptions.offices"
+                                            optionLabel="name"
+                                            optionValue="id"
+                                            placeholder="Seleccionar"
+                                            fluid
+                                            @change="onBoxOfficeChange(box)"
+                                        />
+                                    </label>
+                                    <label>
+                                        <span>Pasillo *</span>
+                                        <Dropdown
+                                            v-model="ensureBoxLocation(box).aisle_id"
+                                            :options="aisleOptionsForLocation(ensureBoxLocation(box))"
+                                            optionLabel="name"
+                                            optionValue="id"
+                                            placeholder="Seleccionar"
+                                            fluid
+                                            :disabled="!ensureBoxLocation(box).office_id"
+                                            @change="onBoxAisleChange(box)"
+                                        />
                                     </label>
                                     <label>
                                         <span>Estante *</span>
-                                        <Dropdown v-model="ensureBoxLocation(box).shelf" :options="shelfOptions" placeholder="Seleccionar" fluid />
-                                    </label>
-                                    <label>
-                                        <span>Nivel *</span>
-                                        <Dropdown v-model="ensureBoxLocation(box).level" :options="levelOptions" placeholder="Seleccionar" fluid />
-                                    </label>
-                                    <label>
-                                        <span>Posición *</span>
-                                        <Dropdown v-model="ensureBoxLocation(box).position" :options="positionOptions" placeholder="Seleccionar" fluid />
+                                        <Dropdown
+                                            v-model="ensureBoxLocation(box).shelf_id"
+                                            :options="shelfOptionsForLocation(ensureBoxLocation(box))"
+                                            optionLabel="name"
+                                            optionValue="id"
+                                            placeholder="Seleccionar"
+                                            fluid
+                                            :disabled="!ensureBoxLocation(box).aisle_id"
+                                        />
                                     </label>
                                 </div>
                                 <div v-if="isBoxLocated(box.number)" class="detalle-process-box__location-code">
@@ -2531,7 +2621,7 @@ onMounted(fetchDetail);
         :closable="false"
         :showHeader="false"
         :contentStyle="{ padding: '0', overflow: 'hidden' }"
-        :style="{ width: 'min(1200px, 96vw)' }"
+        :style="{ width: 'min(900px, 96vw)', maxWidth: '900px', maxHeight: '80vh' }"
     >
         <div class="detalle-labels-modal">
             <div class="detalle-labels-modal__header">
@@ -2540,7 +2630,7 @@ onMounted(fetchDetail);
                         <i class="pi pi-box"></i>
                     </div>
                     <div>
-                        <h2 class="detalle-labels-modal__title m-0">Etiquetas de Identificacion</h2>
+                        <h2 class="detalle-labels-modal__title m-0">Etiquetas de Identificación</h2>
                         <p class="detalle-labels-modal__subtitle m-0">
                             Vista previa de {{ labelPreviewItems.length }} etiquetas para la transferencia #{{ transfer?.number }}
                         </p>
@@ -2563,7 +2653,11 @@ onMounted(fetchDetail);
             </div>
 
             <div class="detalle-labels-modal__body">
-                <div ref="labelsPreviewRef" class="detalle-labels-preview">
+                <div
+                    ref="labelsPreviewRef"
+                    class="detalle-labels-preview"
+                    :style="{ overflow: 'auto', maxHeight: 'calc(80vh - 140px)', padding: '1rem' }"
+                >
                     <article
                         v-for="(label, index) in labelPreviewItems"
                         :key="label.labelCode"
@@ -2583,18 +2677,18 @@ onMounted(fetchDetail);
 
                         <div class="transfer-label__hero">
                             <div class="transfer-label__qr">
-                                <img :src="label.qrDataUrl" :alt="`Codigo QR ${label.labelCode}`" />
-                                <span>Codigo: {{ label.labelCode }}</span>
+                                <img :src="label.qrDataUrl" :alt="`Código QR ${label.labelCode}`" />
+                                <span>Código: {{ label.labelCode }}</span>
                             </div>
 
                             <div class="transfer-label__hero-main">
                                 <div class="transfer-label__location">
-                                    <span>CODIGO DE UBICACION</span>
+                                    <span>CÓDIGO DE UBICACIÓN</span>
                                     <strong>{{ label.locationCode }}</strong>
                                 </div>
 
                                 <div class="transfer-label__box">
-                                    <span>Numero de caja</span>
+                                    <span>N° de caja</span>
                                     <strong>{{ label.boxLabel }}</strong>
                                 </div>
                             </div>
@@ -2817,8 +2911,8 @@ onMounted(fetchDetail);
 }
 
 .detalle-decision-modal__button--primary {
-    background: #98b6d2;
-    color: #ffffff;
+    background: var(--ugda-brand);
+    color: var(--ugda-text-inverse);
 }
 
 .detalle-decision-modal__button--warning {
@@ -2827,8 +2921,12 @@ onMounted(fetchDetail);
 }
 
 .detalle-decision-modal__button--danger {
-    background: #eda3a0;
+    background: #ef4444;
     color: #ffffff;
+}
+
+.detalle-decision-modal__button--danger:hover:not(:disabled) {
+    background: #dc2626;
 }
 
 .detalle-decision-modal__button--cancel {
@@ -2841,8 +2939,8 @@ onMounted(fetchDetail);
 }
 
 .detalle-decision-modal__button--cancel-primary {
-    border-color: #2f6f9f;
-    color: #2f6f9f;
+    border-color: var(--ugda-border-strong);
+    color: var(--ugda-text-secondary);
 }
 
 .detalle-decision-modal__button--cancel-warning {
@@ -3097,8 +3195,15 @@ onMounted(fetchDetail);
 }
 
 .detalle-print-card__button {
-    background: #10b981;
-    border: none;
+    background: var(--ugda-success) !important;
+    border: 1px solid var(--ugda-success) !important;
+    color: var(--ugda-text-inverse) !important;
+}
+
+.detalle-print-card__button:hover:not(:disabled) {
+    background: var(--ugda-success-text) !important;
+    border-color: var(--ugda-success-text) !important;
+    color: var(--ugda-text-inverse) !important;
 }
 
 .detalle-observation-card {
@@ -3674,8 +3779,8 @@ onMounted(fetchDetail);
 }
 
 .detalle-action--primary {
-    background: #2f6f9f;
-    color: #ffffff;
+    background: var(--ugda-brand);
+    color: var(--ugda-text-inverse);
 }
 
 .detalle-action--success {
@@ -4682,9 +4787,15 @@ onMounted(fetchDetail);
 }
 
 .detalle-labels-modal__button--primary {
-    background: #2f6f9f;
-    border: 1px solid #2f6f9f;
-    color: #ffffff;
+    background: var(--ugda-success);
+    border: 1px solid var(--ugda-success);
+    color: var(--ugda-text-inverse);
+}
+
+.detalle-labels-modal__button--primary:hover:not(:disabled) {
+    background: var(--ugda-success-text);
+    border-color: var(--ugda-success-text);
+    color: var(--ugda-text-inverse);
 }
 
 .detalle-labels-modal__close {
@@ -4698,68 +4809,76 @@ onMounted(fetchDetail);
 
 .detalle-labels-modal__body {
     padding: 0 1.5rem 1.5rem;
+    margin-bottom: 1.5rem;
 }
 
 .detalle-labels-preview {
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
     max-height: calc(100vh - 12.5rem);
-    overflow-x: hidden;
+    overflow-x: auto;
     overflow-y: auto;
-    padding: 0.25rem 0.5rem 1rem 0;
+    padding: 0.25rem 0 1rem;
 }
 
 .transfer-label {
     background: #ffffff;
     border: 2px solid #1f2937;
-    border-radius: 1.6rem;
-    overflow: visible;
-    min-height: auto;
-    height: auto;
-    display: block;
-    margin-bottom: 1.25rem;
+    border-radius: 0.5cm;
+    display: flex;
+    flex-direction: column;
+    height: 18cm;
+    min-height: 18cm;
+    margin-bottom: 0;
+    max-width: none;
+    overflow: hidden;
+    width: 10cm;
 }
 
 .transfer-label--export {
-    min-height: auto !important;
-    height: auto !important;
+    height: 18cm !important;
     margin-bottom: 0 !important;
+    max-width: none !important;
+    min-height: 18cm !important;
+    width: 10cm !important;
 }
 
 .transfer-label--export .transfer-label__footer {
-    margin-top: 0;
-}
-
-.transfer-label:last-child {
-    margin-bottom: 0;
+    margin-top: auto;
 }
 
 .transfer-label__header,
 .transfer-label__hero,
 .transfer-label__details {
-    display: flex;
-    justify-content: space-between;
-    gap: 1.5rem;
+    display: grid;
+    gap: 0.35cm;
 }
 
 .transfer-label__header {
-    padding: 1.45rem 1.5rem 1rem;
-    border-bottom: 1px solid #dbe5ee;
     align-items: flex-start;
+    border-bottom: 1px solid #dbe5ee;
+    grid-template-columns: 1fr auto;
+    padding: 0.58cm 0.55cm 0.36cm;
 }
 
 .transfer-label__university {
     color: #0f172a;
-    font-size: 1.35rem;
-    font-weight: 800;
+    font-size: 0.44cm;
+    font-weight: 700;
+    line-height: 1.15;
 }
 
 .transfer-label__faculty {
     color: #64748b;
-    margin-top: 0.35rem;
-    font-size: 0.95rem;
+    font-size: 0.28cm;
+    line-height: 1.25;
+    margin-top: 0.12cm;
 }
 
 .transfer-label__date {
-    min-width: 12rem;
+    min-width: 2.25cm;
     text-align: right;
 }
 
@@ -4769,108 +4888,105 @@ onMounted(fetchDetail);
 .transfer-label__assigned,
 .transfer-label__qr span {
     color: #64748b;
-    font-size: 0.85rem;
+    font-size: 0.25cm;
+    line-height: 1.25;
 }
 
 .transfer-label__date strong {
     display: block;
-    margin-top: 0.45rem;
     color: #0f172a;
-    font-size: 1.2rem;
+    font-size: 0.34cm;
+    line-height: 1.2;
+    margin-top: 0.12cm;
 }
 
 .transfer-label__hero {
-    padding: 1.15rem 1.5rem;
     align-items: center;
     border-bottom: 1px solid #dbe5ee;
+    grid-template-columns: 1fr;
+    padding: 0.42cm 0.55cm;
 }
 
 .transfer-label__qr {
-    width: 8.5rem;
     text-align: center;
-    flex-shrink: 0;
 }
 
 .transfer-label__qr img {
-    width: 6rem;
-    height: 6rem;
+    height: 2.8cm;
     display: block;
-    margin: 0 auto 0.55rem;
+    margin: 0 auto 0.12cm;
+    width: 2.8cm;
 }
 
 .transfer-label__hero-main {
-    flex: 1;
+    min-width: 0;
 }
 
 .transfer-label__location {
     background: #2f6f9f;
-    border-radius: 1rem;
-    padding: 1rem 1.2rem;
-    text-align: center;
     color: #ffffff;
+    border-radius: 0.32cm;
+    padding: 0.34cm 0.36cm;
+    text-align: center;
 }
 
 .transfer-label__location span {
     display: block;
-    font-size: 0.78rem;
+    font-size: 0.25cm;
     font-weight: 700;
-    letter-spacing: 0.05em;
 }
 
 .transfer-label__location strong {
     display: block;
-    margin-top: 0.45rem;
-    font-size: 2rem;
-    font-weight: 800;
-    letter-spacing: 0.08em;
+    font-size: 0.7cm;
+    font-weight: 700;
+    letter-spacing: 0;
+    line-height: 1.05;
+    margin-top: 0.14cm;
 }
 
 .transfer-label__box {
-    margin-top: 0.9rem;
-    border-radius: 0.95rem;
     background: #edf3fa;
-    padding: 0.8rem 1rem;
+    border-radius: 0.28cm;
+    margin-top: 0.28cm;
+    padding: 0.3cm 0.36cm;
 }
 
 .transfer-label__box strong {
     display: block;
-    margin-top: 0.25rem;
-    font-size: 1.8rem;
     color: #0f172a;
+    font-size: 0.58cm;
+    line-height: 1.1;
+    margin-top: 0.1cm;
 }
 
 .transfer-label__details {
-    padding: 1.15rem 1.5rem 0.8rem;
-    flex-wrap: wrap;
-}
-
-.transfer-label__details > div {
-    flex: 1 1 14rem;
+    grid-template-columns: 1fr;
+    padding: 0.42cm 0.55cm 0.24cm;
 }
 
 .transfer-label__details strong {
     display: block;
-    margin-top: 0.45rem;
     color: #0f172a;
-    font-size: 1.05rem;
-}
-
-.transfer-label__details--full {
-    flex-basis: 100%;
+    font-size: 0.33cm;
+    line-height: 1.25;
+    margin-top: 0.08cm;
 }
 
 .transfer-label__assigned {
-    margin: 0 1.5rem;
-    padding: 0.85rem 0 1rem;
     border-top: 1px solid #dbe5ee;
+    margin: 0 0.55cm;
+    padding: 0.3cm 0;
 }
 
 .transfer-label__footer {
     background: #fff7db;
     color: #b45309;
-    padding: 0.8rem 1.5rem;
-    font-size: 0.78rem;
+    font-size: 0.24cm;
     font-weight: 700;
+    line-height: 1.3;
+    margin-top: auto;
+    padding: 0.28cm 0.55cm;
 }
 
 @media (max-width: 991px) {
@@ -4971,21 +5087,18 @@ onMounted(fetchDetail);
     }
 
     .transfer-label {
-        min-height: auto;
+        height: 18cm;
+        min-height: 18cm;
+        width: 10cm;
     }
 
     .detalle-labels-modal__header,
-    .transfer-label__header,
-    .transfer-label__hero,
-    .transfer-label__details,
     .detalle-labels-modal__body {
         padding-left: 1rem;
         padding-right: 1rem;
     }
 
-    .detalle-labels-modal__header,
-    .transfer-label__header,
-    .transfer-label__hero {
+    .detalle-labels-modal__header {
         flex-direction: column;
     }
 
@@ -4997,14 +5110,8 @@ onMounted(fetchDetail);
         flex: 1 1 13rem;
     }
 
-    .transfer-label__date,
-    .transfer-label__qr {
-        width: 100%;
-        text-align: left;
-    }
-
-    .transfer-label__qr img {
-        margin-left: 0;
+    .transfer-label__date {
+        text-align: right;
     }
 }
 

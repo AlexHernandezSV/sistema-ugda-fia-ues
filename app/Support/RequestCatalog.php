@@ -197,13 +197,13 @@ class RequestCatalog
                     : null),
             'workflowNotice' => $isUnitDirectorReview
                 ? [
-                    'title' => 'Solicitud pendiente de autorizacion',
-                    'description' => 'Esta transferencia debe ser autorizada por la jefatura de la unidad productora antes de pasar a gestion UGDA.',
+                    'title' => 'Solicitud pendiente de autorización',
+                    'description' => 'Esta transferencia debe ser autorizada por la jefatura de la unidad productora antes de pasar a gestión UGDA.',
                 ]
                 : ($isUgdaReview && $workflowCode === 'transfer_status_pending'
                 ? [
-                    'title' => 'Solicitud pendiente de gestion',
-                    'description' => 'Esta solicitud ha sido autorizada por la jefatura de unidad y requiere gestion de la UGDA para continuar el proceso.',
+                    'title' => 'Solicitud pendiente de gestión',
+                    'description' => 'Esta solicitud ha sido autorizada por la jefatura de unidad y requiere gestión de la UGDA para continuar el proceso.',
                 ]
                 : null),
             'physicalObservations' => $isPhysicalReviewFlow && $observations->isNotEmpty()
@@ -277,6 +277,8 @@ class RequestCatalog
                 'searchStartedBy.person',
                 'searchCompletedBy.person',
                 'documents',
+                'documentModifications.document',
+                'documentModifications.registeredBy.person',
                 'events.actor.person',
                 'events.status',
                 'latestDispatch.deliveredBy.person',
@@ -329,20 +331,20 @@ class RequestCatalog
                 ? 'Solicitud #' . $loan->number . ' - ' . ($loan->unit?->name ?? 'Sin unidad')
                 : 'Detalle de la solicitud'),
             'mode' => $isUnitDirectorReview ? 'unitAuthorization' : ($isManage ? 'manage' : 'detail'),
-            'generalSectionTitle' => ($isManage || $isUnitDirectorReview) ? 'Datos Generales' : 'Informacion General',
+            'generalSectionTitle' => ($isManage || $isUnitDirectorReview) ? 'Datos Generales' : 'Información General',
             'documentsSectionTitle' => $workflowCode === 'loan_status_loaned' ? 'Documentos Prestados' : 'Documentos Solicitados',
             'authorizedBy' => self::userDisplayName($loan->authorizedBy),
             'authorizedAt' => self::formatDateTime($loan->authorized_at),
             'chips' => self::loanChips($loan),
             'workflowNotice' => $isUnitDirectorReview
                 ? [
-                    'title' => 'Solicitud de prestamo pendiente de autorizacion',
+                    'title' => 'Solicitud de prestamo pendiente de autorización',
                     'description' => 'Revise los documentos solicitados antes de tomar una decision.',
                 ]
                 : ($isManage && $workflowCode === 'loan_status_pending'
                 ? [
-                    'title' => 'Solicitud de prestamo pendiente de gestion',
-                    'description' => 'Esta solicitud ha sido autorizada por el Director y requiere su gestion.',
+                    'title' => 'Solicitud de prestamo pendiente de gestión',
+                    'description' => 'Esta solicitud ha sido autorizada por el Director y requiere su gestión.',
                 ]
                 : null),
             'observationsRegistered' => $observations->isNotEmpty()
@@ -363,8 +365,14 @@ class RequestCatalog
                     'description' => 'Los documentos estan siendo localizados en el archivo',
                 ]
                 : null,
-            'searchCompleted' => $isManage && in_array($searchCode, ['loan_search_completed', 'loan_search_not_found'], true) && $workflowCode === 'loan_status_authorized'
+            'searchCompleted' => in_array($searchCode, ['loan_search_completed', 'loan_search_not_found'], true)
+                && $workflowCode === 'loan_status_authorized'
                 ? self::buildLoanSearchCompleted($loan)
+                : null,
+            'readyForPickup' => !$canManageUgda
+                && in_array($searchCode, ['loan_search_completed', 'loan_search_not_found'], true)
+                && $workflowCode === 'loan_status_authorized'
+                ? self::buildLoanReadyForPickup($loan)
                 : null,
             'loanSummary' => $workflowCode === 'loan_status_loaned'
                 ? self::buildLoanSummary($loan)
@@ -376,6 +384,7 @@ class RequestCatalog
             'documentGroups' => $searchCode === 'loan_search_not_found' ? [] : self::mapLoanDocumentGroups($loan),
             'actions' => $isUnitDirectorReview ? self::loanUnitAuthorizationActions() : ($isManage ? self::loanActions($loan) : []),
             'loanRegistration' => $isManage ? self::buildLoanRegistrationConfig($loan) : null,
+            'documentModifications' => self::buildLoanDocumentModificationsConfig($loan, $viewer),
             'returnRegistration' => $isManage ? self::buildReturnRegistrationConfig($loan) : null,
             'history' => self::mapHistory($loan->events),
         ];
@@ -513,14 +522,14 @@ class RequestCatalog
             'alerts' => [
                 'count' => $alerts->count(),
                 'title' => match ($profile) {
-                    'Director/Jefe de Unidad' => 'solicitudes pendientes de autorizacion',
+                    'Director/Jefe de Unidad' => 'solicitudes pendientes de autorización',
                     'Unidad Solicitante' => 'solicitudes pendientes de seguimiento',
-                    default => 'solicitudes pendientes de gestion',
+                    default => 'solicitudes pendientes de gestión',
                 },
                 'description' => match ($profile) {
-                    'Director/Jefe de Unidad' => 'Las siguientes solicitudes requieren tu revision y autorizacion:',
+                    'Director/Jefe de Unidad' => 'Las siguientes solicitudes requieren tu revision y autorización:',
                     'Unidad Solicitante' => 'Las siguientes solicitudes requieren tu atencion o seguimiento:',
-                    default => 'Las siguientes solicitudes requieren gestion desde UGDA:',
+                    default => 'Las siguientes solicitudes requieren gestión desde UGDA:',
                 },
                 'items' => $alerts->map(fn ($item) => [
                     'type' => $item['type'],
@@ -761,6 +770,20 @@ class RequestCatalog
         ];
     }
 
+    private static function buildLoanReadyForPickup(Loan $loan): array
+    {
+        return [
+            'title' => 'Documentos Listos para Retiro',
+            'description' => 'El proceso de búsqueda ha finalizado. Los documentos solicitados están disponibles para su retiro.',
+            'instructions' => [
+                'Presente su identificación en el archivo de la UGDA',
+                'Mencione el número de préstamo: ' . $loan->number,
+                'Firme el registro de préstamo de documentos',
+                'Horario de atención: Lunes a Viernes, 8:00 AM - 4:00 PM',
+            ],
+        ];
+    }
+
     private static function buildLoanSummary(Loan $loan): ?array
     {
         $dispatch = $loan->latestDispatch;
@@ -814,6 +837,70 @@ class RequestCatalog
             'receivedBy' => self::userDisplayName($return->receivedBy),
             'condition' => $return->condition_label,
             'observations' => $return->observations,
+        ];
+    }
+
+    private static function buildLoanDocumentModificationsConfig(Loan $loan, ?User $viewer): ?array
+    {
+        $workflowCode = $loan->workflowStatus?->code;
+        $viewerCanEdit = $workflowCode === 'loan_status_loaned'
+            && !self::viewerCanManageUgda($viewer)
+            && $viewer?->activeProfile()?->name === 'Unidad Solicitante'
+            && self::viewerCanAccessRequestUnit($viewer, $loan->unit_id);
+        $modifications = $loan->documentModifications
+            ->sortBy('created_at')
+            ->values();
+
+        if (
+            $loan->authorizationStatus?->code !== 'loan_auth_authorized'
+            || !in_array($workflowCode, ['loan_status_loaned', 'loan_status_returned'], true)
+            || $loan->searchStatus?->code !== 'loan_search_completed'
+            || !self::viewerCanAccessRequestUnit($viewer, $loan->unit_id)
+            || (!$viewerCanEdit && $modifications->isEmpty())
+        ) {
+            return null;
+        }
+
+        $documents = $loan->documents
+            ->where('selected_for_loan', true)
+            ->values();
+
+        if ($documents->isEmpty()) {
+            return null;
+        }
+
+        return [
+            'title' => !$viewerCanEdit
+                ? 'Modificaciones Reportadas por el Solicitante'
+                : 'Modificaciones a Documentos',
+            'returnTitle' => 'Modificaciones reportadas por el solicitante',
+            'description' => !$viewerCanEdit
+                ? 'El solicitante registro ' . $modifications->count() . ' modificacion(es) sobre los documentos durante el periodo del prestamo.'
+                : ($modifications->isEmpty()
+                ? 'Si ha realizado alguna modificacion a los documentos que tiene en prestamo, registrela aqui. La UGDA vera esta información al recibir la devolución.'
+                : 'Ha registrado modificaciones en documentos prestados. Puede actualizar esta información cuando sea necesario.'),
+            'returnDescription' => 'El solicitante ha reportado las siguientes modificaciones realizadas a los documentos durante el periodo del prestamo:',
+            'buttonLabel' => $modifications->isEmpty() ? 'Registrar modificaciones' : 'Actualizar modificaciones',
+            'canEdit' => $viewerCanEdit,
+            'showInDetail' => $viewerCanEdit || $workflowCode === 'loan_status_returned',
+            'count' => $modifications->count(),
+            'documents' => $documents->map(fn ($document) => [
+                'id' => $document->id,
+                'title' => $document->title,
+                'series' => $document->series_label,
+                'box' => $document->box_code,
+                'year' => $document->year_label,
+                'documentType' => $document->document_type_label,
+                'documentTypeColor' => $document->document_type_tone,
+            ])->values()->all(),
+            'items' => $modifications->map(fn ($modification) => [
+                'id' => $modification->id,
+                'loanDocumentId' => $modification->loan_document_id,
+                'documentTitle' => $modification->document?->title ?? 'Documento',
+                'description' => $modification->description,
+                'registeredBy' => self::userDisplayName($modification->registeredBy),
+                'registeredAt' => self::formatDateTime($modification->created_at),
+            ])->values()->all(),
         ];
     }
 
@@ -910,7 +997,7 @@ class RequestCatalog
 
         if ($workflowCode === 'loan_status_loaned') {
             return [
-                ['key' => 'registerReturn', 'label' => 'Registrar devolucion', 'icon' => 'pi pi-check-circle', 'variant' => 'muted'],
+                ['key' => 'registerReturn', 'label' => 'Registrar devolución', 'icon' => 'pi pi-check-circle', 'variant' => 'muted'],
                 ['key' => 'back', 'label' => 'Volver', 'icon' => null, 'variant' => 'secondary'],
             ];
         }
@@ -972,13 +1059,13 @@ class RequestCatalog
             ->values();
 
         return [
-            'title' => 'Registrar Devolucion de Documentos',
+            'title' => 'Registrar Devolución de Documentos',
             'subtitle' => 'Seleccione los documentos que se estan devolviendo e ingrese los detalles',
             'helperTitle' => 'Seleccione los documentos que se devuelven',
             'helperText' => 'Marque los documentos que el usuario esta devolviendo en este momento',
             'selectAllLabel' => 'Seleccionar todos',
             'documentsTitle' => $documents->first()->group_title ?? 'Documentos prestados',
-            'selectionSummary' => 'Documentos seleccionados para devolucion: {count} de {total}',
+            'selectionSummary' => 'Documentos seleccionados para devolución: {count} de {total}',
             'defaultCondition' => 'Documentos devueltos en buen estado',
             'documents' => $documents->map(fn ($document) => [
                 'id' => $document->id,

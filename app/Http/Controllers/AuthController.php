@@ -115,7 +115,7 @@ class AuthController extends Controller
                 return $this->lockoutResponse($throttleKey);
             }
 
-            return response()->json(['message' => 'La contrasena temporal no es valida.'], 401);
+            return response()->json(['message' => 'La contrasena temporal no es válida.'], 401);
         }
 
         $this->clearFailedAttempts($throttleKey);
@@ -171,7 +171,7 @@ class AuthController extends Controller
                 return $this->lockoutResponse($throttleKey);
             }
 
-            return response()->json(['message' => 'El codigo es incorrecto o ha expirado.'], 401);
+            return response()->json(['message' => 'El código es incorrecto o ha expirado.'], 401);
         }
 
         if (($user->two_factor_method ?: 'email') === 'authenticator') {
@@ -187,7 +187,7 @@ class AuthController extends Controller
                 return $this->lockoutResponse($throttleKey);
             }
 
-            return response()->json(['message' => 'El codigo es incorrecto o ha expirado.'], 401);
+            return response()->json(['message' => 'El código es incorrecto o ha expirado.'], 401);
         }
 
         if ($user->two_factor_code &&
@@ -210,7 +210,7 @@ class AuthController extends Controller
             return $this->lockoutResponse($throttleKey);
         }
 
-        return response()->json(['message' => 'El codigo es incorrecto o ha expirado.'], 401);
+        return response()->json(['message' => 'El código es incorrecto o ha expirado.'], 401);
     }
 
     public function logout(Request $request)
@@ -232,7 +232,7 @@ class AuthController extends Controller
 
         if ($method === 'authenticator' && $user->two_factor_secret && $user->two_factor_confirmed_at) {
             return response()->json([
-                'message' => 'Ingrese el codigo de su aplicacion autenticadora.',
+                'message' => 'Ingrese el código de su aplicación autenticadora.',
                 'require_2fa' => true,
                 'two_factor_method' => 'authenticator',
                 'email' => $user->email,
@@ -252,7 +252,7 @@ class AuthController extends Controller
         $user->save();
 
         return response()->json([
-            'message' => 'Codigo enviado',
+            'message' => 'Código enviado',
             'require_2fa' => true,
             'two_factor_method' => 'email',
             'email' => $user->email,

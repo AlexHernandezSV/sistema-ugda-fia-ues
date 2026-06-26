@@ -265,7 +265,7 @@ onMounted(fetchCatalog);
         <div class="prestamo-info">
             <i class="pi pi-info-circle"></i>
             <div>
-                <strong>Informacion importante</strong>
+                <strong>Información importante</strong>
                 <p>Esta solicitud es para documentos que ya fueron transferidos y se encuentran bajo custodia de la UGDA. El prestamo debe ser autorizado por el Director/Jefe y luego sera revisado por el personal de archivo.</p>
             </div>
         </div>
@@ -452,7 +452,7 @@ onMounted(fetchCatalog);
                 <div class="prestamo-confirm__body">
                     <div class="prestamo-confirm__notice">
                         <i class="pi pi-info-circle"></i>
-                        <strong>Al confirmar, esta solicitud sera enviada para autorizacion del Director/Jefe y luego sera revisada por el personal de UGDA</strong>
+                        <strong>Al confirmar, esta solicitud será enviada para autorización del Director/Jefe y luego sera revisada por el personal de UGDA</strong>
                     </div>
 
                     <div class="prestamo-confirm__section">
@@ -537,7 +537,7 @@ onMounted(fetchCatalog);
 .prestamo-title,
 .prestamo-section h2 {
     color: #2f6f9f;
-    font-weight: 800;
+    font-weight: var(--ugda-weight-medium);
 }
 
 .prestamo-title {
@@ -846,9 +846,9 @@ onMounted(fetchCatalog);
 }
 
 .prestamo-primary {
-    background: #2f6f9f;
-    border: 1px solid #2f6f9f;
-    color: #ffffff;
+    background: var(--ugda-brand);
+    border: 1px solid var(--ugda-brand);
+    color: var(--ugda-text-inverse);
 }
 
 .prestamo-primary:disabled {
@@ -857,9 +857,9 @@ onMounted(fetchCatalog);
 }
 
 .prestamo-secondary {
-    background: #ffffff;
-    border: 1px solid #cbd5e1;
-    color: #475569;
+    background: var(--ugda-surface-card);
+    border: 1px solid var(--ugda-border-strong);
+    color: var(--ugda-text-secondary);
 }
 
 :global(.prestamo-confirm-dialog .p-dialog-header) {

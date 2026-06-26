@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\DocumentarySeries;
+use App\Models\PhysicalLocationShelf;
 use App\Models\RequestStatusCatalog;
 use App\Models\Transfer;
 use App\Models\TransferBox;
@@ -51,12 +52,7 @@ class ArchiveController extends Controller
                         'code' => $series->code,
                     ])
                     ->values(),
-                'locations' => [
-                    'aisles' => range('A', 'D'),
-                    'shelves' => range(1, 20),
-                    'levels' => range(1, 5),
-                    'positions' => range(1, 20),
-                ],
+                'locations' => $this->locationOptions(),
                 'support_types' => ['Fisico', 'Digital', 'Mixto'],
             ]);
         } catch (Throwable $exception) {
@@ -143,10 +139,9 @@ class ArchiveController extends Controller
             'series_id' => ['required', 'exists:documentary_series,id'],
             'start_year' => ['required', 'integer', 'min:1900', 'max:2100'],
             'end_year' => ['required', 'integer', 'min:1900', 'max:2100', 'gte:start_year'],
-            'aisle' => ['required', 'string', 'max:20'],
-            'shelf' => ['required', 'string', 'max:20'],
-            'level' => ['required', 'string', 'max:20'],
-            'position' => ['required', 'string', 'max:20'],
+            'office_id' => ['required', 'integer', 'exists:physical_location_offices,id'],
+            'aisle_id' => ['required', 'integer', 'exists:physical_location_aisles,id'],
+            'shelf_id' => ['required', 'integer', 'exists:physical_location_shelves,id'],
             'documents' => ['nullable', 'array'],
             'documents.*.series' => ['nullable', 'string', 'max:2000'],
             'documents.*.code' => ['nullable', 'string', 'max:120'],
@@ -160,6 +155,9 @@ class ArchiveController extends Controller
             'box_number.required' => 'El numero de caja es obligatorio.',
             'unit_id.required' => 'Debe seleccionar la unidad productora.',
             'series_id.required' => 'Debe seleccionar la serie documental.',
+            'office_id.required' => 'Debe seleccionar la oficina.',
+            'aisle_id.required' => 'Debe seleccionar el pasillo.',
+            'shelf_id.required' => 'Debe seleccionar el estante.',
             'end_year.gte' => 'El ano final no puede ser menor que el ano inicial.',
             'documents.*.name.required_with' => 'El nombre del documento es obligatorio.',
         ]);
@@ -171,8 +169,20 @@ class ArchiveController extends Controller
             ], 422);
         }
 
+        $selectedShelf = $this->findValidShelf(
+            (int) $request->input('office_id'),
+            (int) $request->input('aisle_id'),
+            (int) $request->input('shelf_id')
+        );
+
+        if ($selectedShelf === null) {
+            return response()->json([
+                'message' => 'La ubicacion fisica seleccionada no respeta la relacion oficina, pasillo y estante.',
+            ], 422);
+        }
+
         try {
-            $box = DB::transaction(function () use ($request) {
+            $box = DB::transaction(function () use ($request, $selectedShelf) {
                 $series = DocumentarySeries::query()->findOrFail((int) $request->input('series_id'));
                 $now = now();
                 $transferredStatus = RequestStatusCatalog::query()
@@ -204,12 +214,7 @@ class ArchiveController extends Controller
                 $boxNumber = (int) $request->input('box_number');
                 $startYear = (int) $request->input('start_year');
                 $endYear = (int) $request->input('end_year');
-                $locationCode = $this->buildLocationCode(
-                    (string) $request->input('aisle'),
-                    (string) $request->input('shelf'),
-                    (string) $request->input('level'),
-                    (string) $request->input('position')
-                );
+                $locationCode = $this->buildLocationCode($selectedShelf);
 
                 $box = $transfer->boxes()->create([
                     'series_name' => $series->name,
@@ -560,13 +565,84 @@ class ArchiveController extends Controller
         return $prefix . str_pad((string) (($last ?? 0) + 1), 4, '0', STR_PAD_LEFT);
     }
 
-    private function buildLocationCode(string $aisle, string $shelf, string $level, string $position): string
+    private function locationOptions(): array
     {
-        $aisleCode = strtoupper(trim($aisle));
-        $shelfCode = str_pad((string) (int) $shelf, 2, '0', STR_PAD_LEFT);
-        $levelCode = trim($level);
-        $positionCode = str_pad((string) (int) $position, 2, '0', STR_PAD_LEFT);
+        $offices = \App\Models\PhysicalLocationOffice::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'code'])
+            ->map(fn ($office) => [
+                'id' => $office->id,
+                'name' => $office->name,
+                'code' => $office->code,
+            ])
+            ->values();
 
-        return $aisleCode . '-' . $shelfCode . '-' . $levelCode . '-' . $positionCode;
+        $aisles = \App\Models\PhysicalLocationAisle::query()
+            ->with('office:id,name,is_active')
+            ->where('is_active', true)
+            ->whereHas('office', fn ($query) => $query->where('is_active', true))
+            ->orderBy('name')
+            ->get(['id', 'physical_location_office_id', 'name', 'code'])
+            ->map(fn ($aisle) => [
+                'id' => $aisle->id,
+                'office_id' => $aisle->physical_location_office_id,
+                'office_name' => $aisle->office?->name,
+                'name' => $aisle->name,
+                'code' => $aisle->code,
+            ])
+            ->values();
+
+        $shelves = PhysicalLocationShelf::query()
+            ->with('aisle.office:id,name,is_active')
+            ->where('is_active', true)
+            ->whereHas('aisle', fn ($query) => $query->where('is_active', true)->whereHas('office', fn ($office) => $office->where('is_active', true)))
+            ->orderBy('name')
+            ->get(['id', 'physical_location_aisle_id', 'name', 'code'])
+            ->map(fn (PhysicalLocationShelf $shelf) => [
+                'id' => $shelf->id,
+                'aisle_id' => $shelf->physical_location_aisle_id,
+                'aisle_name' => $shelf->aisle?->name,
+                'office_id' => $shelf->aisle?->physical_location_office_id,
+                'office_name' => $shelf->aisle?->office?->name,
+                'name' => $shelf->name,
+                'code' => $shelf->code,
+            ])
+            ->values();
+
+        return [
+            'offices' => $offices,
+            'aisles' => $aisles,
+            'shelves' => $shelves,
+        ];
+    }
+
+    private function findValidShelf(int $officeId, int $aisleId, int $shelfId): ?PhysicalLocationShelf
+    {
+        return PhysicalLocationShelf::query()
+            ->with('aisle.office')
+            ->where('id', $shelfId)
+            ->where('is_active', true)
+            ->where('physical_location_aisle_id', $aisleId)
+            ->whereHas('aisle', fn ($query) => $query
+                ->where('id', $aisleId)
+                ->where('is_active', true)
+                ->where('physical_location_office_id', $officeId)
+                ->whereHas('office', fn ($office) => $office->where('is_active', true)))
+            ->first();
+    }
+
+    private function buildLocationCode(PhysicalLocationShelf $shelf): string
+    {
+        $shelf->loadMissing('aisle.office');
+
+        return collect([
+            $shelf->aisle?->office?->code,
+            $shelf->aisle?->code,
+            $shelf->code,
+        ])
+            ->map(fn ($code) => strtoupper(trim((string) $code)))
+            ->filter()
+            ->implode('-');
     }
 }

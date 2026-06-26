@@ -87,9 +87,9 @@ const printLabel = (box) => {
             <head>
                 <title>Etiqueta Caja ${box.number}</title>
                 <style>
-                    body { font-family: Arial, sans-serif; padding: 24px; }
-                    .label { border: 2px solid #0f4c8f; padding: 24px; width: 360px; }
-                    h1 { color: #0f4c8f; margin: 0 0 12px; }
+                    body { font-family: 'Instrument Sans', Arial, Helvetica, sans-serif; padding: 24px; }
+                    .label { border: 2px solid #1560bd; padding: 24px; width: 360px; }
+                    h1 { color: #1560bd; margin: 0 0 12px; }
                     p { margin: 8px 0; font-size: 14px; }
                     strong { display: block; font-size: 18px; margin-top: 6px; }
                 </style>
@@ -155,7 +155,7 @@ onMounted(fetchBoxes);
                 Volver
             </button>
             <span class="archive-header-separator"></span>
-            <h1 class="mobile-page-title">Gestion de Archivo General</h1>
+            <h1 class="mobile-page-title">Gestión de Archivo General</h1>
         </header>
 
         <main class="archive-management-main">
@@ -257,7 +257,7 @@ onMounted(fetchBoxes);
                 class="archive-documents-table"
             >
                 <Column field="series" header="Serie" />
-                <Column field="code" header="Codigo" />
+                <Column field="code" header="Código" />
                 <Column field="name" header="Nombre" />
                 <Column field="year" header="Ano" />
                 <Column field="support" header="Soporte" />

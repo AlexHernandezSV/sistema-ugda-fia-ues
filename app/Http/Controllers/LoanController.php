@@ -214,7 +214,7 @@ class LoanController extends Controller
             app(SystemNotificationService::class)->loanCreated($loan->fresh(['unit']), $request->user());
 
             return response()->json([
-                'message' => 'Solicitud de prestamo registrada correctamente.',
+                'message' => 'La solicitud de prestamo #' . $loan->number . ' fue registrada por la Unidad solicitante y enviada a Director de unidad para autorización.',
                 'number' => $loan->number,
             ], 201);
         } catch (Throwable $exception) {
@@ -234,7 +234,7 @@ class LoanController extends Controller
 
         if ($validator->fails()) {
             return response()->json([
-                'message' => 'Los datos de autorizacion no son validos.',
+                'message' => 'Los datos de autorización no son válidos.',
                 'errors' => $validator->errors(),
             ], 422);
         }
@@ -254,6 +254,7 @@ class LoanController extends Controller
                 'ugda_authorized_at' => now(),
             ],
             context: $comments !== '' ? ['comments' => $comments] : null,
+            successMessage: 'El prestamo #' . $number . ' fue autorizado por UGDA para iniciar la busqueda de documentos.',
         );
     }
 
@@ -303,7 +304,7 @@ class LoanController extends Controller
 
         if ($validator->fails()) {
             return response()->json([
-                'message' => 'Los datos de autorizacion no son validos.',
+                'message' => 'Los datos de autorización no son válidos.',
                 'errors' => $validator->errors(),
             ], 422);
         }
@@ -325,6 +326,7 @@ class LoanController extends Controller
             context: trim($request->string('comments')->toString()) !== ''
                 ? ['comments' => trim($request->string('comments')->toString()), 'decision_scope' => 'unit']
                 : ['decision_scope' => 'unit'],
+            successMessage: 'El prestamo #' . $number . ' fue autorizado por Director de unidad y enviado a UGDA para su gestión.',
         );
     }
 
@@ -354,6 +356,7 @@ class LoanController extends Controller
                 'reason' => $request->string('reason')->toString(),
                 'decision_scope' => 'unit',
             ],
+            successMessage: 'El prestamo #' . $number . ' fue denegado por Director de unidad y devuelto a la Unidad solicitante.',
         );
     }
 
@@ -376,7 +379,8 @@ class LoanController extends Controller
             workflowCode: 'loan_status_observed',
             eventTitle: 'Observación UGDA',
             description: $request->string('message')->toString(),
-            eventType: 'observation'
+            eventType: 'observation',
+            successMessage: 'El prestamo #' . $number . ' fue observado por UGDA y devuelto a la Unidad solicitante para correcciones.',
         );
     }
 
@@ -404,7 +408,8 @@ class LoanController extends Controller
                 'reason_label' => 'Motivo de rechazo:',
                 'reason' => $request->string('reason')->toString(),
                 'decision_scope' => 'ugda',
-            ]
+            ],
+            successMessage: 'El prestamo #' . $number . ' fue denegado por UGDA y devuelto a la Unidad solicitante.',
         );
     }
 
@@ -420,7 +425,8 @@ class LoanController extends Controller
                 'search_status_id' => $this->statusId('loan_search_in_progress'),
                 'search_started_by_user_id' => $request->user()->id,
                 'search_started_at' => now(),
-            ]
+            ],
+            successMessage: 'La busqueda del prestamo #' . $number . ' fue iniciada por UGDA.',
         );
     }
 
@@ -491,7 +497,12 @@ class LoanController extends Controller
 
             app(SystemNotificationService::class)->loanSearchFinished($loan->fresh(), $request->user());
 
-            return response()->json(['message' => 'Busqueda finalizada correctamente.']);
+            $foundCount = (int) collect($request->input('document_ids', []))->count();
+            $message = $foundCount > 0
+                ? 'La busqueda del prestamo #' . $number . ' fue finalizada por UGDA. Documentos encontrados: ' . $foundCount . '.'
+                : 'La busqueda del prestamo #' . $number . ' fue finalizada por UGDA. No se encontraron documentos disponibles.';
+
+            return response()->json(['message' => $message]);
         } catch (Throwable $exception) {
             report($exception);
 
@@ -560,7 +571,7 @@ class LoanController extends Controller
                     'actor_name_snapshot' => null,
                     'event_type' => 'status',
                     'title' => 'Prestado',
-                    'description' => 'Documentos entregados a ' . $request->string('received_by')->toString() . '. Fecha de devolucion: ' . $request->string('due_date')->toString(),
+                    'description' => 'Documentos entregados a la Unidad solicitante. Fecha de devolución: ' . $request->string('due_date')->toString(),
                     'context' => null,
                     'occurred_at' => now(),
                 ]);
@@ -568,13 +579,118 @@ class LoanController extends Controller
 
             app(SystemNotificationService::class)->loanRegistered($loan->fresh(), $request->user());
 
-            return response()->json(['message' => 'Prestamo registrado correctamente.']);
+            return response()->json([
+                'message' => 'El prestamo #' . $number . ' fue registrado por UGDA y entregado a la Unidad solicitante. Fecha de devolución: ' . $request->string('due_date')->toString() . '.',
+            ]);
         } catch (Throwable $exception) {
             report($exception);
 
             return response()->json([
                 'message' => 'No se pudo registrar el prestamo.',
             ], 500);
+        }
+    }
+
+    public function registerDocumentModifications(Request $request, string $number): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'modifications' => ['required', 'array', 'min:1'],
+            'modifications.*.loan_document_id' => ['required', 'integer'],
+            'modifications.*.description' => ['required', 'string', 'max:1000'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Debe indicar al menos una modificacion realizada a los documentos.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $loan = Loan::query()
+                ->with(['authorizationStatus', 'workflowStatus', 'searchStatus', 'documents'])
+                ->where('number', $number)
+                ->first();
+
+            if ($loan === null) {
+                return response()->json(['message' => 'Prestamo no encontrado.'], 404);
+            }
+
+            if (!$this->canRegisterDocumentModifications($request, $loan)) {
+                return response()->json([
+                    'message' => 'Solo la unidad solicitante puede registrar modificaciones a los documentos.',
+                ], 403);
+            }
+
+            if (
+                $loan->authorizationStatus?->code !== 'loan_auth_authorized'
+                || $loan->workflowStatus?->code !== 'loan_status_loaned'
+                || $loan->searchStatus?->code !== 'loan_search_completed'
+            ) {
+                return response()->json([
+                    'message' => 'Las modificaciones solo pueden registrarse cuando el prestamo esta autorizado, prestado y con busqueda finalizada.',
+                ], 422);
+            }
+
+            DB::transaction(function () use ($request, $loan) {
+                $modifications = collect($request->input('modifications'))
+                    ->map(fn ($item) => [
+                        'loan_document_id' => (int) $item['loan_document_id'],
+                        'description' => trim((string) $item['description']),
+                    ])
+                    ->filter(fn ($item) => $item['loan_document_id'] > 0 && $item['description'] !== '')
+                    ->values();
+
+                $validDocumentIds = $loan->documents
+                    ->where('selected_for_loan', true)
+                    ->where('returned', false)
+                    ->pluck('id')
+                    ->map(fn ($id) => (int) $id)
+                    ->all();
+
+                $invalidDocument = $modifications
+                    ->pluck('loan_document_id')
+                    ->contains(fn ($id) => !in_array((int) $id, $validDocumentIds, true));
+
+                if ($modifications->isEmpty() || $invalidDocument) {
+                    throw new \RuntimeException('Seleccione documentos prestados validos para registrar modificaciones.', 422);
+                }
+
+                $loan->documentModifications()->delete();
+
+                foreach ($modifications as $modification) {
+                    $loan->documentModifications()->create([
+                        'loan_document_id' => $modification['loan_document_id'],
+                        'registered_by_user_id' => $request->user()->id,
+                        'description' => $modification['description'],
+                    ]);
+                }
+
+                $loan->events()->create([
+                    'status_catalog_id' => $this->statusId('loan_status_loaned'),
+                    'actor_user_id' => $request->user()->id,
+                    'actor_name_snapshot' => null,
+                    'event_type' => 'modification',
+                    'title' => 'Modificaciones a documentos',
+                    'description' => 'Se registraron modificaciones realizadas a documentos prestados.',
+                    'context' => [
+                        'modifications_count' => $modifications->count(),
+                    ],
+                    'occurred_at' => now(),
+                ]);
+            });
+
+            return response()->json([
+                'message' => 'Las modificaciones del prestamo #' . $number . ' fueron registradas correctamente.',
+            ]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => $exception->getCode() === 422
+                    ? $exception->getMessage()
+                    : 'No se pudieron registrar las modificaciones.',
+            ], $exception->getCode() === 422 ? 422 : 500);
         }
     }
 
@@ -596,7 +712,7 @@ class LoanController extends Controller
 
         if ($validator->fails()) {
             return response()->json([
-                'message' => 'Los datos de la devolucion no son validos.',
+                'message' => 'Los datos de la devolución no son válidos.',
                 'errors' => $validator->errors(),
             ], 422);
         }
@@ -636,7 +752,7 @@ class LoanController extends Controller
                     'actor_name_snapshot' => null,
                     'event_type' => 'status',
                     'title' => 'Devuelto',
-                    'description' => 'Documentos devueltos por ' . $this->userName($request->user()) . '. ' . $request->string('condition')->toString(),
+                    'description' => 'Documentos recibidos por UGDA. ' . $request->string('condition')->toString(),
                     'context' => null,
                     'occurred_at' => now(),
                 ]);
@@ -644,12 +760,14 @@ class LoanController extends Controller
 
             app(SystemNotificationService::class)->loanReturned($loan->fresh(), $request->user());
 
-            return response()->json(['message' => 'Devolucion registrada correctamente.']);
+            return response()->json([
+                'message' => 'La devolución del prestamo #' . $number . ' fue registrada por UGDA. Documentos recibidos por UGDA.',
+            ]);
         } catch (Throwable $exception) {
             report($exception);
 
             return response()->json([
-                'message' => 'No se pudo registrar la devolucion.',
+                'message' => 'No se pudo registrar la devolución.',
             ], 500);
         }
     }
@@ -662,7 +780,8 @@ class LoanController extends Controller
         string $description,
         ?callable $updater = null,
         string $eventType = 'status',
-        ?array $context = null
+        ?array $context = null,
+        ?string $successMessage = null
     ): JsonResponse {
         if (!$this->canUgdaManage($request)) {
             return response()->json([
@@ -707,7 +826,7 @@ class LoanController extends Controller
                 $notificationService->loanStatusChanged($freshLoan, $request->user(), $workflowCode, $description);
             }
 
-            return response()->json(['message' => 'Estado del prestamo actualizado correctamente.']);
+            return response()->json(['message' => $successMessage ?? 'Estado del prestamo actualizado correctamente.']);
         } catch (Throwable $exception) {
             report($exception);
 
@@ -726,7 +845,8 @@ class LoanController extends Controller
         string $description,
         ?callable $updater = null,
         string $eventType = 'status',
-        ?array $context = null
+        ?array $context = null,
+        ?string $successMessage = null
     ): JsonResponse {
         if (!$this->canUnitDirectorAuthorize($request)) {
             return response()->json([
@@ -752,7 +872,7 @@ class LoanController extends Controller
 
             if ($loan->authorizationStatus?->code !== 'loan_auth_pending' || $loan->workflowStatus?->code !== 'loan_status_pending') {
                 return response()->json([
-                    'message' => 'La solicitud ya no se encuentra pendiente de autorizacion.',
+                    'message' => 'La solicitud ya no se encuentra pendiente de autorización.',
                 ], 422);
             }
 
@@ -789,7 +909,7 @@ class LoanController extends Controller
                 $notificationService->loanStatusChanged($freshLoan, $request->user(), $workflowCode, $description);
             }
 
-            return response()->json(['message' => 'Solicitud de prestamo actualizada correctamente.']);
+            return response()->json(['message' => $successMessage ?? 'Solicitud de prestamo actualizada correctamente.']);
         } catch (Throwable $exception) {
             report($exception);
 
@@ -831,6 +951,28 @@ class LoanController extends Controller
         return $user->units()
             ->where('units.code', 'UGDA')
             ->exists();
+    }
+
+    private function canAccessLoan(Request $request, Loan $loan): bool
+    {
+        if ($this->canUgdaManage($request)) {
+            return true;
+        }
+
+        return in_array((int) $loan->unit_id, $this->userUnitIds($request), true);
+    }
+
+    private function canRegisterDocumentModifications(Request $request, Loan $loan): bool
+    {
+        if ($this->canUgdaManage($request)) {
+            return false;
+        }
+
+        if ($request->user()?->activeProfile()?->name !== 'Unidad Solicitante') {
+            return false;
+        }
+
+        return in_array((int) $loan->unit_id, $this->userUnitIds($request), true);
     }
 
     private function userUnitIds(Request $request): array

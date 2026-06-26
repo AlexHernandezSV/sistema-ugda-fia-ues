@@ -10,6 +10,7 @@ import Usuarios from './components/views/Usuarios.vue'; // <--- NUEVO IMPORT
 import ArchivoGeneral from './components/views/ArchivoGeneral.vue';
 import ArchivoGestion from './components/views/ArchivoGestion.vue';
 import CrearCajaArchivo from './components/views/CrearCajaArchivo.vue';
+import UbicacionesFisicas from './components/views/UbicacionesFisicas.vue';
 import SeriesDocumentales from './components/views/SeriesDocumentales.vue';
 import Solicitudes from './components/views/Solicitudes.vue';
 import NuevaSolicitud from './components/views/NuevaSolicitud.vue';
@@ -17,6 +18,7 @@ import SolicitudPrestamo from './components/views/SolicitudPrestamo.vue';
 import PrestamosPendientesAutorizacion from './components/views/PrestamosPendientesAutorizacion.vue';
 import DetalleTransferencia from './components/views/DetalleTransferencia.vue';
 import DetallePrestamo from './components/views/DetallePrestamo.vue';
+import EtiquetaTransferencia from './components/views/EtiquetaTransferencia.vue';
 import Reportes from './components/views/Reportes.vue';
 import Notificaciones from './components/views/Notificaciones.vue';
 import MiPerfil from './components/views/MiPerfil.vue';
@@ -57,7 +59,7 @@ const routes = [
     { 
         path: '/usuarios', 
         name: 'usuarios', 
-        meta: { title: 'Gestion de Usuarios', permission: 'endpoint.api.users.create' },
+        meta: { title: 'Gestión de Usuarios', permission: 'endpoint.api.users.create' },
         component: Usuarios 
     },
 
@@ -78,7 +80,7 @@ const routes = [
     {
         path: '/archivo-general/gestion',
         name: 'archivo-general-gestion',
-        meta: { title: 'Gestion de Archivo', allowedProfiles: ['Administrador'] },
+        meta: { title: 'Gestión de Archivo', allowedProfiles: ['Administrador'] },
         component: ArchivoGestion
     },
 
@@ -87,6 +89,13 @@ const routes = [
         name: 'archivo-general-cajas-crear',
         meta: { title: 'Crear Nueva Caja', allowedProfiles: ['Administrador'] },
         component: CrearCajaArchivo
+    },
+
+    {
+        path: '/archivo-general/ubicaciones',
+        name: 'archivo-general-ubicaciones',
+        meta: { title: 'Ubicaciones Fisicas', allowedProfiles: ['Administrador'] },
+        component: UbicacionesFisicas
     },
 
     {
@@ -158,6 +167,12 @@ const routes = [
         component: DetalleTransferencia
     },
 
+    { path: '/etiquetas/transferencias/:number/cajas/:boxNumber',
+        name: 'etiqueta-transferencia',
+        meta: { title: 'Etiqueta de Ubicacion', allowedProfiles: ['Administrador', 'Usuario UGDA'] },
+        component: EtiquetaTransferencia
+    },
+
     { path: '/solicitudes/prestamos/:number',
         name: 'solicitudes-prestamo-detalle',
         meta: { title: 'Detalle de Prestamo' },
@@ -201,7 +216,7 @@ router.beforeEach(async (to) => {
 
         return true;
     } catch (error) {
-        return { path: '/login' };
+        return { path: '/login', query: { redirect: to.fullPath } };
     }
 });
 
