@@ -767,7 +767,7 @@ const clearFilter = () => {
                 <div class="series-panel__code">{{ series.code }}</div>
 
                 <div class="series-panel__details">
-                    <h2 class="series-panel__title">{{ series.name }}</h2>
+                    <h5 class="series-panel__title">{{ series.name }}</h5>
                     <span class="series-panel__meta"
                         >{{ series.subseries_count }} subseries</span
                     >
@@ -809,7 +809,7 @@ const clearFilter = () => {
             <div v-if="isSeriesExpanded(series.id)" class="series-panel__body">
                 <div class="subseries-toolbar">
                     <div>
-                        <h3 class="subseries-toolbar__title">Subseries</h3>
+                        <h4 class="subseries-toolbar__title">Subseries</h4>
                     </div>
 
                     <Button
