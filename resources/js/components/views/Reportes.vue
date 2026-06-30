@@ -1,11 +1,11 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
-import axios from 'axios';
+import { computed, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
+import axios from "axios";
 
 const router = useRouter();
 const loading = ref(true);
-const errorMessage = ref('');
+const errorMessage = ref("");
 const reportSummary = ref({
     categories: {
         entry_and_registry: 0,
@@ -20,75 +20,82 @@ const reportSummary = ref({
     },
 });
 
-const reportCategories = computed(() => ([
+const reportCategories = computed(() => [
     {
-        title: 'Reportes de Ingreso y Registro',
-        description: 'Dashboards para consultar ingresos, recepcion y trazabilidad documental.',
+        title: "Reportes de Ingreso y Registro",
+        description:
+            "Dashboards para consultar ingresos, recepcion y trazabilidad documental.",
         availableReports: reportSummary.value.categories.entry_and_registry,
-        icon: 'pi pi-file-edit',
-        accentClass: 'reports-card--blue',
-        iconShellClass: 'reports-icon-shell--blue',
+        icon: "pi pi-file-edit",
+        accentClass: "reports-card--blue",
+        iconShellClass: "reports-icon-shell--blue",
     },
     {
-        title: 'Reportes de Consulta y Acceso',
-        description: 'Indicadores sobre prestamos, consultas y atencion de usuarios.',
-        availableReports: reportSummary.value.categories.access_and_consultation,
-        icon: 'pi pi-eye',
-        accentClass: 'reports-card--green',
-        iconShellClass: 'reports-icon-shell--green',
+        title: "Reportes de Consulta y Acceso",
+        description:
+            "Indicadores sobre prestamos, consultas y atencion de usuarios.",
+        availableReports:
+            reportSummary.value.categories.access_and_consultation,
+        icon: "pi pi-eye",
+        accentClass: "reports-card--green",
+        iconShellClass: "reports-icon-shell--green",
     },
     {
-        title: 'Reportes de Clasificacion y Organizacion',
-        description: 'Resumenes para series, cajas y organizacion del archivo general.',
-        availableReports: reportSummary.value.categories.classification_and_organization,
-        icon: 'pi pi-folder-open',
-        accentClass: 'reports-card--violet',
-        iconShellClass: 'reports-icon-shell--violet',
+        title: "Reportes de Clasificacion y Organizacion",
+        description:
+            "Resumenes para series, cajas y organizacion del archivo general.",
+        availableReports:
+            reportSummary.value.categories.classification_and_organization,
+        icon: "pi pi-folder-open",
+        accentClass: "reports-card--violet",
+        iconShellClass: "reports-icon-shell--violet",
     },
-]));
+]);
 
-const summaryCards = computed(() => ([
+const summaryCards = computed(() => [
     {
-        label: 'Total Documentos',
+        label: "Total Documentos",
         value: reportSummary.value.summary.total_documents,
-        icon: 'pi pi-file',
-        accentClass: 'reports-mini-card--blue',
+        icon: "pi pi-file",
+        accentClass: "reports-mini-card--blue",
     },
     {
-        label: 'Total Transferencias',
+        label: "Total Transferencias",
         value: reportSummary.value.summary.total_transfers,
-        icon: 'pi pi-arrow-up-right',
-        accentClass: 'reports-mini-card--green',
+        icon: "pi pi-arrow-up-right",
+        accentClass: "reports-mini-card--green",
     },
     {
-        label: 'Total Cajas',
+        label: "Total Cajas",
         value: reportSummary.value.summary.total_boxes,
-        icon: 'pi pi-folder-open',
-        accentClass: 'reports-mini-card--violet',
+        icon: "pi pi-folder-open",
+        accentClass: "reports-mini-card--violet",
     },
     {
-        label: 'Docs. Reservados',
+        label: "Docs. Reservados",
         value: reportSummary.value.summary.reserved_documents,
-        icon: 'pi pi-chart-bar',
-        accentClass: 'reports-mini-card--amber',
+        icon: "pi pi-chart-bar",
+        accentClass: "reports-mini-card--amber",
     },
-]));
+]);
 
 const goBack = () => {
-    router.push('/dashboard');
+    router.push("/dashboard");
 };
 
 const fetchReportSummary = async () => {
     loading.value = true;
-    errorMessage.value = '';
+    errorMessage.value = "";
 
     try {
-        const { data } = await axios.get('/api/reports/summary');
+        const { data } = await axios.get("/api/reports/summary");
         reportSummary.value = {
             categories: {
                 entry_and_registry: data.categories?.entry_and_registry ?? 0,
-                access_and_consultation: data.categories?.access_and_consultation ?? 0,
-                classification_and_organization: data.categories?.classification_and_organization ?? 0,
+                access_and_consultation:
+                    data.categories?.access_and_consultation ?? 0,
+                classification_and_organization:
+                    data.categories?.classification_and_organization ?? 0,
             },
             summary: {
                 total_documents: data.summary?.total_documents ?? 0,
@@ -98,8 +105,10 @@ const fetchReportSummary = async () => {
             },
         };
     } catch (error) {
-        console.error('Error al cargar resumen de reportes:', error);
-        errorMessage.value = error.response?.data?.message ?? 'No se pudo cargar el resumen de reportes.';
+        console.error("Error al cargar resumen de reportes:", error);
+        errorMessage.value =
+            error.response?.data?.message ??
+            "No se pudo cargar el resumen de reportes.";
     } finally {
         loading.value = false;
     }
@@ -112,7 +121,11 @@ onMounted(fetchReportSummary);
     <div class="reports-page fadein animation-duration-500">
         <section class="reports-hero shadow-1">
             <div class="reports-hero__nav">
-                <button type="button" class="reports-back-button" @click="goBack">
+                <button
+                    type="button"
+                    class="reports-back-button"
+                    @click="goBack"
+                >
                     <i class="pi pi-arrow-left"></i>
                     <span>Volver</span>
                 </button>
@@ -120,17 +133,27 @@ onMounted(fetchReportSummary);
 
             <div class="reports-hero__copy">
                 <h1 class="reports-hero__title m-0">Reportes Dinamicos</h1>
-                <p class="reports-hero__subtitle m-0">Dashboards interactivos con filtros en tiempo real</p>
+                <p class="reports-hero__subtitle m-0">
+                    Dashboards interactivos con filtros en tiempo real
+                </p>
             </div>
         </section>
 
         <section class="reports-section">
             <div class="reports-section__header">
-                <h2 class="reports-section__title m-0">Categorias de Reportes</h2>
-                <p class="reports-section__subtitle m-0">Selecciona una categoria para acceder a dashboards interactivos</p>
+                <h2 class="reports-section__title m-0">
+                    Categorias de Reportes
+                </h2>
+                <p class="reports-section__subtitle m-0">
+                    Selecciona una categoria para acceder a dashboards
+                    interactivos
+                </p>
             </div>
 
-            <div v-if="errorMessage" class="reports-message reports-message--error">
+            <div
+                v-if="errorMessage"
+                class="reports-message reports-message--error"
+            >
                 <i class="pi pi-exclamation-triangle"></i>
                 <span>{{ errorMessage }}</span>
             </div>
@@ -146,19 +169,34 @@ onMounted(fetchReportSummary);
                     :key="category.title"
                     class="col-12 lg:col-4"
                 >
-                    <article class="reports-card shadow-1" :class="category.accentClass">
-                        <div class="reports-card__icon" :class="category.iconShellClass">
+                    <article
+                        class="reports-card shadow-1"
+                        :class="category.accentClass"
+                    >
+                        <div
+                            class="reports-card__icon"
+                            :class="category.iconShellClass"
+                        >
                             <i :class="category.icon"></i>
                         </div>
 
                         <div class="reports-card__content">
-                            <h3 class="reports-card__title m-0">{{ category.title }}</h3>
-                            <p class="reports-card__description m-0">{{ category.description }}</p>
+                            <h3 class="reports-card__title m-0">
+                                {{ category.title }}
+                            </h3>
+                            <p class="reports-card__description m-0">
+                                {{ category.description }}
+                            </p>
                         </div>
 
                         <div class="reports-card__footer">
-                            <span class="reports-card__count">{{ category.availableReports }} reportes disponibles</span>
-                            <i class="pi pi-arrow-up-right reports-card__arrow"></i>
+                            <span class="reports-card__count"
+                                >{{ category.availableReports }} reportes
+                                disponibles</span
+                            >
+                            <i
+                                class="pi pi-arrow-up-right reports-card__arrow"
+                            ></i>
                         </div>
                     </article>
                 </div>
@@ -170,10 +208,17 @@ onMounted(fetchReportSummary);
                     :key="card.label"
                     class="col-12 md:col-6 xl:col-3"
                 >
-                    <article class="reports-mini-card shadow-1" :class="card.accentClass">
+                    <article
+                        class="reports-mini-card shadow-1"
+                        :class="card.accentClass"
+                    >
                         <div class="reports-mini-card__copy">
-                            <span class="reports-mini-card__label">{{ card.label }}</span>
-                            <strong class="reports-mini-card__value">{{ card.value }}</strong>
+                            <span class="reports-mini-card__label">{{
+                                card.label
+                            }}</span>
+                            <strong class="reports-mini-card__value">{{
+                                card.value
+                            }}</strong>
                         </div>
 
                         <div class="reports-mini-card__icon">
@@ -293,7 +338,10 @@ onMounted(fetchReportSummary);
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    transition:
+        transform 0.2s ease,
+        box-shadow 0.2s ease,
+        border-color 0.2s ease;
 }
 
 .reports-card:hover {

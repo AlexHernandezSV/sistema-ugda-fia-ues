@@ -1,9 +1,11 @@
 <script setup>
-import { computed, ref, onMounted } from 'vue';
-import axios from 'axios';
-import { useToast } from 'primevue/usetoast';
+import { computed, ref, onMounted } from "vue";
+import axios from "axios";
+import { useRouter } from "vue-router";
+import { useToast } from "primevue/usetoast";
 
 // --- VARIABLES ---
+const router = useRouter();
 const toast = useToast();
 const users = ref([]);
 const unitsList = ref([]);
@@ -15,62 +17,73 @@ const formSubmitted = ref(false);
 
 const rowsPerPageOptions = ref([5, 10, 25, 50]);
 const filters = ref({
-    global: { value: null, matchMode: 'contains' }
+    global: { value: null, matchMode: "contains" },
 });
 const selectedUnitId = ref(null);
 
 // Modal
 const displayModal = ref(false);
-const modalHeader = ref('');
+const modalHeader = ref("");
 const isEditing = ref(false);
 const resetPasswordModal = ref(false);
 const selectedUserForReset = ref(null);
-const adminPasswordForReset = ref('');
+const adminPasswordForReset = ref("");
 
 // --- ERRORES DE VALIDACIÓN ---
-const emailError = ref(''); 
-const emailFormatError = ref(''); 
-const carnetError = ref(''); // Nuevo error para Carnet
-const nameErrors = ref({}); 
+const emailError = ref("");
+const emailFormatError = ref("");
+const carnetError = ref(""); // Nuevo error para Carnet
+const nameErrors = ref({});
 
 const form = ref({
     id: null,
-    first_name: '',
-    second_name: '',
-    first_last_name: '',
-    second_last_name: '',
-    carnet: '',
-    email: '',
+    first_name: "",
+    second_name: "",
+    first_last_name: "",
+    second_last_name: "",
+    carnet: "",
+    email: "",
     unit_ids: [],
     role: null,
-    is_active: true
+    is_active: true,
 });
 
 const selectedUnits = computed(() =>
     form.value.unit_ids
-        .map(unitId => unitsList.value.find(unit => unit.value === unitId))
-        .filter(Boolean)
+        .map((unitId) => unitsList.value.find((unit) => unit.value === unitId))
+        .filter(Boolean),
 );
-const roleMissing = computed(() => !String(form.value.role ?? '').trim());
+const roleMissing = computed(() => !String(form.value.role ?? "").trim());
 
 // --- CARGAR DATOS ---
 const fetchData = async () => {
     loading.value = true;
     try {
         const [usersRes, unitsRes, profilesRes] = await Promise.all([
-            axios.get('/api/users'),
-            axios.get('/api/units'),
-            axios.get('/api/profiles')
+            axios.get("/api/users"),
+            axios.get("/api/units"),
+            axios.get("/api/profiles"),
         ]);
         users.value = usersRes.data;
-        unitsList.value = unitsRes.data.map(u => ({ label: u.name, value: u.id }));
-        profilesList.value = profilesRes.data.map(profile => ({ label: profile.name, value: profile.name }));
+        unitsList.value = unitsRes.data.map((u) => ({
+            label: u.name,
+            value: u.id,
+        }));
+        profilesList.value = profilesRes.data.map((profile) => ({
+            label: profile.name,
+            value: profile.name,
+        }));
     } catch (error) {
         if ([401, 419].includes(error.response?.status)) {
             return;
         }
 
-        toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar los datos', life: 3000 });
+        toast.add({
+            severity: "error",
+            summary: "Error",
+            detail: "No se pudieron cargar los datos",
+            life: 3000,
+        });
     } finally {
         loading.value = false;
     }
@@ -83,10 +96,10 @@ onMounted(fetchData);
 // 1. CARNET: Mayúsculas automáticas + Validación de caracteres prohibidos
 const validateCarnet = () => {
     if (!form.value.carnet) {
-        carnetError.value = '';
+        carnetError.value = "";
         return;
     }
-    
+
     // Convertimos a mayúsculas para ayudar al usuario, pero NO borramos caracteres especiales
     form.value.carnet = form.value.carnet.toUpperCase();
 
@@ -94,9 +107,10 @@ const validateCarnet = () => {
     const invalidCharsRegex = /[^A-Z0-9]/;
 
     if (invalidCharsRegex.test(form.value.carnet)) {
-        carnetError.value = 'Caracteres no válidos detectados. Por favor bórrelos.';
+        carnetError.value =
+            "Caracteres no válidos detectados. Por favor bórrelos.";
     } else {
-        carnetError.value = '';
+        carnetError.value = "";
     }
 };
 
@@ -104,16 +118,16 @@ const validateCarnet = () => {
 const validateNameField = (field) => {
     const value = form.value[field];
     if (!value) {
-        nameErrors.value[field] = '';
+        nameErrors.value[field] = "";
         return;
     }
     // Regex: Permite letras a-z, A-Z, tildes, ñ/Ñ y espacios.
     const validNameRegex = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/;
-    
+
     if (!validNameRegex.test(value)) {
-        nameErrors.value[field] = 'Solo se permiten letras y espacios.';
+        nameErrors.value[field] = "Solo se permiten letras y espacios.";
     } else {
-        nameErrors.value[field] = '';
+        nameErrors.value[field] = "";
     }
 };
 
@@ -121,16 +135,16 @@ const validateNameField = (field) => {
 const validateEmailFormat = () => {
     const email = form.value.email;
     if (!email) {
-        emailFormatError.value = '';
+        emailFormatError.value = "";
         return true;
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    
+
     if (!emailRegex.test(email)) {
-        emailFormatError.value = 'El formato del correo no es válido.';
+        emailFormatError.value = "El formato del correo no es válido.";
         return false;
     } else {
-        emailFormatError.value = '';
+        emailFormatError.value = "";
         return true;
     }
 };
@@ -138,17 +152,23 @@ const validateEmailFormat = () => {
 // --- MODALES ---
 const openCreateModal = () => {
     isEditing.value = false;
-    modalHeader.value = 'Crear Nuevo Usuario';
-    emailError.value = '';
-    emailFormatError.value = '';
-    carnetError.value = '';
-    nameErrors.value = {}; 
+    modalHeader.value = "Crear Nuevo Usuario";
+    emailError.value = "";
+    emailFormatError.value = "";
+    carnetError.value = "";
+    nameErrors.value = {};
     formSubmitted.value = false;
-    
-    form.value = { 
-        first_name: '', second_name: '', 
-        first_last_name: '', second_last_name: '', 
-        carnet: '', email: '', unit_ids: [], role: null, is_active: true 
+
+    form.value = {
+        first_name: "",
+        second_name: "",
+        first_last_name: "",
+        second_last_name: "",
+        carnet: "",
+        email: "",
+        unit_ids: [],
+        role: null,
+        is_active: true,
     };
     selectedUnitId.value = null;
     displayModal.value = true;
@@ -156,10 +176,10 @@ const openCreateModal = () => {
 
 const openEditModal = (user) => {
     isEditing.value = true;
-    modalHeader.value = 'Editar Usuario';
-    emailError.value = '';
-    emailFormatError.value = '';
-    carnetError.value = '';
+    modalHeader.value = "Editar Usuario";
+    emailError.value = "";
+    emailFormatError.value = "";
+    carnetError.value = "";
     nameErrors.value = {};
     formSubmitted.value = false;
 
@@ -171,9 +191,13 @@ const openEditModal = (user) => {
         second_last_name: user.second_last_name,
         carnet: user.carnet,
         email: user.email,
-        unit_ids: Array.isArray(user.unit_ids) ? [...user.unit_ids] : (user.unit_id ? [user.unit_id] : []),
+        unit_ids: Array.isArray(user.unit_ids)
+            ? [...user.unit_ids]
+            : user.unit_id
+              ? [user.unit_id]
+              : [],
         role: user.role,
-        is_active: Boolean(user.is_active)
+        is_active: Boolean(user.is_active),
     };
     selectedUnitId.value = null;
     displayModal.value = true;
@@ -181,7 +205,7 @@ const openEditModal = (user) => {
 
 const openResetPasswordModal = (user) => {
     selectedUserForReset.value = user;
-    adminPasswordForReset.value = '';
+    adminPasswordForReset.value = "";
     resetPasswordModal.value = true;
 };
 
@@ -198,7 +222,7 @@ const addUnitToForm = () => {
 };
 
 const removeUnitFromForm = (unitId) => {
-    form.value.unit_ids = form.value.unit_ids.filter(id => id !== unitId);
+    form.value.unit_ids = form.value.unit_ids.filter((id) => id !== unitId);
 };
 
 // --- GUARDAR ---
@@ -208,53 +232,102 @@ const saveUser = async () => {
     formSubmitted.value = true;
 
     // 1. Validar Campos Obligatorios
-    if (!form.value.first_name || !form.value.first_last_name || !form.value.email || form.value.unit_ids.length === 0 || roleMissing.value) {
-        toast.add({ severity: 'warn', summary: 'Atención', detail: 'Complete los campos obligatorios (*)', life: 3000 });
+    if (
+        !form.value.first_name ||
+        !form.value.first_last_name ||
+        !form.value.email ||
+        form.value.unit_ids.length === 0 ||
+        roleMissing.value
+    ) {
+        toast.add({
+            severity: "warn",
+            summary: "Atención",
+            detail: "Complete los campos obligatorios (*)",
+            life: 3000,
+        });
         return;
     }
 
     // 2. Validar Carnet (Si hay error, no guardar)
     if (carnetError.value) {
-        toast.add({ severity: 'error', summary: 'Error', detail: 'Corrija el Carnet (solo letras y números)', life: 3000 });
+        toast.add({
+            severity: "error",
+            summary: "Error",
+            detail: "Corrija el Carnet (solo letras y números)",
+            life: 3000,
+        });
         return;
     }
 
     // 3. Validar Formato de Correo
     if (!validateEmailFormat()) {
-        toast.add({ severity: 'error', summary: 'Error', detail: 'Corrija el formato del correo', life: 3000 });
+        toast.add({
+            severity: "error",
+            summary: "Error",
+            detail: "Corrija el formato del correo",
+            life: 3000,
+        });
         return;
     }
 
     // 4. Verificar si hay errores en los nombres
-    const hasNameErrors = Object.values(nameErrors.value).some(error => error !== '');
+    const hasNameErrors = Object.values(nameErrors.value).some(
+        (error) => error !== "",
+    );
     if (hasNameErrors) {
-        toast.add({ severity: 'error', summary: 'Error', detail: 'Hay caracteres inválidos en los nombres', life: 3000 });
+        toast.add({
+            severity: "error",
+            summary: "Error",
+            detail: "Hay caracteres inválidos en los nombres",
+            life: 3000,
+        });
         return;
     }
 
     isSaving.value = true;
-    emailError.value = '';
+    emailError.value = "";
 
     try {
         if (isEditing.value) {
             await axios.put(`/api/users/${form.value.id}`, form.value);
-            toast.add({ severity: 'success', summary: 'Actualizado', detail: 'Usuario actualizado correctamente', life: 3000 });
+            toast.add({
+                severity: "success",
+                summary: "Actualizado",
+                detail: "Usuario actualizado correctamente",
+                life: 3000,
+            });
         } else {
-            await axios.post('/api/users', form.value);
-            toast.add({ severity: 'success', summary: 'Creado', detail: 'Usuario creado y credenciales enviadas', life: 3000 });
+            await axios.post("/api/users", form.value);
+            toast.add({
+                severity: "success",
+                summary: "Creado",
+                detail: "Usuario creado y credenciales enviadas",
+                life: 3000,
+            });
         }
         displayModal.value = false;
         formSubmitted.value = false;
-        fetchData(); 
+        fetchData();
     } catch (error) {
         if (error.response && error.response.status === 422) {
             const errors = error.response.data.errors;
             if (errors.email) {
-                emailError.value = 'Este correo electrónico ya está registrado.';
-                toast.add({ severity: 'error', summary: 'Error', detail: 'El correo ya existe', life: 3000 });
+                emailError.value =
+                    "Este correo electrónico ya está registrado.";
+                toast.add({
+                    severity: "error",
+                    summary: "Error",
+                    detail: "El correo ya existe",
+                    life: 3000,
+                });
             }
         } else {
-            toast.add({ severity: 'error', summary: 'Error', detail: 'Ocurrió un error al guardar', life: 3000 });
+            toast.add({
+                severity: "error",
+                summary: "Error",
+                detail: "Ocurrió un error al guardar",
+                life: 3000,
+            });
         }
     } finally {
         isSaving.value = false;
@@ -264,10 +337,10 @@ const saveUser = async () => {
 const resetUserPassword = async () => {
     if (!selectedUserForReset.value || !adminPasswordForReset.value) {
         toast.add({
-            severity: 'warn',
-            summary: 'Atencion',
-            detail: 'Ingrese su contrasena para confirmar.',
-            life: 3000
+            severity: "warn",
+            summary: "Atencion",
+            detail: "Ingrese su contrasena para confirmar.",
+            life: 3000,
         });
         return;
     }
@@ -275,21 +348,26 @@ const resetUserPassword = async () => {
     isResettingPassword.value = true;
 
     try {
-        await axios.post(`/api/users/${selectedUserForReset.value.id}/reset-password`, {
-            admin_password: adminPasswordForReset.value
-        });
+        await axios.post(
+            `/api/users/${selectedUserForReset.value.id}/reset-password`,
+            {
+                admin_password: adminPasswordForReset.value,
+            },
+        );
         toast.add({
-            severity: 'success',
-            summary: 'Contrasena enviada',
-            detail: 'Se envio una contrasena temporal al correo del usuario.',
-            life: 3500
+            severity: "success",
+            summary: "Contrasena enviada",
+            detail: "Se envio una contrasena temporal al correo del usuario.",
+            life: 3500,
         });
         resetPasswordModal.value = false;
-        adminPasswordForReset.value = '';
+        adminPasswordForReset.value = "";
         selectedUserForReset.value = null;
     } catch (error) {
-        const detail = error.response?.data?.message || 'No se pudo restablecer la contrasena.';
-        toast.add({ severity: 'error', summary: 'Error', detail, life: 4000 });
+        const detail =
+            error.response?.data?.message ||
+            "No se pudo restablecer la contrasena.";
+        toast.add({ severity: "error", summary: "Error", detail, life: 4000 });
     } finally {
         isResettingPassword.value = false;
     }
@@ -298,282 +376,520 @@ const resetUserPassword = async () => {
 const clearFilter = () => {
     filters.value.global.value = null;
 };
+
+const goBack = () => {
+    router.back();
+};
 </script>
 
 <template>
-        <Toast />
-        <div class="mb-4">
-            <h1 class="mobile-page-title">Gestión de Usuarios</h1>
-        </div>
-
-        <div class="surface-card p-4 border-round-xl shadow-1 mb-4">
-            <div class="filters-toolbar">
-                <div class="relative w-full filters-toolbar__search">
-                    <i class="pi pi-search absolute text-gray-500" style="top: 50%; left: 1rem; transform: translateY(-50%); z-index: 1;"></i>
-                    <InputText v-model="filters['global'].value" placeholder="Buscar usuario..." class="w-full border-gray-300" style="padding-left: 2.5rem;" />
-                </div>
-                <div class="filters-toolbar__actions">
-                    <Button icon="pi pi-times" label="Limpiar" severity="secondary" outlined class="w-auto px-3 flex-shrink-0 filters-toolbar__clear" @click="clearFilter" />
-                    <Button label="Nuevo Usuario" icon="pi pi-user-plus" class="w-auto px-4 border-none filters-toolbar__primary" @click="openCreateModal" />
-                </div>
-            </div>
-        </div>
-
-        <div class="surface-card p-0 border-round-xl shadow-1 overflow-hidden">
-            <DataTable :value="users" :paginator="true" :rows="5" :rowsPerPageOptions="rowsPerPageOptions" :loading="loading" 
-                       v-model:filters="filters" :globalFilterFields="['first_name', 'first_last_name', 'email', 'carnet']" 
-                       tableStyle="min-width: 60rem" rowHover stripedRows>
-                
-                <template #empty>
-                    <div class="text-center p-4 text-gray-500 font-medium">Sin usuarios registrados</div>
-                </template>
-
-                <Column field="carnet" header="Carnet" style="width: 10%" headerClass="bg-primary-custom text-white font-semibold">
-                    <template #body="slotProps">{{ slotProps.data.carnet || 'N/A' }}</template>
-                </Column>
-
-                <Column header="Nombre Completo" sortable field="first_name" style="width: 25%" headerClass="bg-primary-custom text-white font-semibold">
-                    <template #body="slotProps">
-                        <div class="font-medium text-gray-900">
-                            {{ slotProps.data.first_name }} {{ slotProps.data.first_last_name }}
-                        </div>
-                        <small class="text-gray-500">{{ slotProps.data.email }}</small>
-                    </template>
-                </Column>
-
-                <Column header="Unidad / Rol" style="width: 25%" headerClass="bg-primary-custom text-white font-semibold">
-                    <template #body="slotProps">
-                        <div class="flex flex-column gap-1">
-                            <span class="user-table__unit">
-                                {{
-                                    slotProps.data.units?.length
-                                        ? slotProps.data.units.map(unit => unit.name).join(', ')
-                                        : 'Sin Unidad'
-                                }}
-                            </span>
-                            <span class="ugda-chip ugda-chip--info w-max">
-                                {{ slotProps.data.role }}
-                            </span>
-                        </div>
-                    </template>
-                </Column>
-                
-                <Column field="is_active" header="Estado" style="width: 10%" headerClass="bg-primary-custom text-white font-semibold ugda-chip-header" bodyClass="ugda-chip-column">
-                    <template #body="slotProps">
-                        <div class="ugda-chip-cell">
-                            <span :class="['ugda-chip', slotProps.data.is_active ? 'ugda-chip--success' : 'ugda-chip--neutral']">
-                                {{ slotProps.data.is_active ? 'Activo' : 'Inactivo' }}
-                            </span>
-                        </div>
-                    </template>
-                </Column>
-
-                <Column header="Acciones" style="width: 10%; text-align: center" headerClass="bg-primary-custom text-white">
-                    <template #body="slotProps">
-                        <div class="usuarios-actions">
-                            <Button icon="pi pi-key" text rounded severity="secondary" class="text-gray-600 hover:text-blue-600" title="Restablecer contrasena" @click="openResetPasswordModal(slotProps.data)" />
-                            <Button icon="pi pi-pencil" text rounded severity="secondary" class="text-gray-600 hover:text-blue-600" title="Editar usuario" @click="openEditModal(slotProps.data)" />
-                        </div>
-                    </template>
-                </Column>
-            </DataTable>
-        </div>
-
-        <Dialog v-model:visible="displayModal" :modal="true" :draggable="false" :header="modalHeader" :style="{ width: '700px' }" class="p-fluid blue-header-dialog">
-            
-            <div class="grid formgrid p-2">
-                
-                <div class="col-12 md:col-6 field mb-3">
-                    <label class="form-label">Primer Nombre *</label>
-                    <InputText v-model="form.first_name" 
-                               @input="validateNameField('first_name')" 
-                               :class="{ 'p-invalid': nameErrors.first_name }"
-                               class="w-full bg-gray-50" placeholder="Ej: Juan" maxlength="30" />
-                    <div class="flex justify-content-between">
-                        <small v-if="nameErrors.first_name" class="p-error block">{{ nameErrors.first_name }}</small>
-                        <small class="text-gray-500 text-xs">{{ form.first_name ? form.first_name.length : 0 }}/30</small>
-                    </div>
-                </div>
-
-                <div class="col-12 md:col-6 field mb-3">
-                    <label class="form-label">Segundo Nombre</label>
-                    <InputText v-model="form.second_name" 
-                               @input="validateNameField('second_name')"
-                               :class="{ 'p-invalid': nameErrors.second_name }"
-                               class="w-full bg-gray-50" placeholder="Ej: Carlos" maxlength="30" />
-                    <div class="flex justify-content-between">
-                         <small v-if="nameErrors.second_name" class="p-error block">{{ nameErrors.second_name }}</small>
-                         <small class="text-gray-500 text-xs">{{ form.second_name ? form.second_name.length : 0 }}/30</small>
-                    </div>
-                </div>
-
-                <div class="col-12 md:col-6 field mb-3">
-                    <label class="form-label">Primer Apellido *</label>
-                    <InputText v-model="form.first_last_name" 
-                               @input="validateNameField('first_last_name')"
-                               :class="{ 'p-invalid': nameErrors.first_last_name }"
-                               class="w-full bg-gray-50" placeholder="Ej: Pérez" maxlength="30" />
-                    <div class="flex justify-content-between">
-                        <small v-if="nameErrors.first_last_name" class="p-error block">{{ nameErrors.first_last_name }}</small>
-                        <small class="text-gray-500 text-xs">{{ form.first_last_name ? form.first_last_name.length : 0 }}/30</small>
-                    </div>
-                </div>
-
-                <div class="col-12 md:col-6 field mb-3">
-                    <label class="form-label">Segundo Apellido</label>
-                    <InputText v-model="form.second_last_name" 
-                               @input="validateNameField('second_last_name')"
-                               :class="{ 'p-invalid': nameErrors.second_last_name }"
-                               class="w-full bg-gray-50" placeholder="Ej: López" maxlength="30" />
-                    <div class="flex justify-content-between">
-                        <small v-if="nameErrors.second_last_name" class="p-error block">{{ nameErrors.second_last_name }}</small>
-                        <small class="text-gray-500 text-xs">{{ form.second_last_name ? form.second_last_name.length : 0 }}/30</small>
-                    </div>
-                </div>
-
-                <div class="col-12 md:col-6 field mb-3">
-                    <label class="form-label">Carnet</label>
-                    <InputText v-model="form.carnet" 
-                               @input="validateCarnet"
-                               :class="{ 'p-invalid': carnetError }"
-                               class="w-full bg-gray-50" placeholder="Ej: AA12345" maxlength="20" />
-                    <small v-if="carnetError" class="p-error block">{{ carnetError }}</small>
-                </div>
-
-                <div class="col-12 md:col-6 field mb-3">
-                    <label class="form-label">Correo Electrónico *</label>
-                    <InputText v-model="form.email" 
-                               @input="validateEmailFormat"
-                               :class="{ 'p-invalid': emailError || emailFormatError }"
-                               class="w-full bg-gray-50" placeholder="correo@ues.edu.sv" />
-                    
-                    <small v-if="emailFormatError" class="p-error block">{{ emailFormatError }}</small>
-                    <small v-if="emailError" class="p-error block">{{ emailError }}</small>
-                    
-                    <small v-if="!isEditing && !emailFormatError && !emailError" class="text-gray-500 text-xs block mt-1">
-                        Se enviarán las credenciales a este correo.
-                    </small>
-                </div>
-
-                <div class="col-12 md:col-6 field mb-3">
-                    <label class="form-label">Unidades *</label>
-                    <div class="flex gap-2 mt-1 user-units-selector-row">
-                        <Dropdown
-                            v-model="selectedUnitId"
-                            :options="unitsList"
-                            optionLabel="label"
-                            optionValue="value"
-                            filter
-                            placeholder="Seleccione una o más unidades"
-                            class="w-full bg-gray-50 user-units-selector-dropdown"
-                        />
-                        <Button
-                            icon="pi pi-plus"
-                            class="w-3rem flex-shrink-0 border-none user-units-selector-button"
-                            @click="addUnitToForm"
-                        />
-                    </div>
-                    <small class="text-gray-500 text-xs block mt-1">
-                        La primera unidad seleccionada se usará como unidad principal del usuario.
-                    </small>
-                    <div v-if="selectedUnits.length > 0" class="flex flex-column gap-2 mt-3">
-                        <div
-                            v-for="(unit, index) in selectedUnits"
-                            :key="unit.value"
-                            class="flex align-items-center justify-content-between p-3 border-1 border-gray-200 border-round bg-white"
-                        >
-                            <div class="flex flex-column">
-                                <span class="text-gray-800 text-sm">{{ unit.label }}</span>
-                                <small v-if="index === 0" class="user-primary-unit">Unidad principal</small>
-                            </div>
-                            <i
-                                class="pi pi-trash text-red-500 cursor-pointer hover:text-red-700"
-                                @click="removeUnitFromForm(unit.value)"
-                            ></i>
-                        </div>
-                    </div>
-                    <div v-else class="text-gray-500 text-sm font-italic p-2 mt-2">
-                        No hay unidades agregadas
-                    </div>
-                </div>
-                <div class="col-12 md:col-6 field mb-3">
-                    <label class="form-label">Rol de Usuario *</label>
-                    <Dropdown
-                        v-model="form.role"
-                        :options="profilesList"
-                        optionLabel="label"
-                        optionValue="value"
-                        placeholder="Seleccione Rol"
-                        class="w-full bg-gray-50"
-                        :class="{ 'p-invalid': formSubmitted && roleMissing }"
-                    />
-                    <small v-if="formSubmitted && roleMissing" class="p-error text-sm block mt-1">
-                        Seleccione un rol para el usuario.
-                    </small>
-                </div>
-
-                <div class="col-12 field mb-3" v-if="isEditing">
-                    <label class="form-label">Estado</label>
-                    <Dropdown v-model="form.is_active" :options="[{label:'Activo', value:true}, {label:'Inactivo', value:false}]" optionLabel="label" optionValue="value" class="w-full bg-gray-50" />
-                </div>
+    <Toast />
+    <div class="mb-4">
+        <section class="reports-hero shadow-1">
+            <div class="reports-hero__nav">
+                <button
+                    type="button"
+                    class="reports-back-button"
+                    @click="goBack"
+                >
+                    <i class="pi pi-arrow-left"></i>
+                    <span>Volver</span>
+                </button>
             </div>
 
-            <template #footer>
-                <div class="flex justify-content-between gap-3 mt-2 w-full">
-                    <Button label="Cancelar" severity="secondary" outlined class="flex-1" :disabled="isSaving" @click="displayModal = false" />
-                    <Button label="Guardar Usuario" class="flex-1 border-none" :loading="isSaving" @click="saveUser" />
-                </div>
-            </template>
-        </Dialog>
-
-        <Dialog
-            v-model:visible="resetPasswordModal"
-            :modal="true"
-            :draggable="false"
-            header="Restablecer contrasena"
-            :style="{ width: '520px' }"
-            class="p-fluid blue-header-dialog"
-        >
-            <div class="reset-password-content">
-                <div class="reset-password-icon">
-                    <i class="pi pi-key"></i>
-                </div>
-                <div>
-                    <h3>Enviar contrasena temporal</h3>
-                    <p>
-                        Se generara una contrasena temporal para
-                        <strong>{{ selectedUserForReset?.email }}</strong>.
-                        Al iniciar sesion, el usuario debera cambiarla.
-                    </p>
-                </div>
+            <div class="reports-hero__copy">
+                <h1 class="reports-hero__title m-0">Gestión de Usuarios</h1>
+                <p class="reports-hero__subtitle m-0">
+                    Administrar los usuarios del sistema, asignar roles y
+                    unidades.
+                </p>
             </div>
+        </section>
+    </div>
 
-            <div class="field mt-3">
-                <label class="form-label">Su contrasena *</label>
+    <div class="surface-card p-4 border-round-xl shadow-1 mb-4">
+        <div class="filters-toolbar">
+            <div class="relative w-full filters-toolbar__search">
+                <i
+                    class="pi pi-search absolute text-gray-500"
+                    style="
+                        top: 50%;
+                        left: 1rem;
+                        transform: translateY(-50%);
+                        z-index: 1;
+                    "
+                ></i>
                 <InputText
-                    v-model="adminPasswordForReset"
-                    type="password"
-                    autocomplete="current-password"
-                    class="w-full bg-gray-50"
-                    placeholder="Confirme su contrasena de administrador"
-                    @keyup.enter="resetUserPassword"
+                    v-model="filters['global'].value"
+                    placeholder="Buscar usuario..."
+                    class="w-full border-gray-300"
+                    style="padding-left: 2.5rem"
                 />
             </div>
+            <div class="filters-toolbar__actions">
+                <Button
+                    icon="pi pi-times"
+                    label="Limpiar"
+                    severity="secondary"
+                    outlined
+                    class="w-auto px-3 flex-shrink-0 filters-toolbar__clear"
+                    @click="clearFilter"
+                />
+                <Button
+                    label="Nuevo Usuario"
+                    icon="pi pi-user-plus"
+                    class="w-auto px-4 border-none filters-toolbar__primary"
+                    @click="openCreateModal"
+                />
+            </div>
+        </div>
+    </div>
 
-            <template #footer>
-                <div class="flex justify-content-between gap-3 mt-2 w-full reset-password-footer">
-                    <Button label="Cancelar" severity="secondary" outlined class="flex-1" :disabled="isResettingPassword" @click="resetPasswordModal = false" />
-                    <Button label="Enviar temporal" icon="pi pi-send" class="flex-1 border-none" :loading="isResettingPassword" @click="resetUserPassword" />
+    <div class="surface-card p-0 border-round-xl shadow-1 overflow-hidden">
+        <DataTable
+            :value="users"
+            :paginator="true"
+            :rows="5"
+            :rowsPerPageOptions="rowsPerPageOptions"
+            :loading="loading"
+            v-model:filters="filters"
+            :globalFilterFields="[
+                'first_name',
+                'first_last_name',
+                'email',
+                'carnet',
+            ]"
+            tableStyle="min-width: 60rem"
+            rowHover
+            stripedRows
+        >
+            <template #empty>
+                <div class="text-center p-4 text-gray-500 font-medium">
+                    Sin usuarios registrados
                 </div>
             </template>
-        </Dialog>
+
+            <Column
+                field="carnet"
+                header="Carnet"
+                style="width: 10%"
+                headerClass="bg-primary-custom text-white font-semibold"
+            >
+                <template #body="slotProps">{{
+                    slotProps.data.carnet || "N/A"
+                }}</template>
+            </Column>
+
+            <Column
+                header="Nombre Completo"
+                sortable
+                field="first_name"
+                style="width: 25%"
+                headerClass="bg-primary-custom text-white font-semibold"
+            >
+                <template #body="slotProps">
+                    <div class="font-medium text-gray-900">
+                        {{ slotProps.data.first_name }}
+                        {{ slotProps.data.first_last_name }}
+                    </div>
+                    <small class="text-gray-500">{{
+                        slotProps.data.email
+                    }}</small>
+                </template>
+            </Column>
+
+            <Column
+                header="Unidad / Rol"
+                style="width: 25%"
+                headerClass="bg-primary-custom text-white font-semibold"
+            >
+                <template #body="slotProps">
+                    <div class="flex flex-column gap-1">
+                        <span class="user-table__unit">
+                            {{
+                                slotProps.data.units?.length
+                                    ? slotProps.data.units
+                                          .map((unit) => unit.name)
+                                          .join(", ")
+                                    : "Sin Unidad"
+                            }}
+                        </span>
+                        <span class="ugda-chip ugda-chip--info w-max">
+                            {{ slotProps.data.role }}
+                        </span>
+                    </div>
+                </template>
+            </Column>
+
+            <Column
+                field="is_active"
+                header="Estado"
+                style="width: 10%"
+                headerClass="bg-primary-custom text-white font-semibold ugda-chip-header"
+                bodyClass="ugda-chip-column"
+            >
+                <template #body="slotProps">
+                    <div class="ugda-chip-cell">
+                        <span
+                            :class="[
+                                'ugda-chip',
+                                slotProps.data.is_active
+                                    ? 'ugda-chip--success'
+                                    : 'ugda-chip--neutral',
+                            ]"
+                        >
+                            {{
+                                slotProps.data.is_active ? "Activo" : "Inactivo"
+                            }}
+                        </span>
+                    </div>
+                </template>
+            </Column>
+
+            <Column
+                header="Acciones"
+                style="width: 10%; text-align: center"
+                headerClass="bg-primary-custom text-white"
+            >
+                <template #body="slotProps">
+                    <div class="usuarios-actions">
+                        <Button
+                            icon="pi pi-key"
+                            text
+                            rounded
+                            severity="secondary"
+                            class="text-gray-600 hover:text-blue-600"
+                            title="Restablecer contrasena"
+                            @click="openResetPasswordModal(slotProps.data)"
+                        />
+                        <Button
+                            icon="pi pi-pencil"
+                            text
+                            rounded
+                            severity="secondary"
+                            class="text-gray-600 hover:text-blue-600"
+                            title="Editar usuario"
+                            @click="openEditModal(slotProps.data)"
+                        />
+                    </div>
+                </template>
+            </Column>
+        </DataTable>
+    </div>
+
+    <Dialog
+        v-model:visible="displayModal"
+        :modal="true"
+        :draggable="false"
+        :header="modalHeader"
+        :style="{ width: '700px' }"
+        class="p-fluid blue-header-dialog"
+    >
+        <div class="grid formgrid p-2">
+            <div class="col-12 md:col-6 field mb-3">
+                <label class="form-label">Primer Nombre *</label>
+                <InputText
+                    v-model="form.first_name"
+                    @input="validateNameField('first_name')"
+                    :class="{ 'p-invalid': nameErrors.first_name }"
+                    class="w-full bg-gray-50"
+                    placeholder="Ej: Juan"
+                    maxlength="30"
+                />
+                <div class="flex justify-content-between">
+                    <small v-if="nameErrors.first_name" class="p-error block">{{
+                        nameErrors.first_name
+                    }}</small>
+                    <small class="text-gray-500 text-xs"
+                        >{{
+                            form.first_name ? form.first_name.length : 0
+                        }}/30</small
+                    >
+                </div>
+            </div>
+
+            <div class="col-12 md:col-6 field mb-3">
+                <label class="form-label">Segundo Nombre</label>
+                <InputText
+                    v-model="form.second_name"
+                    @input="validateNameField('second_name')"
+                    :class="{ 'p-invalid': nameErrors.second_name }"
+                    class="w-full bg-gray-50"
+                    placeholder="Ej: Carlos"
+                    maxlength="30"
+                />
+                <div class="flex justify-content-between">
+                    <small
+                        v-if="nameErrors.second_name"
+                        class="p-error block"
+                        >{{ nameErrors.second_name }}</small
+                    >
+                    <small class="text-gray-500 text-xs"
+                        >{{
+                            form.second_name ? form.second_name.length : 0
+                        }}/30</small
+                    >
+                </div>
+            </div>
+
+            <div class="col-12 md:col-6 field mb-3">
+                <label class="form-label">Primer Apellido *</label>
+                <InputText
+                    v-model="form.first_last_name"
+                    @input="validateNameField('first_last_name')"
+                    :class="{ 'p-invalid': nameErrors.first_last_name }"
+                    class="w-full bg-gray-50"
+                    placeholder="Ej: Pérez"
+                    maxlength="30"
+                />
+                <div class="flex justify-content-between">
+                    <small
+                        v-if="nameErrors.first_last_name"
+                        class="p-error block"
+                        >{{ nameErrors.first_last_name }}</small
+                    >
+                    <small class="text-gray-500 text-xs"
+                        >{{
+                            form.first_last_name
+                                ? form.first_last_name.length
+                                : 0
+                        }}/30</small
+                    >
+                </div>
+            </div>
+
+            <div class="col-12 md:col-6 field mb-3">
+                <label class="form-label">Segundo Apellido</label>
+                <InputText
+                    v-model="form.second_last_name"
+                    @input="validateNameField('second_last_name')"
+                    :class="{ 'p-invalid': nameErrors.second_last_name }"
+                    class="w-full bg-gray-50"
+                    placeholder="Ej: López"
+                    maxlength="30"
+                />
+                <div class="flex justify-content-between">
+                    <small
+                        v-if="nameErrors.second_last_name"
+                        class="p-error block"
+                        >{{ nameErrors.second_last_name }}</small
+                    >
+                    <small class="text-gray-500 text-xs"
+                        >{{
+                            form.second_last_name
+                                ? form.second_last_name.length
+                                : 0
+                        }}/30</small
+                    >
+                </div>
+            </div>
+
+            <div class="col-12 md:col-6 field mb-3">
+                <label class="form-label">Carnet</label>
+                <InputText
+                    v-model="form.carnet"
+                    @input="validateCarnet"
+                    :class="{ 'p-invalid': carnetError }"
+                    class="w-full bg-gray-50"
+                    placeholder="Ej: AA12345"
+                    maxlength="20"
+                />
+                <small v-if="carnetError" class="p-error block">{{
+                    carnetError
+                }}</small>
+            </div>
+
+            <div class="col-12 md:col-6 field mb-3">
+                <label class="form-label">Correo Electrónico *</label>
+                <InputText
+                    v-model="form.email"
+                    @input="validateEmailFormat"
+                    :class="{ 'p-invalid': emailError || emailFormatError }"
+                    class="w-full bg-gray-50"
+                    placeholder="correo@ues.edu.sv"
+                />
+
+                <small v-if="emailFormatError" class="p-error block">{{
+                    emailFormatError
+                }}</small>
+                <small v-if="emailError" class="p-error block">{{
+                    emailError
+                }}</small>
+
+                <small
+                    v-if="!isEditing && !emailFormatError && !emailError"
+                    class="text-gray-500 text-xs block mt-1"
+                >
+                    Se enviarán las credenciales a este correo.
+                </small>
+            </div>
+
+            <div class="col-12 md:col-6 field mb-3">
+                <label class="form-label">Unidades *</label>
+                <div class="flex gap-2 mt-1 user-units-selector-row">
+                    <Dropdown
+                        v-model="selectedUnitId"
+                        :options="unitsList"
+                        optionLabel="label"
+                        optionValue="value"
+                        filter
+                        placeholder="Seleccione una o más unidades"
+                        class="w-full bg-gray-50 user-units-selector-dropdown"
+                    />
+                    <Button
+                        icon="pi pi-plus"
+                        class="w-3rem flex-shrink-0 border-none user-units-selector-button"
+                        @click="addUnitToForm"
+                    />
+                </div>
+                <small class="text-gray-500 text-xs block mt-1">
+                    La primera unidad seleccionada se usará como unidad
+                    principal del usuario.
+                </small>
+                <div
+                    v-if="selectedUnits.length > 0"
+                    class="flex flex-column gap-2 mt-3"
+                >
+                    <div
+                        v-for="(unit, index) in selectedUnits"
+                        :key="unit.value"
+                        class="flex align-items-center justify-content-between p-3 border-1 border-gray-200 border-round bg-white"
+                    >
+                        <div class="flex flex-column">
+                            <span class="text-gray-800 text-sm">{{
+                                unit.label
+                            }}</span>
+                            <small v-if="index === 0" class="user-primary-unit"
+                                >Unidad principal</small
+                            >
+                        </div>
+                        <i
+                            class="pi pi-trash text-red-500 cursor-pointer hover:text-red-700"
+                            @click="removeUnitFromForm(unit.value)"
+                        ></i>
+                    </div>
+                </div>
+                <div v-else class="text-gray-500 text-sm font-italic p-2 mt-2">
+                    No hay unidades agregadas
+                </div>
+            </div>
+            <div class="col-12 md:col-6 field mb-3">
+                <label class="form-label">Rol de Usuario *</label>
+                <Dropdown
+                    v-model="form.role"
+                    :options="profilesList"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="Seleccione Rol"
+                    class="w-full bg-gray-50"
+                    :class="{ 'p-invalid': formSubmitted && roleMissing }"
+                />
+                <small
+                    v-if="formSubmitted && roleMissing"
+                    class="p-error text-sm block mt-1"
+                >
+                    Seleccione un rol para el usuario.
+                </small>
+            </div>
+
+            <div class="col-12 field mb-3" v-if="isEditing">
+                <label class="form-label">Estado</label>
+                <Dropdown
+                    v-model="form.is_active"
+                    :options="[
+                        { label: 'Activo', value: true },
+                        { label: 'Inactivo', value: false },
+                    ]"
+                    optionLabel="label"
+                    optionValue="value"
+                    class="w-full bg-gray-50"
+                />
+            </div>
+        </div>
+
+        <template #footer>
+            <div class="flex justify-content-between gap-3 mt-2 w-full">
+                <Button
+                    label="Cancelar"
+                    severity="secondary"
+                    outlined
+                    class="flex-1"
+                    :disabled="isSaving"
+                    @click="displayModal = false"
+                />
+                <Button
+                    label="Guardar Usuario"
+                    class="flex-1 border-none"
+                    :loading="isSaving"
+                    @click="saveUser"
+                />
+            </div>
+        </template>
+    </Dialog>
+
+    <Dialog
+        v-model:visible="resetPasswordModal"
+        :modal="true"
+        :draggable="false"
+        header="Restablecer contrasena"
+        :style="{ width: '520px' }"
+        class="p-fluid blue-header-dialog"
+    >
+        <div class="reset-password-content">
+            <div class="reset-password-icon">
+                <i class="pi pi-key"></i>
+            </div>
+            <div>
+                <h3>Enviar contrasena temporal</h3>
+                <p>
+                    Se generara una contrasena temporal para
+                    <strong>{{ selectedUserForReset?.email }}</strong
+                    >. Al iniciar sesion, el usuario debera cambiarla.
+                </p>
+            </div>
+        </div>
+
+        <div class="field mt-3">
+            <label class="form-label">Su contrasena *</label>
+            <InputText
+                v-model="adminPasswordForReset"
+                type="password"
+                autocomplete="current-password"
+                class="w-full bg-gray-50"
+                placeholder="Confirme su contrasena de administrador"
+                @keyup.enter="resetUserPassword"
+            />
+        </div>
+
+        <template #footer>
+            <div
+                class="flex justify-content-between gap-3 mt-2 w-full reset-password-footer"
+            >
+                <Button
+                    label="Cancelar"
+                    severity="secondary"
+                    outlined
+                    class="flex-1"
+                    :disabled="isResettingPassword"
+                    @click="resetPasswordModal = false"
+                />
+                <Button
+                    label="Enviar temporal"
+                    icon="pi pi-send"
+                    class="flex-1 border-none"
+                    :loading="isResettingPassword"
+                    @click="resetUserPassword"
+                />
+            </div>
+        </template>
+    </Dialog>
 </template>
 
-<style> 
+<style>
 /* Quitamos 'scoped' para que estas clases afecten al Modal que vive en el body */
 
 .blue-header-dialog .p-dialog-header {
-    border-bottom: none !important; 
+    border-bottom: none !important;
     background-color: var(--ugda-surface-card) !important;
     border-top-left-radius: var(--ugda-radius-lg) !important;
     border-top-right-radius: var(--ugda-radius-lg) !important;
