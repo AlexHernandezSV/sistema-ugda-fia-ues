@@ -23,6 +23,7 @@
         "@vitejs/plugin-vue": "^6.0.3",
         "html2canvas": "^1.4.1",
         "jspdf": "^4.2.1",
+        "pdfjs-dist": "^3.11.174",
         "primeflex": "^4.0.0",
         "primeicons": "^7.0.0",
         "primevue": "^4.5.4",

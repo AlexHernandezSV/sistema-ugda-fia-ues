@@ -592,12 +592,14 @@ class TransferController extends Controller
     private function syncTransferBoxes(Transfer $transfer, array $boxesPayload): void
     {
         foreach ($boxesPayload as $boxPayload) {
+            $boxNumber = (int) $boxPayload['box_number'];
+
             $box = $transfer->boxes()->create([
                 'series_name' => $boxPayload['series'],
                 'start_year' => (int) $boxPayload['year_start'],
                 'end_year' => (int) $boxPayload['year_end'],
-                'box_number' => (int) $boxPayload['box_number'],
-                'title' => 'Caja #' . str_pad((string) $boxPayload['box_number'], 3, '0', STR_PAD_LEFT),
+                'box_number' => $boxNumber,
+                'title' => 'Caja C-' . $transfer->code . '-' . str_pad((string) $boxNumber, 3, '0', STR_PAD_LEFT),
                 'period_label' => '01/01/' . $boxPayload['year_start'] . ' - 31/12/' . $boxPayload['year_end'],
                 'content_description' => $boxPayload['series'],
             ]);
@@ -1099,6 +1101,17 @@ class TransferController extends Controller
 
     public function observeReview(Request $request, string $number): JsonResponse
     {
+        $validator = Validator::make($request->all(), [
+            'message' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'La observacion no puede superar 1000 caracteres.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
         $message = trim($request->string('message')->toString());
 
         if ($message === '') {

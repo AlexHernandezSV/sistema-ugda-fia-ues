@@ -103,7 +103,7 @@ const menuItems = computed(() => {
         hasPermission('endpoint.api.units.create') ? { label: 'Unidades', icon: 'pi pi-building', to: '/unidades' } : null,
         hasPermission('endpoint.api.users.create') ? { label: 'Usuarios', icon: 'pi pi-users', to: '/usuarios' } : null,
         hasPermission('endpoint.api.documentary-series.create') ? { label: 'Series Documentales', icon: 'pi pi-clone', to: '/series-documentales' } : null,
-        { label: 'Ubicaciones Fisicas', icon: 'pi pi-map-marker', to: '/archivo-general/ubicaciones' },
+        isAdminProfile.value ? { label: 'Ubicaciones Fisicas', icon: 'pi pi-map-marker', to: '/archivo-general/ubicaciones' } : null,
     ].filter(Boolean);
 
     if (configurationChildren.length > 0) {
@@ -709,7 +709,6 @@ onBeforeUnmount(() => {
 
 .sidebar-notifications-panel__mark:disabled {
     cursor: not-allowed;
-    opacity: 0.5;
 }
 
 .sidebar-notifications-panel__list {

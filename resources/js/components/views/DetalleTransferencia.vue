@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 import { useToast } from 'primevue/usetoast';
@@ -10,6 +10,8 @@ import QRCode from 'qrcode';
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
+
+const OBSERVATION_MAX_LENGTH = 1000;
 
 const transfer = ref(null);
 const loading = ref(true);
@@ -183,6 +185,10 @@ const buildPeriodYearLabel = (period) => {
 };
 
 const extractBoxContent = (box) => {
+    if (box.contentDescription) {
+        return box.contentDescription;
+    }
+
     if (box.title && box.title.includes(' - ')) {
         return box.title.split(' - ').slice(1).join(' - ');
     }
@@ -217,6 +223,10 @@ const buildLabelAccessUrl = (transferNumber, boxNumber) => {
     return `${origin}/etiquetas/transferencias/${encodeURIComponent(transferNumber)}/cajas/${encodeURIComponent(normalizedBoxNumber)}`;
 };
 
+const transferBoxCode = (box, transferNumber = transfer.value?.number) => (
+    box?.boxCode || box?.code || `C-${transferNumber || 'PENDIENTE'}-${String(Number(box?.number) || box?.number || 0).padStart(3, '0')}`
+);
+
 const buildLabelPreviewItems = async (data) => {
     const transferDate = compactDate(data.completion?.date || data.receivedAt);
     const assignedDate = data.completion
@@ -228,14 +238,15 @@ const buildLabelPreviewItems = async (data) => {
 
     return Promise.all((data.boxes ?? []).map(async (box, index) => ({
         boxNumber: box.number,
-        boxLabel: `#${box.number}`,
+        boxCode: transferBoxCode(box, data.number),
+        boxLabel: transferBoxCode(box, data.number),
         transferNumber: data.number,
         transferDate,
         unit: data.unit,
         content: extractBoxContent(box),
         period: box.period,
         locationCode: box.physicalLocation || buildLocationCode(box, index),
-        labelCode: `${data.number}-${box.number}`,
+        labelCode: transferBoxCode(box, data.number),
         assignedBy,
         assignedAt: assignedDate,
         qrDataUrl: await buildQrDataUrl(buildLabelAccessUrl(data.number, box.number)),
@@ -801,9 +812,9 @@ const normalizeScheduledFor = (date, time) => {
     return `${year}-${month}-${day} ${trimmedTime}:00`;
 };
 
-const displayBoxNumber = (box) => String(Number(box.number || 0) || box.number);
+const displayBoxNumber = (box) => transferBoxCode(box);
 
-const boxTitle = (box) => `Caja #${displayBoxNumber(box)}`;
+const boxTitle = (box) => `Caja ${displayBoxNumber(box)}`;
 
 const boxSeriesList = (box) => {
     if (Array.isArray(box.seriesList) && box.seriesList.length > 0) {
@@ -893,6 +904,11 @@ const closeUnitAuthorizeModal = () => {
 
 const confirmUnitAuthorization = async () => {
     if (!transfer.value) {
+        return;
+    }
+
+    if (commentDraft.value.trim().length > OBSERVATION_MAX_LENGTH) {
+        showError(`Las observaciones no pueden superar ${OBSERVATION_MAX_LENGTH} caracteres.`);
         return;
     }
 
@@ -1073,6 +1089,11 @@ const submitDecisionAction = async () => {
 
     const comments = decisionForm.value.comments.trim();
 
+    if (comments.length > OBSERVATION_MAX_LENGTH) {
+        showError(`Las observaciones no pueden superar ${OBSERVATION_MAX_LENGTH} caracteres.`);
+        return;
+    }
+
     if (currentDecisionAction.value === 'schedule') {
         if (!decisionForm.value.date || !decisionForm.value.time) {
             showError('Debe ingresar la fecha y hora de entrega.');
@@ -1199,6 +1220,19 @@ const hasReviewActions = computed(() => (transfer.value?.actions?.length ?? 0) >
 onMounted(async () => {
     await Promise.all([fetchLocationOptions(), fetchDetail()]);
 });
+
+watch(
+    () => route.params.number,
+    async (newNumber, oldNumber) => {
+        if (!oldNumber || newNumber === oldNumber) {
+            return;
+        }
+
+        loading.value = true;
+        transfer.value = null;
+        await fetchDetail();
+    }
+);
 </script>
 
 <template>
@@ -1707,7 +1741,7 @@ onMounted(async () => {
                                     <th>Serie / Subserie</th>
                                     <th>Fecha inicial</th>
                                     <th>Fecha final</th>
-                                    <th>N° de caja</th>
+                                    <th>Codigo de caja</th>
                                     <th class="ugda-chip-table-cell">Documentos</th>
                                 </tr>
                             </thead>
@@ -1730,7 +1764,7 @@ onMounted(async () => {
                                     </td>
                                     <td>{{ row.startYear }}</td>
                                     <td>{{ row.endYear }}</td>
-                                    <td>{{ row.boxNumber }}</td>
+                                    <td>{{ row.boxCode || row.boxNumber }}</td>
                                     <td class="ugda-chip-table-cell">
                                         <div class="ugda-chip-cell">
                                             <span class="detalle-summary-badge">{{ row.documentsLabel }}</span>
@@ -1890,6 +1924,7 @@ onMounted(async () => {
                         v-model="commentDraft"
                         rows="4"
                         class="detalle-textarea"
+                        :maxlength="OBSERVATION_MAX_LENGTH"
                         placeholder="Agregue cualquier observación o comentario sobre esta solicitud..."
                     ></textarea>
                 </div>
@@ -2217,6 +2252,7 @@ onMounted(async () => {
                             v-model="decisionForm.comments"
                             rows="4"
                             class="detalle-decision-modal__textarea"
+                            :maxlength="OBSERVATION_MAX_LENGTH"
                             placeholder="Agregue cualquier comentario adicional para la entrega..."
                         ></textarea>
                     </div>
@@ -2231,6 +2267,7 @@ onMounted(async () => {
                         v-model="decisionForm.comments"
                         rows="5"
                         class="detalle-decision-modal__textarea"
+                        :maxlength="OBSERVATION_MAX_LENGTH"
                         :placeholder="decisionModalConfig.placeholder"
                     ></textarea>
                 </div>
@@ -2333,7 +2370,7 @@ onMounted(async () => {
                         <article v-for="box in transfer?.boxes ?? []" :key="`auth-${box.number}`" class="detalle-unit-auth-modal__box">
                             <div class="detalle-unit-auth-modal__box-content">
                                 <div class="detalle-unit-auth-modal__box-series">
-                                    <span class="detalle-unit-auth-modal__box-badge">Caja #{{ displayBoxNumber(box) }}</span>
+                                    <span class="detalle-unit-auth-modal__box-badge">Caja {{ displayBoxNumber(box) }}</span>
                                     <span v-if="boxSeriesList(box).length > 1" class="detalle-unit-auth-modal__series-count">
                                         Múltiples ({{ boxSeriesList(box).length }})
                                     </span>
@@ -2449,7 +2486,7 @@ onMounted(async () => {
                                     </div>
                                     <div>
                                         <div class="detalle-process-box__title">
-                                            Caja #{{ String(box.number).padStart(3, '0') }}
+                                            Caja {{ displayBoxNumber(box) }}
                                             <span :class="isBoxLocated(box.number) ? 'detalle-process-box__status detalle-process-box__status--done' : 'detalle-process-box__status'">
                                                 <i :class="isBoxLocated(box.number) ? 'pi pi-check-circle' : 'pi pi-exclamation-circle'"></i>
                                                 {{ isBoxLocated(box.number) ? 'Ubicada' : 'Pendiente' }}
@@ -2885,14 +2922,19 @@ onMounted(async () => {
 }
 
 .detalle-decision-modal__button {
+    align-items: center;
+    display: inline-flex;
+    justify-content: center;
     min-width: 10rem;
     border-radius: 0.75rem;
     padding: 0.95rem 1.35rem;
     font-weight: 700;
     font-size: 0.98rem;
+    line-height: 1;
+    text-align: center;
     cursor: pointer;
     border: 1px solid transparent;
-    transition: opacity 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .detalle-decision-modal__button:hover:not(:disabled) {
@@ -2901,7 +2943,6 @@ onMounted(async () => {
 }
 
 .detalle-decision-modal__button:disabled {
-    opacity: 0.7;
     cursor: not-allowed;
 }
 
@@ -2916,8 +2957,14 @@ onMounted(async () => {
 }
 
 .detalle-decision-modal__button--warning {
-    background: #f7d18a;
+    background: var(--ugda-warning);
+    border-color: var(--ugda-warning);
     color: #ffffff;
+}
+
+.detalle-decision-modal__button--warning:hover:not(:disabled) {
+    background: #d97706;
+    border-color: #d97706;
 }
 
 .detalle-decision-modal__button--danger {
@@ -2944,8 +2991,8 @@ onMounted(async () => {
 }
 
 .detalle-decision-modal__button--cancel-warning {
-    border-color: #f0a53a;
-    color: #f0a53a;
+    border-color: var(--ugda-warning);
+    color: var(--ugda-warning);
 }
 
 .detalle-decision-modal__button--cancel-danger {
@@ -3789,7 +3836,8 @@ onMounted(async () => {
 }
 
 .detalle-action--warning {
-    background: #f6ad3c;
+    background: var(--ugda-warning);
+    border-color: var(--ugda-warning);
     color: #ffffff;
 }
 
@@ -3827,11 +3875,13 @@ onMounted(async () => {
 }
 
 .detalle-unit-auth-modal__header h2 {
+    color: #ffffff;
     font-size: 1.25rem;
     font-weight: 800;
 }
 
 .detalle-unit-auth-modal__header p {
+    color: rgba(255, 255, 255, 0.92);
     font-size: 0.92rem;
     margin-top: 0.45rem;
 }
@@ -4776,7 +4826,6 @@ onMounted(async () => {
 }
 
 .detalle-labels-modal__button:disabled {
-    opacity: 0.72;
     cursor: wait;
 }
 

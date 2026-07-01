@@ -287,7 +287,7 @@ button.ugda-primary-action,
     font-weight: var(--ugda-weight-medium) !important;
     min-height: var(--ugda-control-height);
     padding: 0 var(--ugda-space-md) !important;
-    transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+    transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
 .p-button:not(:disabled):hover,
@@ -335,11 +335,18 @@ button.ugda-primary-action:disabled,
 .detalle-decision-modal__button--primary:disabled,
 .detalle-labels-modal__button--primary:disabled,
 .transfer-docs__save:disabled {
-    background: var(--ugda-action-disabled) !important;
-    border-color: var(--ugda-action-disabled) !important;
-    color: var(--ugda-text-inverse) !important;
     cursor: not-allowed;
-    opacity: 0.72;
+}
+
+button,
+.p-button,
+button:disabled,
+button[disabled],
+.p-button:disabled,
+.p-button.p-disabled,
+.p-disabled > .p-button {
+    filter: none !important;
+    opacity: 1 !important;
 }
 
 .p-button.p-button-text,

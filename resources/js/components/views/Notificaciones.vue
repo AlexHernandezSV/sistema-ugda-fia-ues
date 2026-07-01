@@ -413,7 +413,6 @@ onMounted(() => fetchNotifications());
 .notificaciones-primary-action:disabled,
 .notificaciones-pagination button:disabled {
     cursor: not-allowed;
-    opacity: 0.55;
 }
 
 .notificaciones-filter-label {

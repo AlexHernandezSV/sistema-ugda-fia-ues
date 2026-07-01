@@ -422,6 +422,9 @@ class RequestCatalog
             'digitalFile' => $document->digital_file_name,
             'digitalPath' => $document->digital_file_path,
             'boxNumber' => str_pad((string) $document->box?->box_number, 3, '0', STR_PAD_LEFT),
+            'boxCode' => $document->box?->transfer
+                ? $document->box->boxCode($document->box->transfer->code)
+                : null,
         ];
     }
 
@@ -573,7 +576,7 @@ class RequestCatalog
 
     private static function buildTransferDocumentSummary(Transfer $transfer): array
     {
-        $rows = $transfer->boxes->map(function ($box, $index) {
+        $rows = $transfer->boxes->map(function ($box, $index) use ($transfer) {
             $seriesList = self::splitSeriesLabels($box->series_name);
 
             if ($seriesList->isEmpty()) {
@@ -591,6 +594,7 @@ class RequestCatalog
                 'startYear' => (string) $box->start_year,
                 'endYear' => (string) $box->end_year,
                 'boxNumber' => (string) $box->box_number,
+                'boxCode' => $box->boxCode($transfer->code),
                 'documentsLabel' => $box->documents->count() . ' doc(s)',
             ];
         })->values()->all();
@@ -655,6 +659,7 @@ class RequestCatalog
     private static function mapTransferBox(Transfer $transfer, $box, ?User $viewer = null): array
     {
         $number = str_pad((string) $box->box_number, 3, '0', STR_PAD_LEFT);
+        $boxCode = $box->boxCode($transfer->code);
         $seriesList = self::splitSeriesLabels($box->series_name);
 
         if ($seriesList->isEmpty()) {
@@ -667,9 +672,12 @@ class RequestCatalog
 
         return [
             'number' => $number,
-            'title' => $box->title ?: 'Caja #' . $number,
+            'code' => $boxCode,
+            'boxCode' => $boxCode,
+            'title' => $box->title ?: 'Caja ' . $boxCode,
             'series' => $box->series_name,
             'seriesList' => $seriesList->values()->all(),
+            'contentDescription' => $box->content_description,
             'period' => $box->period_label ?: self::buildPeriodLabel($box->start_year, $box->end_year),
             'documentsCount' => $box->documents->count(),
             'physicalLocation' => $box->location_code,

@@ -47,11 +47,12 @@ const form = ref({
 });
 
 const selectedUnits = computed(() =>
-    form.value.unit_ids
+    (Array.isArray(form.value.unit_ids) ? form.value.unit_ids : [])
         .map(unitId => unitsList.value.find(unit => unit.value === unitId))
         .filter(Boolean)
 );
 const roleMissing = computed(() => !String(form.value.role ?? '').trim());
+const unitsMissing = computed(() => selectedUnits.value.length === 0);
 
 // --- CARGAR DATOS ---
 const fetchData = async () => {
@@ -180,9 +181,25 @@ const openEditModal = (user) => {
 };
 
 const openResetPasswordModal = (user) => {
+    if (!user.is_active) {
+        toast.add({
+            severity: 'warn',
+            summary: 'Usuario inactivo',
+            detail: 'El usuario no se encuentra activo',
+            life: 3500
+        });
+        return;
+    }
+
     selectedUserForReset.value = user;
     adminPasswordForReset.value = '';
     resetPasswordModal.value = true;
+};
+
+const closeResetPasswordModal = () => {
+    resetPasswordModal.value = false;
+    adminPasswordForReset.value = '';
+    selectedUserForReset.value = null;
 };
 
 const addUnitToForm = () => {
@@ -208,7 +225,7 @@ const saveUser = async () => {
     formSubmitted.value = true;
 
     // 1. Validar Campos Obligatorios
-    if (!form.value.first_name || !form.value.first_last_name || !form.value.email || form.value.unit_ids.length === 0 || roleMissing.value) {
+    if (!form.value.first_name || !form.value.first_last_name || !form.value.email || unitsMissing.value || roleMissing.value) {
         toast.add({ severity: 'warn', summary: 'Atención', detail: 'Complete los campos obligatorios (*)', life: 3000 });
         return;
     }
@@ -234,6 +251,7 @@ const saveUser = async () => {
 
     isSaving.value = true;
     emailError.value = '';
+    carnetError.value = '';
 
     try {
         if (isEditing.value) {
@@ -252,6 +270,13 @@ const saveUser = async () => {
             if (errors.email) {
                 emailError.value = 'Este correo electrónico ya está registrado.';
                 toast.add({ severity: 'error', summary: 'Error', detail: 'El correo ya existe', life: 3000 });
+            }
+            if (errors.carnet) {
+                carnetError.value = errors.carnet[0] || 'Este carnet ya esta registrado.';
+                toast.add({ severity: 'error', summary: 'Error', detail: 'El carnet ya existe', life: 3000 });
+            }
+            if (errors.unit_ids) {
+                toast.add({ severity: 'error', summary: 'Error', detail: errors.unit_ids[0] || 'Seleccione al menos una unidad', life: 3000 });
             }
         } else {
             toast.add({ severity: 'error', summary: 'Error', detail: 'Ocurrió un error al guardar', life: 3000 });
@@ -466,6 +491,7 @@ const clearFilter = () => {
                             filter
                             placeholder="Seleccione una o más unidades"
                             class="w-full bg-gray-50 user-units-selector-dropdown"
+                            :class="{ 'p-invalid': formSubmitted && unitsMissing }"
                         />
                         <Button
                             icon="pi pi-plus"
@@ -475,6 +501,9 @@ const clearFilter = () => {
                     </div>
                     <small class="text-gray-500 text-xs block mt-1">
                         La primera unidad seleccionada se usará como unidad principal del usuario.
+                    </small>
+                    <small v-if="formSubmitted && unitsMissing" class="p-error text-sm block mt-1">
+                        Seleccione al menos una unidad para el usuario.
                     </small>
                     <div v-if="selectedUnits.length > 0" class="flex flex-column gap-2 mt-3">
                         <div
@@ -513,8 +542,12 @@ const clearFilter = () => {
                 </div>
 
                 <div class="col-12 field mb-3" v-if="isEditing">
-                    <label class="form-label">Estado</label>
-                    <Dropdown v-model="form.is_active" :options="[{label:'Activo', value:true}, {label:'Inactivo', value:false}]" optionLabel="label" optionValue="value" class="w-full bg-gray-50" />
+                    <div :class="['user-status-toggle', form.is_active ? 'is-active' : 'is-inactive']">
+                        <ToggleSwitch v-model="form.is_active" />
+                        <span class="user-status-toggle__text">
+                            {{ form.is_active ? 'Activo' : 'Inactivo' }}
+                        </span>
+                    </div>
                 </div>
             </div>
 
@@ -533,6 +566,7 @@ const clearFilter = () => {
             header="Restablecer contrasena"
             :style="{ width: '520px' }"
             class="p-fluid blue-header-dialog"
+            @hide="closeResetPasswordModal"
         >
             <div class="reset-password-content">
                 <div class="reset-password-icon">
@@ -553,7 +587,10 @@ const clearFilter = () => {
                 <InputText
                     v-model="adminPasswordForReset"
                     type="password"
-                    autocomplete="current-password"
+                    name="admin-reset-password-confirmation"
+                    autocomplete="new-password"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
                     class="w-full bg-gray-50"
                     placeholder="Confirme su contrasena de administrador"
                     @keyup.enter="resetUserPassword"
@@ -562,7 +599,7 @@ const clearFilter = () => {
 
             <template #footer>
                 <div class="flex justify-content-between gap-3 mt-2 w-full reset-password-footer">
-                    <Button label="Cancelar" severity="secondary" outlined class="flex-1" :disabled="isResettingPassword" @click="resetPasswordModal = false" />
+                    <Button label="Cancelar" severity="secondary" outlined class="flex-1" :disabled="isResettingPassword" @click="closeResetPasswordModal" />
                     <Button label="Enviar temporal" icon="pi pi-send" class="flex-1 border-none" :loading="isResettingPassword" @click="resetUserPassword" />
                 </div>
             </template>
@@ -645,6 +682,42 @@ const clearFilter = () => {
     align-items: center;
     justify-content: center;
     gap: 0.25rem;
+}
+
+.user-status-toggle {
+    align-items: center;
+    display: inline-flex;
+    gap: var(--ugda-space-sm);
+    min-height: var(--ugda-control-height);
+}
+
+.user-status-toggle__text {
+    font-size: var(--ugda-font-body);
+    font-weight: var(--ugda-weight-medium);
+}
+
+.user-status-toggle.is-active .user-status-toggle__text {
+    color: var(--ugda-success-text);
+}
+
+.user-status-toggle.is-inactive .user-status-toggle__text {
+    color: var(--ugda-error);
+}
+
+:deep(.user-status-toggle.is-active .p-toggleswitch-slider) {
+    background: var(--ugda-success) !important;
+}
+
+:deep(.user-status-toggle.is-active .p-toggleswitch.p-focus .p-toggleswitch-slider) {
+    box-shadow: 0 0 0 0.2rem rgba(22, 163, 74, 0.2) !important;
+}
+
+:deep(.user-status-toggle.is-inactive .p-toggleswitch-slider) {
+    background: var(--ugda-error) !important;
+}
+
+:deep(.user-status-toggle.is-inactive .p-toggleswitch.p-focus .p-toggleswitch-slider) {
+    box-shadow: 0 0 0 0.2rem rgba(220, 38, 38, 0.18) !important;
 }
 
 .reset-password-content {

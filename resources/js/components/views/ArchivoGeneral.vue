@@ -16,6 +16,8 @@ const results = ref([]);
 const resultsCount = ref(0);
 const resultsLimit = ref(100);
 const hasSearched = ref(false);
+const selectedDocument = ref(null);
+const documentDialogVisible = ref(false);
 
 const trimmedQuery = computed(() => query.value.trim());
 const hasResults = computed(() => results.value.length > 0);
@@ -54,6 +56,35 @@ const summaryCards = computed(() => ([
         accent: 'archive-stat--amber',
     },
 ]));
+
+const selectedLocationParts = computed(() => {
+    const location = selectedDocument.value?.box?.location ?? '';
+    const parts = location
+        .split(/\s*[•|,]\s*|\s+-\s+|-/)
+        .map((part) => part.trim())
+        .filter(Boolean);
+
+    return {
+        office: parts[0] || location || 'Pendiente de registrar',
+        hallway: parts[1] || 'N/D',
+        shelves: parts.length > 2 ? parts.slice(2).join('-') : 'N/D',
+        full: location || 'Pendiente de registrar',
+    };
+});
+
+const formatDocumentSupport = (support) => support || 'Sin soporte';
+
+const formatPeriodStart = (document) => document?.box?.start_year || document?.year || 'N/D';
+const formatPeriodEnd = (document) => document?.box?.end_year || document?.year || 'N/D';
+
+const openDocumentDialog = (document) => {
+    selectedDocument.value = document;
+    documentDialogVisible.value = true;
+};
+
+const closeDocumentDialog = () => {
+    documentDialogVisible.value = false;
+};
 
 const fetchArchive = async (searchTerm = '') => {
     loading.value = true;
@@ -100,6 +131,8 @@ const clearSearch = () => {
     results.value = [];
     resultsCount.value = 0;
     errorMessage.value = '';
+    selectedDocument.value = null;
+    documentDialogVisible.value = false;
 };
 
 onMounted(() => fetchArchive());
@@ -188,7 +221,13 @@ onMounted(() => fetchArchive());
                 <div v-else-if="hasResults" class="archive-results__list">
                     <p v-if="limitNotice" class="archive-results__notice">{{ limitNotice }}</p>
 
-                    <article v-for="document in results" :key="document.id" class="archive-document">
+                    <button
+                        v-for="document in results"
+                        :key="document.id"
+                        type="button"
+                        class="archive-document"
+                        @click="openDocumentDialog(document)"
+                    >
                         <div class="archive-document__icon">
                             <i class="pi pi-file"></i>
                         </div>
@@ -250,7 +289,7 @@ onMounted(() => fetchArchive());
                                 <strong>{{ document.box?.location || 'Pendiente de registrar' }}</strong>
                             </div>
                         </div>
-                    </article>
+                    </button>
                 </div>
 
                 <div v-else class="archive-state">
@@ -289,6 +328,156 @@ onMounted(() => fetchArchive());
                 </div>
             </div>
         </section>
+
+        <Dialog
+            v-model:visible="documentDialogVisible"
+            modal
+            :closable="false"
+            :draggable="false"
+            :showHeader="false"
+            :style="{ width: 'min(900px, calc(100vw - 2rem))' }"
+            class="archive-document-dialog"
+            contentClass="p-0"
+            @hide="selectedDocument = null"
+        >
+            <div v-if="selectedDocument" class="archive-document-modal">
+                <header class="archive-document-modal__header">
+                    <div class="archive-document-modal__heading">
+                        <span class="archive-document-modal__icon">
+                            <i class="pi pi-file"></i>
+                        </span>
+                        <div>
+                            <h2>Información del Documento</h2>
+                            <p>Detalles completos y ubicación</p>
+                        </div>
+                    </div>
+
+                    <button type="button" class="archive-document-modal__close" @click="closeDocumentDialog">
+                        <i class="pi pi-times"></i>
+                    </button>
+                </header>
+
+                <div class="archive-document-modal__body">
+                    <section class="archive-document-modal__section archive-document-modal__section--muted">
+                        <h3>
+                            <i class="pi pi-file"></i>
+                            Información del Documento
+                        </h3>
+
+                        <div class="archive-document-modal__divider"></div>
+
+                        <div class="archive-document-modal__grid archive-document-modal__grid--two">
+                            <div class="archive-document-modal__field">
+                                <span>Nombre del documento</span>
+                                <strong>{{ selectedDocument.title || 'Sin nombre' }}</strong>
+                            </div>
+                            <div class="archive-document-modal__field">
+                                <span>Código</span>
+                                <strong>{{ selectedDocument.code || 'N/D' }}</strong>
+                            </div>
+                            <div class="archive-document-modal__field">
+                                <span>Tipo de soporte</span>
+                                <strong class="archive-document-modal__badge">{{ formatDocumentSupport(selectedDocument.support) }}</strong>
+                            </div>
+                            <div class="archive-document-modal__field">
+                                <span>Archivo digital</span>
+                                <strong class="archive-document-modal__link">{{ selectedDocument.digital_file || 'No disponible' }}</strong>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="archive-document-modal__section">
+                        <h3>
+                            <i class="pi pi-box"></i>
+                            Información de la Caja
+                        </h3>
+
+                        <div class="archive-document-modal__divider"></div>
+
+                        <div class="archive-document-modal__grid archive-document-modal__grid--two">
+                            <div class="archive-document-modal__field">
+                                <span>Número de caja</span>
+                                <strong>#{{ selectedDocument.box?.number || 'N/D' }}</strong>
+                            </div>
+                            <div class="archive-document-modal__field">
+                                <span>Serie documental</span>
+                                <strong>{{ selectedDocument.series || selectedDocument.box?.series || 'Sin serie' }}</strong>
+                            </div>
+                            <div class="archive-document-modal__field">
+                                <span>Fecha inicial</span>
+                                <strong>{{ formatPeriodStart(selectedDocument) }}</strong>
+                            </div>
+                            <div class="archive-document-modal__field">
+                                <span>Fecha final</span>
+                                <strong>{{ formatPeriodEnd(selectedDocument) }}</strong>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="archive-document-modal__section archive-document-modal__section--location">
+                        <h3>
+                            <i class="pi pi-map-marker"></i>
+                            Ubicación Física en UGDA
+                        </h3>
+
+                        <div class="archive-document-modal__divider"></div>
+
+                        <div class="archive-document-modal__location-grid">
+                            <div class="archive-document-modal__location-card">
+                                <span>Edificio / Oficina</span>
+                                <strong>{{ selectedLocationParts.office }}</strong>
+                            </div>
+                            <div class="archive-document-modal__location-card">
+                                <span>Pasillo</span>
+                                <strong>{{ selectedLocationParts.hallway }}</strong>
+                            </div>
+                            <div class="archive-document-modal__location-card">
+                                <span>Estantes</span>
+                                <strong>{{ selectedLocationParts.shelves }}</strong>
+                            </div>
+                            <div class="archive-document-modal__location-card archive-document-modal__location-card--wide">
+                                <span>Ubicación completa</span>
+                                <strong>{{ selectedLocationParts.full }}</strong>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="archive-document-modal__section archive-document-modal__section--muted">
+                        <h3>
+                            <i class="pi pi-inbox"></i>
+                            Información de la Transferencia
+                        </h3>
+
+                        <div class="archive-document-modal__divider"></div>
+
+                        <div class="archive-document-modal__grid archive-document-modal__grid--two">
+                            <div class="archive-document-modal__field">
+                                <span>Número de transferencia</span>
+                                <strong>#{{ selectedDocument.transfer?.code || 'N/D' }}</strong>
+                            </div>
+                            <div class="archive-document-modal__field">
+                                <span>Fecha de transferencia</span>
+                                <strong>{{ selectedDocument.transfer?.completed_at_label || selectedDocument.transfer?.request_date_label || 'N/D' }}</strong>
+                            </div>
+                            <div class="archive-document-modal__field">
+                                <span>Unidad productora</span>
+                                <strong>{{ selectedDocument.unit?.name || 'Sin unidad' }}</strong>
+                            </div>
+                            <div class="archive-document-modal__field">
+                                <span>Responsable</span>
+                                <strong>{{ selectedDocument.transfer?.responsible || 'N/D' }}</strong>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <footer class="archive-document-modal__footer">
+                    <button type="button" class="archive-document-modal__button" @click="closeDocumentDialog">
+                        Cerrar
+                    </button>
+                </footer>
+            </div>
+        </Dialog>
     </div>
 </template>
 
@@ -484,7 +673,6 @@ onMounted(() => fetchArchive());
 .archive-search__button:disabled,
 .archive-search__clear:disabled {
     cursor: not-allowed;
-    opacity: 0.62;
 }
 
 .archive-results {
@@ -501,6 +689,7 @@ onMounted(() => fetchArchive());
 }
 
 .archive-results__header h2 {
+    color: #ffffff;
     font-size: 1.15rem;
     margin: 0;
 }
@@ -529,11 +718,26 @@ onMounted(() => fetchArchive());
 
 .archive-document {
     align-items: flex-start;
+    background: #ffffff;
     border: 1px solid #dbe3ed;
     border-radius: 0.7rem;
+    color: inherit;
+    cursor: pointer;
     display: flex;
+    font: inherit;
     gap: 1rem;
     padding: 1.25rem;
+    text-align: left;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+    width: 100%;
+}
+
+.archive-document:hover,
+.archive-document:focus-visible {
+    border-color: #2f6f9f;
+    box-shadow: 0 14px 28px rgba(47, 111, 159, 0.12);
+    outline: none;
+    transform: translateY(-1px);
 }
 
 .archive-document__icon {
@@ -726,10 +930,231 @@ onMounted(() => fetchArchive());
     font-size: 0.78rem;
 }
 
+:global(.archive-document-dialog .p-dialog-header) {
+    display: none;
+}
+
+:global(.archive-document-dialog .p-dialog-content) {
+    border-radius: inherit;
+}
+
+.archive-document-modal {
+    background: #ffffff;
+    color: #0f172a;
+    overflow: hidden;
+}
+
+.archive-document-modal__header {
+    align-items: center;
+    background: #2f6f9f;
+    color: #ffffff;
+    display: flex;
+    justify-content: space-between;
+    padding: 1rem 1.5rem;
+}
+
+.archive-document-modal__heading {
+    align-items: center;
+    display: flex;
+    gap: 0.85rem;
+}
+
+.archive-document-modal__icon {
+    align-items: center;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 0.65rem;
+    display: inline-flex;
+    flex-shrink: 0;
+    font-size: 1.25rem;
+    height: 2.75rem;
+    justify-content: center;
+    width: 2.75rem;
+}
+
+.archive-document-modal__header h2,
+.archive-document-modal__header p {
+    margin: 0;
+}
+
+.archive-document-modal__header h2 {
+    color: #ffffff;
+    font-size: 1.25rem;
+    font-weight: 800;
+}
+
+.archive-document-modal__header p {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 0.82rem;
+    margin-top: 0.2rem;
+}
+
+.archive-document-modal__close {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: 999px;
+    color: #ffffff;
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 1.25rem;
+    height: 2.5rem;
+    justify-content: center;
+    width: 2.5rem;
+}
+
+.archive-document-modal__close:hover,
+.archive-document-modal__close:focus-visible {
+    background: rgba(255, 255, 255, 0.14);
+    outline: none;
+}
+
+.archive-document-modal__body {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    max-height: min(68vh, 42rem);
+    overflow-y: auto;
+    padding: 1.5rem;
+}
+
+.archive-document-modal__section {
+    background: #ffffff;
+    border: 1px solid #cbddeb;
+    border-radius: 0.65rem;
+    padding: 1.5rem;
+}
+
+.archive-document-modal__section--muted {
+    background: #f8fafc;
+    border-color: #f1f5f9;
+}
+
+.archive-document-modal__section--location {
+    background: linear-gradient(135deg, #f8fbff 0%, #eef6fd 100%);
+    border: 2px solid #2f6f9f;
+}
+
+.archive-document-modal__section h3 {
+    align-items: center;
+    color: #0f172a;
+    display: flex;
+    font-size: 1.15rem;
+    font-weight: 800;
+    gap: 0.5rem;
+    margin: 0;
+}
+
+.archive-document-modal__section h3 i {
+    color: #2f6f9f;
+}
+
+.archive-document-modal__divider {
+    border-top: 1px solid #dbe3ed;
+    margin: 0.95rem 0 1.2rem;
+}
+
+.archive-document-modal__grid {
+    display: grid;
+    gap: 1.6rem 2rem;
+}
+
+.archive-document-modal__grid--two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.archive-document-modal__field {
+    min-width: 0;
+}
+
+.archive-document-modal__field span,
+.archive-document-modal__location-card span {
+    color: #64748b;
+    display: block;
+    font-size: 0.82rem;
+    margin-bottom: 0.5rem;
+}
+
+.archive-document-modal__field strong,
+.archive-document-modal__location-card strong {
+    color: #111827;
+    display: block;
+    font-size: 1rem;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+}
+
+.archive-document-modal__badge {
+    background: #eef2f7;
+    border-radius: 999px;
+    color: #334155 !important;
+    display: inline-flex !important;
+    font-size: 0.78rem !important;
+    padding: 0.35rem 0.8rem;
+    width: fit-content;
+}
+
+.archive-document-modal__link {
+    color: #2f6f9f !important;
+}
+
+.archive-document-modal__location-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.archive-document-modal__location-card {
+    background: #ffffff;
+    border: 1px solid #e5edf6;
+    border-radius: 0.65rem;
+    box-shadow: 0 8px 16px rgba(15, 23, 42, 0.08);
+    min-width: 0;
+    padding: 1.1rem 1rem;
+}
+
+.archive-document-modal__location-card strong {
+    color: #2f6f9f;
+    font-size: 1.08rem;
+}
+
+.archive-document-modal__location-card--wide {
+    grid-column: 1 / -1;
+}
+
+.archive-document-modal__footer {
+    align-items: center;
+    background: #ffffff;
+    border-top: 1px solid #dbe3ed;
+    display: flex;
+    justify-content: flex-end;
+    padding: 1rem 1.5rem;
+}
+
+.archive-document-modal__button {
+    background: #2f6f9f;
+    border: 1px solid #2f6f9f;
+    border-radius: 0.65rem;
+    color: #ffffff;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 800;
+    min-height: 3rem;
+    padding: 0 1.5rem;
+}
+
+.archive-document-modal__button:hover,
+.archive-document-modal__button:focus-visible {
+    background: #285f88;
+    border-color: #285f88;
+    outline: none;
+}
+
 @media (max-width: 991px) {
     .archive-stats,
     .archive-document__meta,
-    .archive-state__hints {
+    .archive-state__hints,
+    .archive-document-modal__grid--two,
+    .archive-document-modal__location-grid {
         grid-template-columns: 1fr;
     }
 
@@ -743,6 +1168,15 @@ onMounted(() => fetchArchive());
     .archive-document__location {
         align-items: flex-start;
         flex-direction: column;
+    }
+
+    .archive-document-modal__header,
+    .archive-document-modal__footer {
+        padding: 1rem;
+    }
+
+    .archive-document-modal__body {
+        padding: 1rem;
     }
 
     .archive-search__button,

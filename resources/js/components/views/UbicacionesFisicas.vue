@@ -12,6 +12,7 @@ const shelves = ref([]);
 const dialogVisible = ref(false);
 const activeType = ref('office');
 const editingId = ref(null);
+const rowsPerPageOptions = ref([5, 10, 25, 50]);
 
 const form = ref({
     name: '',
@@ -240,7 +241,7 @@ onMounted(fetchCatalog);
                     <Column header="Acciones" bodyClass="locations-actions">
                         <template #body="{ data }">
                             <Button icon="pi pi-pencil" text rounded aria-label="Editar oficina" @click="openEdit('office', data)" />
-                            <Button icon="pi pi-trash" text rounded severity="danger" aria-label="Eliminar oficina" @click="deleteLocation('office', data)" />
+                            <Button icon="pi pi-trash" rounded severity="danger" class="locations-delete-button" aria-label="Eliminar oficina" @click="deleteLocation('office', data)" />
                         </template>
                     </Column>
                 </DataTable>
@@ -268,7 +269,7 @@ onMounted(fetchCatalog);
                     <Column header="Acciones" bodyClass="locations-actions">
                         <template #body="{ data }">
                             <Button icon="pi pi-pencil" text rounded aria-label="Editar pasillo" @click="openEdit('aisle', data)" />
-                            <Button icon="pi pi-trash" text rounded severity="danger" aria-label="Eliminar pasillo" @click="deleteLocation('aisle', data)" />
+                            <Button icon="pi pi-trash" rounded severity="danger" class="locations-delete-button" aria-label="Eliminar pasillo" @click="deleteLocation('aisle', data)" />
                         </template>
                     </Column>
                 </DataTable>
@@ -282,7 +283,15 @@ onMounted(fetchCatalog);
                     </div>
                     <Button icon="pi pi-plus" label="Agregar" @click="openCreate('shelf')" />
                 </div>
-                <DataTable :value="shelves" :loading="loading" responsiveLayout="scroll" stripedRows>
+                <DataTable
+                    :value="shelves"
+                    :loading="loading"
+                    :paginator="true"
+                    :rows="10"
+                    :rowsPerPageOptions="rowsPerPageOptions"
+                    responsiveLayout="scroll"
+                    stripedRows
+                >
                     <Column field="office_name" header="Oficina" />
                     <Column field="aisle_name" header="Pasillo" />
                     <Column field="name" header="Nombre" />
@@ -297,7 +306,7 @@ onMounted(fetchCatalog);
                     <Column header="Acciones" bodyClass="locations-actions">
                         <template #body="{ data }">
                             <Button icon="pi pi-pencil" text rounded aria-label="Editar estante" @click="openEdit('shelf', data)" />
-                            <Button icon="pi pi-trash" text rounded severity="danger" aria-label="Eliminar estante" @click="deleteLocation('shelf', data)" />
+                            <Button icon="pi pi-trash" rounded severity="danger" class="locations-delete-button" aria-label="Eliminar estante" @click="deleteLocation('shelf', data)" />
                         </template>
                     </Column>
                 </DataTable>
@@ -432,7 +441,27 @@ onMounted(fetchCatalog);
 }
 
 .locations-actions {
+    display: inline-flex;
+    gap: 10px;
     white-space: nowrap;
+}
+
+.locations-delete-button,
+.locations-delete-button :deep(.p-button-icon) {
+    color: #ffffff !important;
+}
+
+.locations-delete-button {
+    background: #dc2626 !important;
+    border-color: #dc2626 !important;
+    min-height: 2.5rem;
+    min-width: 2.5rem;
+}
+
+.locations-delete-button:hover,
+.locations-delete-button:focus-visible {
+    background: #b91c1c !important;
+    border-color: #b91c1c !important;
 }
 
 .locations-form {

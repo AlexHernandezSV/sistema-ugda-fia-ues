@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 import { useToast } from 'primevue/usetoast';
@@ -7,6 +7,8 @@ import { useToast } from 'primevue/usetoast';
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
+
+const OBSERVATION_MAX_LENGTH = 1000;
 
 const loan = ref(null);
 const loading = ref(true);
@@ -157,6 +159,15 @@ const showError = (message) => {
     });
 };
 
+const validateObservationLength = (value, label = 'Las observaciones') => {
+    if (String(value ?? '').trim().length <= OBSERVATION_MAX_LENGTH) {
+        return true;
+    }
+
+    showError(`${label} no pueden superar ${OBSERVATION_MAX_LENGTH} caracteres.`);
+    return false;
+};
+
 const formatDateForRequest = (value) => {
     if (!value) {
         return '';
@@ -293,6 +304,10 @@ const submitFinishSearch = async () => {
         }
     }
 
+    if (!validateObservationLength(finishSearchForm.comments, 'Los comentarios')) {
+        return;
+    }
+
     finishSearchSubmitting.value = true;
 
     try {
@@ -396,6 +411,10 @@ const submitDecisionAction = async () => {
 
     const comments = decisionForm.comments.trim();
 
+    if (!validateObservationLength(comments)) {
+        return;
+    }
+
     if (config.required && comments === '') {
         showError(currentDecisionAction.value === 'observe'
             ? 'Debe ingresar la observación de la solicitud.'
@@ -486,6 +505,10 @@ const toggleReturnDocuments = () => {
 };
 
 const submitLoanRegistration = async () => {
+    if (!validateObservationLength(loanForm.observations)) {
+        return;
+    }
+
     try {
         const { data } = await axios.post(`/api/loans/${loan.value.number}/register`, {
             selected_ids: loanForm.selectedIds,
@@ -540,6 +563,11 @@ const submitDocumentModifications = async () => {
         return;
     }
 
+    if (modifications.some((item) => item.description.length > OBSERVATION_MAX_LENGTH)) {
+        showError(`La descripcion de la modificacion no puede superar ${OBSERVATION_MAX_LENGTH} caracteres.`);
+        return;
+    }
+
     documentModificationsSubmitting.value = true;
 
     try {
@@ -563,6 +591,10 @@ const submitDocumentModifications = async () => {
 };
 
 const submitReturnRegistration = async () => {
+    if (!validateObservationLength(returnForm.observations)) {
+        return;
+    }
+
     try {
         const { data } = await axios.post(`/api/loans/${loan.value.number}/return`, {
             selected_ids: returnForm.selectedIds,
@@ -619,6 +651,19 @@ const finishSearchAllSelected = computed(() => searchResultDocuments.value.lengt
     && finishSearchForm.selectedIds.length === searchResultDocuments.value.length);
 
 onMounted(fetchDetail);
+
+watch(
+    () => route.params.number,
+    async (newNumber, oldNumber) => {
+        if (!oldNumber || newNumber === oldNumber) {
+            return;
+        }
+
+        loading.value = true;
+        loan.value = null;
+        await fetchDetail();
+    }
+);
 </script>
 
 <template>
@@ -1252,6 +1297,7 @@ onMounted(fetchDetail);
                         v-model="decisionForm.comments"
                         rows="5"
                         class="detalle-decision-modal__textarea"
+                        :maxlength="OBSERVATION_MAX_LENGTH"
                         :placeholder="decisionModalConfig.placeholder"
                     ></textarea>
                 </div>
@@ -1370,6 +1416,7 @@ onMounted(fetchDetail);
                         v-model="finishSearchForm.comments"
                         class="detalle-textarea"
                         rows="5"
+                        :maxlength="OBSERVATION_MAX_LENGTH"
                         placeholder="Agregue comentarios sobre el resultado de la busqueda..."
                     ></textarea>
                 </div>
@@ -1508,7 +1555,7 @@ onMounted(fetchDetail);
                     </div>
                     <div class="col-12">
                         <label class="detalle-form-label">Observaciones (opcional)</label>
-                        <textarea v-model="loanForm.observations" rows="4" class="detalle-textarea" placeholder="Agregue observaciones sobre el prestamo..."></textarea>
+                        <textarea v-model="loanForm.observations" rows="4" class="detalle-textarea" :maxlength="OBSERVATION_MAX_LENGTH" placeholder="Agregue observaciones sobre el prestamo..."></textarea>
                     </div>
                 </div>
             </div>
@@ -1594,6 +1641,7 @@ onMounted(fetchDetail);
                                 v-model="item.description"
                                 rows="4"
                                 class="detalle-textarea"
+                                :maxlength="OBSERVATION_MAX_LENGTH"
                                 placeholder="Describa que modificacion se realizo a este documento..."
                             ></textarea>
                         </div>
@@ -1754,7 +1802,7 @@ onMounted(fetchDetail);
                     </div>
                     <div class="col-12">
                         <label class="detalle-form-label">Observaciones (opcional)</label>
-                        <textarea v-model="returnForm.observations" rows="4" class="detalle-textarea" placeholder="Agregue observaciones sobre la devolución..."></textarea>
+                        <textarea v-model="returnForm.observations" rows="4" class="detalle-textarea" :maxlength="OBSERVATION_MAX_LENGTH" placeholder="Agregue observaciones sobre la devolución..."></textarea>
                     </div>
                 </div>
             </div>
@@ -1923,7 +1971,7 @@ onMounted(fetchDetail);
     font-size: 0.98rem;
     cursor: pointer;
     border: 1px solid transparent;
-    transition: opacity 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .detalle-decision-modal__button:hover:not(:disabled) {
@@ -1932,7 +1980,6 @@ onMounted(fetchDetail);
 }
 
 .detalle-decision-modal__button:disabled {
-    opacity: 0.7;
     cursor: not-allowed;
 }
 
@@ -2720,7 +2767,6 @@ onMounted(fetchDetail);
 
 .detalle-mini-action:disabled {
     cursor: not-allowed;
-    opacity: 0.65;
 }
 
 .detalle-select-card {
@@ -3182,7 +3228,6 @@ onMounted(fetchDetail);
 
 .detalle-modifications-modal__add:disabled {
     cursor: not-allowed;
-    opacity: 0.55;
 }
 
 .detalle-modifications-modal__footer {

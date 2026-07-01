@@ -27,6 +27,18 @@ class TransferBox extends Model
         'assigned_at' => 'datetime',
     ];
 
+    public function formattedBoxNumber(): string
+    {
+        return str_pad((string) $this->box_number, 3, '0', STR_PAD_LEFT);
+    }
+
+    public function boxCode(?string $transferCode = null): string
+    {
+        $code = $transferCode ?: $this->transfer?->code ?: 'PENDIENTE';
+
+        return 'C-' . $code . '-' . $this->formattedBoxNumber();
+    }
+
     public function transfer()
     {
         return $this->belongsTo(Transfer::class);

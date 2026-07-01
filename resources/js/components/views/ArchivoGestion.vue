@@ -448,7 +448,6 @@ onMounted(fetchBoxes);
 
 .archive-table-actions button:disabled {
     cursor: not-allowed;
-    opacity: 0.35;
 }
 
 .archive-table-actions__danger {

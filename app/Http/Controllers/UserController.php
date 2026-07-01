@@ -41,20 +41,27 @@ class UserController extends Controller
 
     public function store(Request $request)
     {
+        $this->normalizeCarnetInput($request);
+        $this->normalizeUserUnitInput($request);
+
         $request->validate([
             'first_name' => ['required', 'string', 'max:30', 'regex:/^[\pL\s]+$/u'],
             'second_name' => ['nullable', 'string', 'max:30', 'regex:/^[\pL\s]+$/u'],
             'first_last_name' => ['required', 'string', 'max:30', 'regex:/^[\pL\s]+$/u'],
             'second_last_name' => ['nullable', 'string', 'max:30', 'regex:/^[\pL\s]+$/u'],
-            'carnet' => ['nullable', 'string', 'max:20', 'regex:/^[A-Z0-9]+$/'],
+            'carnet' => ['nullable', 'string', 'max:20', 'regex:/^[A-Z0-9]+$/', Rule::unique('person', 'carnet')],
             'email' => ['required', 'email', 'unique:users,email'],
-            'unit_ids' => ['required_without:unit_id', 'array', 'min:1'],
-            'unit_ids.*' => ['integer', 'exists:units,id'],
+            'unit_ids' => ['required', 'array', 'min:1'],
+            'unit_ids.*' => ['required', 'integer', 'distinct', 'exists:units,id'],
             'unit_id' => ['nullable', 'integer', 'exists:units,id'],
             'role' => $this->roleValidationRules(),
         ], [
             'first_name.regex' => 'El nombre solo puede contener letras.',
             'carnet.regex' => 'El carnet solo puede contener letras mayúsculas y números.',
+            'carnet.unique' => 'El carnet ya esta registrado.',
+            'unit_ids.required' => 'Seleccione al menos una unidad para el usuario.',
+            'unit_ids.min' => 'Seleccione al menos una unidad para el usuario.',
+            'unit_ids.*.exists' => 'Seleccione una unidad valida.',
             'role.required' => 'Seleccione un rol para el usuario.',
             'role.exists' => 'Seleccione un rol valido.',
             'max' => 'El campo no debe exceder los :max caracteres.',
@@ -115,19 +122,26 @@ class UserController extends Controller
     public function update(Request $request, $id)
     {
         $user = User::findOrFail($id);
+        $this->normalizeCarnetInput($request);
+        $this->normalizeUserUnitInput($request);
 
         $request->validate([
             'first_name' => ['required', 'string', 'max:30', 'regex:/^[\pL\s]+$/u'],
             'second_name' => ['nullable', 'string', 'max:30', 'regex:/^[\pL\s]+$/u'],
             'first_last_name' => ['required', 'string', 'max:30', 'regex:/^[\pL\s]+$/u'],
             'second_last_name' => ['nullable', 'string', 'max:30', 'regex:/^[\pL\s]+$/u'],
-            'carnet' => ['nullable', 'string', 'max:20', 'regex:/^[A-Z0-9]+$/'],
+            'carnet' => ['nullable', 'string', 'max:20', 'regex:/^[A-Z0-9]+$/', Rule::unique('person', 'carnet')->ignore($user->id, 'user_id')],
             'email' => ['required', 'email', Rule::unique('users')->ignore($user->id)],
-            'unit_ids' => ['required_without:unit_id', 'array', 'min:1'],
-            'unit_ids.*' => ['integer', 'exists:units,id'],
+            'unit_ids' => ['required', 'array', 'min:1'],
+            'unit_ids.*' => ['required', 'integer', 'distinct', 'exists:units,id'],
             'unit_id' => ['nullable', 'integer', 'exists:units,id'],
             'role' => $this->roleValidationRules(),
             'is_active' => ['required', 'boolean'],
+        ], [
+            'carnet.unique' => 'El carnet ya esta registrado.',
+            'unit_ids.required' => 'Seleccione al menos una unidad para el usuario.',
+            'unit_ids.min' => 'Seleccione al menos una unidad para el usuario.',
+            'unit_ids.*.exists' => 'Seleccione una unidad valida.',
         ]);
 
         $carnetUpper = $request->carnet ? strtoupper($request->carnet) : null;
@@ -166,11 +180,16 @@ class UserController extends Controller
             'admin_password.required' => 'Ingrese su contrasena para confirmar el restablecimiento.',
         ]);
 
+        $user = User::with('person')->findOrFail($id);
+
+        if (!$user->is_active) {
+            return response()->json(['message' => 'El usuario no se encuentra activo'], 422);
+        }
+
         if (!Hash::check($request->admin_password, $request->user()->password)) {
             return response()->json(['message' => 'La contrasena del administrador no es correcta.'], 422);
         }
 
-        $user = User::with('person')->findOrFail($id);
         $temporaryPassword = Str::password(12, true, true, false, false);
         $expiresAt = Carbon::now()->addDays(2);
 
@@ -325,6 +344,26 @@ class UserController extends Controller
             ->unique()
             ->values()
             ->all();
+    }
+
+    private function normalizeUserUnitInput(Request $request): void
+    {
+        $request->merge([
+            'unit_ids' => $this->normalizeUnitIds($request),
+        ]);
+    }
+
+    private function normalizeCarnetInput(Request $request): void
+    {
+        if (!$request->has('carnet')) {
+            return;
+        }
+
+        $carnet = trim((string) $request->input('carnet'));
+
+        $request->merge([
+            'carnet' => $carnet === '' ? null : strtoupper($carnet),
+        ]);
     }
 
     private function assignUnitsToUser(User $user, array $unitIds): void

@@ -546,6 +546,7 @@ const clearFilter = () => {
             </button>
 
             <div class="series-module-header__copy">
+                <span class="series-module-header__chip">Series documentales</span>
                 <h1 class="series-module-header__title mobile-page-title">Gestión de Series y Subseries Documentales</h1>
                 <p class="series-module-header__subtitle mobile-page-title">Administrar el catalogo de series y subseries documentales</p>
             </div>
@@ -698,10 +699,9 @@ const clearFilter = () => {
                     />
                     <Button
                         icon="pi pi-trash"
-                        text
                         rounded
-                        severity="secondary"
-                        class="text-red-500 hover:text-red-600"
+                        severity="danger"
+                        class="series-delete-button text-red-500 hover:text-red-600"
                         @click="openDeleteSeriesModal(series)"
                     />
                 </div>
@@ -881,10 +881,9 @@ const clearFilter = () => {
                                 />
                                 <Button
                                     icon="pi pi-trash"
-                                    text
                                     rounded
-                                    severity="secondary"
-                                    class="text-red-500 hover:text-red-600"
+                                    severity="danger"
+                                    class="series-delete-button text-red-500 hover:text-red-600"
                                     @click="openDeleteSubseriesModal(series, subseries)"
                                 />
                             </div>
@@ -1057,6 +1056,17 @@ const clearFilter = () => {
     min-width: 0;
     padding-left: var(--ugda-space-lg);
     border-left: 1px solid var(--ugda-border);
+}
+
+.series-module-header__chip {
+    background: var(--ugda-brand-soft);
+    border-radius: 999px;
+    color: var(--ugda-brand);
+    display: inline-flex;
+    font-size: var(--ugda-font-helper);
+    font-weight: var(--ugda-weight-bold);
+    margin-bottom: var(--ugda-space-sm);
+    padding: 0.25rem 0.75rem;
 }
 
 .series-module-header__title {
@@ -1239,6 +1249,24 @@ const clearFilter = () => {
 
 :deep(.series-edit-dialog .p-dialog-header-icon .pi) {
     font-size: 1rem !important;
+}
+
+.series-delete-button,
+.series-delete-button :deep(.p-button-icon) {
+    color: #ffffff !important;
+}
+
+.series-delete-button {
+    background: #dc2626 !important;
+    border-color: #dc2626 !important;
+    min-height: 2.5rem;
+    min-width: 2.5rem;
+}
+
+.series-delete-button:hover,
+.series-delete-button:focus-visible {
+    background: #b91c1c !important;
+    border-color: #b91c1c !important;
 }
 
 .series-delete-dialog__content {

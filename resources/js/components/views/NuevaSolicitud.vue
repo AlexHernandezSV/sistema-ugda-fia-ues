@@ -1,13 +1,19 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import axios from 'axios';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf';
+import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.js?url';
 import { getCurrentUser } from '../../services/authSession';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 const router = useRouter();
 const route = useRoute();
 const toast = useToast();
+
+const OBSERVATION_MAX_LENGTH = 1000;
 
 const headerForm = ref({
     code: '',
@@ -37,11 +43,22 @@ const isRefreshingCode = ref(false);
 const isModalOpen = ref(false);
 const isImportModalOpen = ref(false);
 const isConfirmModalOpen = ref(false);
+const shouldRestoreDocsModalAfterImport = ref(false);
+const isPdfPreviewOpen = ref(false);
+const shouldRestoreDocsModalAfterPreview = ref(false);
+const pdfPreviewCanvas = ref(null);
+const pdfPreviewTitle = ref('');
+const pdfPreviewLoading = ref(false);
+const pdfPreviewError = ref('');
+const pdfPreviewPage = ref(1);
+const pdfPreviewTotalPages = ref(0);
 const currentBoxIndex = ref(null);
 const currentBoxData = ref({});
 const tempDocuments = ref([]);
 const excelFile = ref(null);
 const isImporting = ref(false);
+let modalSwapTimer = null;
+let pdfPreviewDocument = null;
 const docForm = ref({
     series: null,
     name: '',
@@ -68,6 +85,10 @@ const totalDocuments = computed(() => boxesList.value.reduce((total, box) => tot
 const totalSeries = computed(() => new Set(boxesList.value.flatMap((box) => getBoxSeriesLabels(box))).size);
 
 const requiresDigitalFileInput = computed(() => docForm.value.support === 'Digital' || docForm.value.support === 'Mixto');
+
+const formatBoxNumber = (boxNumber) => String(Number(boxNumber) || boxNumber || 0).padStart(3, '0');
+
+const buildBoxCode = (box = {}) => box.box_code || box.boxCode || `C-${headerForm.value.code || 'PENDIENTE'}-${formatBoxNumber(box.box_number)}`;
 
 const parseApiDate = (value) => {
     if (!value) {
@@ -160,6 +181,164 @@ const resetDocumentForm = (defaultSeries = null) => {
         file: null,
         file_url: null,
     };
+};
+
+const isPdfFile = (file) => (
+    file
+    && (
+        file.type === 'application/pdf'
+        || String(file.name ?? '').toLowerCase().endsWith('.pdf')
+    )
+);
+
+const createPdfPreviewUrl = (file) => URL.createObjectURL(new Blob([file], { type: 'application/pdf' }));
+
+const waitForModalSwap = () => new Promise((resolve) => {
+    window.setTimeout(resolve, 180);
+});
+
+const revokeFilePreviewUrl = (url) => {
+    if (url && String(url).startsWith('blob:')) {
+        URL.revokeObjectURL(url);
+    }
+};
+
+const closePdfPreviewDocument = async () => {
+    if (!pdfPreviewDocument) {
+        return;
+    }
+
+    try {
+        await pdfPreviewDocument.destroy();
+    } catch (error) {
+        console.warn('No se pudo liberar la vista previa del PDF:', error);
+    } finally {
+        pdfPreviewDocument = null;
+    }
+};
+
+const renderPdfPreviewPage = async () => {
+    if (!pdfPreviewDocument || !pdfPreviewCanvas.value) {
+        return;
+    }
+
+    const page = await pdfPreviewDocument.getPage(pdfPreviewPage.value);
+    const canvas = pdfPreviewCanvas.value;
+    const context = canvas.getContext('2d');
+    const viewport = page.getViewport({ scale: 1.25 });
+    const pixelRatio = window.devicePixelRatio || 1;
+
+    canvas.width = Math.floor(viewport.width * pixelRatio);
+    canvas.height = Math.floor(viewport.height * pixelRatio);
+    canvas.style.width = `${viewport.width}px`;
+    canvas.style.height = `${viewport.height}px`;
+
+    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    context.clearRect(0, 0, viewport.width, viewport.height);
+
+    await page.render({ canvasContext: context, viewport }).promise;
+};
+
+const loadPdfPreview = async (document) => {
+    await closePdfPreviewDocument();
+
+    const file = document?.file;
+
+    if (file) {
+        if (!isPdfFile(file)) {
+            throw new Error('Solo se puede visualizar archivos PDF.');
+        }
+
+        const arrayBuffer = await file.arrayBuffer();
+        return pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+    }
+
+    if (document?.file_url) {
+        const response = await fetch(document.file_url);
+
+        if (!response.ok) {
+            throw new Error('No se pudo cargar el archivo digital.');
+        }
+
+        const arrayBuffer = await response.arrayBuffer();
+        return pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+    }
+
+    throw new Error('No hay archivo digital para visualizar.');
+};
+
+const previewDocumentFile = async (document) => {
+    clearModalSwapTimer();
+
+    shouldRestoreDocsModalAfterPreview.value = isModalOpen.value;
+
+    if (isModalOpen.value) {
+        isModalOpen.value = false;
+        await waitForModalSwap();
+    }
+
+    pdfPreviewTitle.value = document?.file_name || document?.file?.name || 'Documento PDF';
+    pdfPreviewLoading.value = true;
+    pdfPreviewError.value = '';
+    pdfPreviewPage.value = 1;
+    pdfPreviewTotalPages.value = 0;
+    isPdfPreviewOpen.value = true;
+
+    await nextTick();
+
+    try {
+        pdfPreviewDocument = await loadPdfPreview(document);
+        pdfPreviewTotalPages.value = pdfPreviewDocument.numPages;
+        await renderPdfPreviewPage();
+    } catch (error) {
+        pdfPreviewError.value = error.message || 'No se pudo visualizar el PDF.';
+    } finally {
+        pdfPreviewLoading.value = false;
+    }
+};
+
+const goToPdfPreviewPage = async (direction) => {
+    if (!pdfPreviewDocument || pdfPreviewLoading.value) {
+        return;
+    }
+
+    const nextPage = pdfPreviewPage.value + direction;
+
+    if (nextPage < 1 || nextPage > pdfPreviewTotalPages.value) {
+        return;
+    }
+
+    pdfPreviewLoading.value = true;
+    pdfPreviewError.value = '';
+    pdfPreviewPage.value = nextPage;
+
+    try {
+        await renderPdfPreviewPage();
+    } catch (error) {
+        pdfPreviewError.value = error.message || 'No se pudo cargar la pagina del PDF.';
+    } finally {
+        pdfPreviewLoading.value = false;
+    }
+};
+
+const closePdfPreview = () => {
+    isPdfPreviewOpen.value = false;
+};
+
+const restoreDocsModalAfterPreview = async () => {
+    await closePdfPreviewDocument();
+    pdfPreviewError.value = '';
+    pdfPreviewLoading.value = false;
+
+    if (!shouldRestoreDocsModalAfterPreview.value) {
+        return;
+    }
+
+    shouldRestoreDocsModalAfterPreview.value = false;
+    modalSwapTimer = window.setTimeout(() => {
+        isModalOpen.value = true;
+        modalSwapTimer = null;
+    }, 180);
 };
 
 const showError = (detail) => {
@@ -358,8 +537,15 @@ const onFileSelect = (event) => {
         return;
     }
 
+    if (!isPdfFile(file)) {
+        showError('Seleccione un archivo PDF.');
+        event.target.value = '';
+        return;
+    }
+
+    revokeFilePreviewUrl(docForm.value.file_url);
     docForm.value.file = file;
-    docForm.value.file_url = URL.createObjectURL(file);
+    docForm.value.file_url = createPdfPreviewUrl(file);
 };
 
 const onExcelFileSelect = (event) => {
@@ -371,6 +557,53 @@ const resetExcelFileInput = () => {
     if (fileInput) {
         fileInput.value = '';
     }
+};
+
+const clearModalSwapTimer = () => {
+    if (modalSwapTimer) {
+        window.clearTimeout(modalSwapTimer);
+        modalSwapTimer = null;
+    }
+};
+
+const openImportModal = () => {
+    clearModalSwapTimer();
+    shouldRestoreDocsModalAfterImport.value = isModalOpen.value;
+    excelFile.value = null;
+    resetExcelFileInput();
+
+    if (isModalOpen.value) {
+        isModalOpen.value = false;
+        modalSwapTimer = window.setTimeout(() => {
+            isImportModalOpen.value = true;
+            modalSwapTimer = null;
+        }, 180);
+        return;
+    }
+
+    isImportModalOpen.value = true;
+};
+
+const closeImportModal = () => {
+    excelFile.value = null;
+    resetExcelFileInput();
+    isImportModalOpen.value = false;
+};
+
+const restoreDocsModalAfterImport = () => {
+    excelFile.value = null;
+    resetExcelFileInput();
+
+    if (!shouldRestoreDocsModalAfterImport.value) {
+        return;
+    }
+
+    clearModalSwapTimer();
+    shouldRestoreDocsModalAfterImport.value = false;
+    modalSwapTimer = window.setTimeout(() => {
+        isModalOpen.value = true;
+        modalSwapTimer = null;
+    }, 180);
 };
 
 const needsDigitalFile = (support) => support === 'Digital' || support === 'Mixto';
@@ -450,9 +683,7 @@ const importDocumentsFromExcel = async () => {
 
         if (documentsToAdd.length === 0) {
             showError('Los documentos de esta plantilla ya fueron cargados en la caja.');
-            excelFile.value = null;
-            resetExcelFileInput();
-            isImportModalOpen.value = false;
+            closeImportModal();
             return;
         }
 
@@ -462,9 +693,7 @@ const importDocumentsFromExcel = async () => {
             file_name: null,
             file_url: null,
         })));
-        excelFile.value = null;
-        resetExcelFileInput();
-        isImportModalOpen.value = false;
+        closeImportModal();
 
         toast.add({
             severity: 'success',
@@ -520,6 +749,7 @@ const addDocumentToTemp = () => {
         date: documentDate,
         pages: documentPages,
         support: docForm.value.support,
+        file: docForm.value.file,
         file_name: docForm.value.file ? docForm.value.file.name : null,
         file_url: docForm.value.file_url,
     });
@@ -534,6 +764,7 @@ const addDocumentToTemp = () => {
 };
 
 const removeTempDoc = (index) => {
+    revokeFilePreviewUrl(tempDocuments.value[index]?.file_url);
     tempDocuments.value.splice(index, 1);
 };
 
@@ -544,8 +775,16 @@ const onTempDocFileSelect = (index, event) => {
         return;
     }
 
+    if (!isPdfFile(file)) {
+        showError('Seleccione un archivo PDF.');
+        event.target.value = '';
+        return;
+    }
+
+    revokeFilePreviewUrl(tempDocuments.value[index].file_url);
+    tempDocuments.value[index].file = file;
     tempDocuments.value[index].file_name = file.name;
-    tempDocuments.value[index].file_url = URL.createObjectURL(file);
+    tempDocuments.value[index].file_url = createPdfPreviewUrl(file);
 };
 
 const removeTempDocFile = (index) => {
@@ -554,13 +793,11 @@ const removeTempDocFile = (index) => {
     }
 
     const currentDocument = tempDocuments.value[index];
-    const currentUrl = currentDocument.file_url;
-    if (currentUrl && String(currentUrl).startsWith('blob:')) {
-        URL.revokeObjectURL(currentUrl);
-    }
+    revokeFilePreviewUrl(currentDocument.file_url);
 
     tempDocuments.value.splice(index, 1, {
         ...currentDocument,
+        file: null,
         file_name: null,
         file_url: null,
         file_removed: true,
@@ -617,6 +854,11 @@ const validateTransferDraft = () => {
 
     if (isEditMode.value && String(correctionNotes.value ?? '').trim() === '') {
         showError('Debe indicar como fueron atendidas las observaciones de revision fisica.');
+        return false;
+    }
+
+    if (String(correctionNotes.value ?? '').trim().length > OBSERVATION_MAX_LENGTH) {
+        showError(`Las aclaraciones no pueden superar ${OBSERVATION_MAX_LENGTH} caracteres.`);
         return false;
     }
 
@@ -681,7 +923,7 @@ const submitTransfer = async () => {
 };
 
 const goBack = () => {
-    router.push('/solicitudes');
+    router.go(-1);
 };
 </script>
 
@@ -719,6 +961,7 @@ const goBack = () => {
                     id="correctionNotes"
                     v-model="correctionNotes"
                     rows="5"
+                    :maxlength="OBSERVATION_MAX_LENGTH"
                     placeholder="Describa las correcciones realizadas y aclaraciones pertinentes para UGDA..."
                 ></textarea>
             </div>
@@ -779,7 +1022,7 @@ const goBack = () => {
                         id="transferDescription"
                         v-model="headerForm.description"
                         :disabled="isLoading"
-                        maxlength="1000"
+                        :maxlength="OBSERVATION_MAX_LENGTH"
                         rows="4"
                         placeholder="Ingrese una descripción breve de la documentación a transferir"
                     ></textarea>
@@ -881,8 +1124,8 @@ const goBack = () => {
                     </Column>
                     <Column field="year_start" header="Fecha inicial" style="width: 9rem"></Column>
                     <Column field="year_end" header="Fecha final" style="width: 9rem"></Column>
-                    <Column header="N° de caja" style="width: 8rem">
-                        <template #body="{ data }">{{ data.box_number }}</template>
+                    <Column header="Codigo de caja" style="width: 12rem">
+                        <template #body="{ data }">{{ buildBoxCode(data) }}</template>
                     </Column>
                     <Column header="Documentos" style="width: 10rem">
                         <template #body="{ data }">
@@ -991,7 +1234,7 @@ const goBack = () => {
                     <div class="transfer-confirm__boxes">
                         <article v-for="box in boxesList" :key="box.id_temp" class="transfer-confirm__box">
                             <div class="transfer-confirm__box-main">
-                                <span class="transfer-confirm__box-badge">Caja #{{ String(box.box_number).padStart(3, '0') }}</span>
+                                <span class="transfer-confirm__box-badge">{{ buildBoxCode(box) }}</span>
                                 <div class="transfer-request__series-chips transfer-confirm__box-series-chips">
                                     <span
                                         v-for="series in getBoxSeriesLabels(box)"
@@ -1029,7 +1272,7 @@ const goBack = () => {
         <Dialog v-model:visible="isModalOpen" modal :draggable="false" class="transfer-docs-dialog" :style="{ width: 'min(1024px, 94vw)' }">
             <template #header>
                 <div class="transfer-docs__header">
-                    <h2>Documentos de la Caja #{{ currentBoxData.box_number }}</h2>
+                    <h2>Documentos de la Caja {{ buildBoxCode(currentBoxData) }}</h2>
                     <p>{{ currentBoxData.series }} ({{ currentBoxData.year_start }} - {{ currentBoxData.year_end }})</p>
                 </div>
             </template>
@@ -1042,7 +1285,7 @@ const goBack = () => {
                             label="Importar desde Excel"
                             icon="pi pi-file-excel"
                             class="transfer-docs__excel-button"
-                            @click="isImportModalOpen = true"
+                            @click="openImportModal"
                         />
                     </div>
 
@@ -1108,10 +1351,9 @@ const goBack = () => {
                         <input id="transferDocumentFile" type="file" accept=".pdf" @change="onFileSelect" />
                         <a
                             v-if="docForm.file_url"
-                            :href="docForm.file_url"
+                            href="#"
                             class="transfer-docs__file-link"
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            @click.prevent="previewDocumentFile(docForm)"
                         >
                             {{ docForm.file.name }}
                         </a>
@@ -1162,7 +1404,7 @@ const goBack = () => {
                             <div v-if="needsDigitalFile(document.support)" class="transfer-docs__digital-link">
                                 <span>Archivo digital</span>
                                 <div v-if="document.file_url" class="transfer-docs__digital-file-row">
-                                    <a :href="document.file_url" target="_blank" rel="noopener noreferrer">{{ document.file_name }}</a>
+                                    <a href="#" @click.prevent="previewDocumentFile(document)">{{ document.file_name }}</a>
                                     <button
                                         v-if="isEditMode"
                                         type="button"
@@ -1206,11 +1448,63 @@ const goBack = () => {
         </Dialog>
 
         <Dialog
+            v-model:visible="isPdfPreviewOpen"
+            modal
+            :draggable="false"
+            class="transfer-pdf-preview-dialog"
+            :style="{ width: 'min(960px, 94vw)' }"
+            @hide="restoreDocsModalAfterPreview"
+        >
+            <template #header>
+                <div class="transfer-docs__header">
+                    <h2>Vista previa del documento</h2>
+                    <p>{{ pdfPreviewTitle }}</p>
+                </div>
+            </template>
+
+            <div class="transfer-pdf-preview">
+                <div v-if="pdfPreviewLoading" class="transfer-pdf-preview__state">
+                    Cargando PDF...
+                </div>
+                <div v-else-if="pdfPreviewError" class="transfer-pdf-preview__state transfer-pdf-preview__state--error">
+                    {{ pdfPreviewError }}
+                </div>
+                <div v-show="!pdfPreviewLoading && !pdfPreviewError" class="transfer-pdf-preview__canvas-wrap">
+                    <canvas ref="pdfPreviewCanvas" class="transfer-pdf-preview__canvas"></canvas>
+                </div>
+            </div>
+
+            <template #footer>
+                <div class="transfer-pdf-preview__footer">
+                    <div class="transfer-pdf-preview__pagination">
+                        <Button
+                            icon="pi pi-chevron-left"
+                            outlined
+                            class="transfer-docs__cancel transfer-pdf-preview__page-button"
+                            :disabled="pdfPreviewLoading || pdfPreviewPage <= 1"
+                            @click="goToPdfPreviewPage(-1)"
+                        />
+                        <span>Pagina {{ pdfPreviewPage }} de {{ pdfPreviewTotalPages || 1 }}</span>
+                        <Button
+                            icon="pi pi-chevron-right"
+                            outlined
+                            class="transfer-docs__cancel transfer-pdf-preview__page-button"
+                            :disabled="pdfPreviewLoading || pdfPreviewPage >= pdfPreviewTotalPages"
+                            @click="goToPdfPreviewPage(1)"
+                        />
+                    </div>
+                    <Button label="Cerrar" class="transfer-docs__save" @click="closePdfPreview" />
+                </div>
+            </template>
+        </Dialog>
+
+        <Dialog
             v-model:visible="isImportModalOpen"
             modal
             :draggable="false"
             class="transfer-import-dialog"
             :style="{ width: 'min(896px, 94vw)' }"
+            @hide="restoreDocsModalAfterImport"
         >
             <template #header>
                 <div class="transfer-docs__header">
@@ -1257,7 +1551,7 @@ const goBack = () => {
             </div>
 
             <template #footer>
-                <Button label="Cancelar" outlined class="transfer-docs__cancel" @click="isImportModalOpen = false" />
+                <Button label="Cancelar" outlined class="transfer-docs__cancel" @click="closeImportModal" />
                 <Button
                     label="Importar"
                     icon="pi pi-check"
@@ -1293,6 +1587,15 @@ const goBack = () => {
 
 .transfer-request__back {
     color: #2d6f9f;
+}
+
+.transfer-request__back:hover,
+.transfer-request__back:focus,
+.transfer-request__back:focus-visible {
+    background: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    color: #2d6f9f !important;
 }
 
 .transfer-request__observations {
@@ -1586,9 +1889,27 @@ const goBack = () => {
     min-width: 10.5rem;
 }
 
+.transfer-request__submit:hover,
+.transfer-request__submit:focus,
+.transfer-request__submit:focus-visible {
+    background: var(--ugda-brand) !important;
+    border-color: var(--ugda-brand) !important;
+    box-shadow: none !important;
+    color: var(--ugda-text-inverse) !important;
+}
+
 .transfer-request__cancel {
     border-color: #2d6f9f;
     color: #1f5f8e;
+}
+
+.transfer-request__cancel:hover,
+.transfer-request__cancel:focus,
+.transfer-request__cancel:focus-visible {
+    background: transparent !important;
+    border-color: #2d6f9f !important;
+    box-shadow: none !important;
+    color: #1f5f8e !important;
 }
 
 .transfer-docs__cancel {
@@ -1843,13 +2164,19 @@ const goBack = () => {
 }
 
 :global(.transfer-docs-dialog.p-dialog),
-:global(.transfer-import-dialog.p-dialog) {
+:global(.transfer-import-dialog.p-dialog),
+:global(.transfer-pdf-preview-dialog.p-dialog) {
     border-radius: 8px;
     overflow: hidden;
 }
 
+:global(.transfer-docs-dialog.p-dialog) {
+    max-height: 92vh;
+}
+
 :global(.transfer-docs-dialog .p-dialog-header),
-:global(.transfer-import-dialog .p-dialog-header) {
+:global(.transfer-import-dialog .p-dialog-header),
+:global(.transfer-pdf-preview-dialog .p-dialog-header) {
     background: #2d6f9f;
     border-bottom: 0;
     color: #ffffff;
@@ -1857,19 +2184,82 @@ const goBack = () => {
 }
 
 :global(.transfer-docs-dialog .p-dialog-header-close),
-:global(.transfer-import-dialog .p-dialog-header-close) {
+:global(.transfer-import-dialog .p-dialog-header-close),
+:global(.transfer-pdf-preview-dialog .p-dialog-header-close) {
     color: #ffffff;
 }
 
 :global(.transfer-docs-dialog .p-dialog-content),
-:global(.transfer-import-dialog .p-dialog-content) {
+:global(.transfer-import-dialog .p-dialog-content),
+:global(.transfer-pdf-preview-dialog .p-dialog-content) {
     padding: 1.5rem;
 }
 
+:global(.transfer-docs-dialog .p-dialog-content) {
+    max-height: calc(92vh - 11rem);
+    overflow-y: auto;
+}
+
 :global(.transfer-docs-dialog .p-dialog-footer),
-:global(.transfer-import-dialog .p-dialog-footer) {
+:global(.transfer-import-dialog .p-dialog-footer),
+:global(.transfer-pdf-preview-dialog .p-dialog-footer) {
     border-top: 1px solid #dbe3ed;
     padding: 1rem 1.5rem;
+}
+
+.transfer-pdf-preview {
+    background: #f8fafc;
+    border: 1px solid #dbe3ed;
+    border-radius: 8px;
+    max-height: min(68vh, 720px);
+    overflow: auto;
+    padding: 1rem;
+}
+
+.transfer-pdf-preview__canvas-wrap {
+    display: flex;
+    justify-content: center;
+    min-height: 18rem;
+}
+
+.transfer-pdf-preview__canvas {
+    background: #ffffff;
+    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.12);
+    max-width: 100%;
+}
+
+.transfer-pdf-preview__state {
+    align-items: center;
+    color: #48627c;
+    display: flex;
+    font-weight: 700;
+    justify-content: center;
+    min-height: 18rem;
+    text-align: center;
+}
+
+.transfer-pdf-preview__state--error {
+    color: #b42318;
+}
+
+.transfer-pdf-preview__footer {
+    align-items: center;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.transfer-pdf-preview__pagination {
+    align-items: center;
+    color: #48627c;
+    display: flex;
+    gap: 0.75rem;
+    font-weight: 700;
+}
+
+.transfer-pdf-preview__page-button {
+    min-width: 2.75rem;
 }
 
 .transfer-docs__form {
@@ -1984,7 +2374,8 @@ const goBack = () => {
 .transfer-docs__list {
     border: 1px solid #e5e7eb;
     border-radius: 8px;
-    overflow: hidden;
+    max-height: min(34vh, 26rem);
+    overflow-y: auto;
 }
 
 .transfer-docs__item {

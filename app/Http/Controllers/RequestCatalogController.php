@@ -69,13 +69,14 @@ class RequestCatalogController extends Controller
                 ], 404);
             }
 
-            $content = $box['title'] ?? ('Caja #' . $normalizedBoxNumber);
+            $boxCode = $box['boxCode'] ?? $box['code'] ?? ('C-' . $detail['number'] . '-' . $normalizedBoxNumber);
+            $content = $box['contentDescription'] ?? $box['title'] ?? '';
 
             if (str_contains($content, ' - ')) {
                 $content = trim(collect(explode(' - ', $content))->slice(1)->implode(' - '));
             }
 
-            if ($content === '') {
+            if ($content === '' || preg_match('/^Caja\s+(#?\d+|C-)/i', $content) === 1) {
                 $firstDocument = collect($box['documents'] ?? [])->first();
                 $content = $firstDocument['series'] ?? $firstDocument['name'] ?? ('Documentacion de caja ' . $normalizedBoxNumber);
             }
@@ -87,8 +88,9 @@ class RequestCatalogController extends Controller
                 'authorizationStatus' => $detail['auth'],
                 'workflowStatus' => $detail['status'],
                 'boxNumber' => $box['number'],
-                'boxLabel' => '#' . $box['number'],
-                'labelCode' => $detail['number'] . '-' . $box['number'],
+                'boxCode' => $boxCode,
+                'boxLabel' => $boxCode,
+                'labelCode' => $boxCode,
                 'locationCode' => $box['physicalLocation'],
                 'period' => $box['period'],
                 'content' => $content,

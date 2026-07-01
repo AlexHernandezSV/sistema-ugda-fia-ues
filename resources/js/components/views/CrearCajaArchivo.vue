@@ -889,7 +889,6 @@ onMounted(fetchCatalog);
 .create-box-primary:disabled,
 .create-box-cancel:disabled {
     cursor: not-allowed;
-    opacity: 0.65;
 }
 
 .create-box-documents-head {

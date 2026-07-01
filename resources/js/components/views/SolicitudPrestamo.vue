@@ -7,6 +7,8 @@ import { useToast } from 'primevue/usetoast';
 const router = useRouter();
 const toast = useToast();
 
+const OBSERVATION_MAX_LENGTH = 1000;
+
 const loading = ref(true);
 const submitting = ref(false);
 const confirmVisible = ref(false);
@@ -140,6 +142,16 @@ const addAdditionalDocument = () => {
             severity: 'warn',
             summary: 'Documento requerido',
             detail: 'Ingrese el nombre del documento adicional.',
+            life: 2800,
+        });
+        return;
+    }
+
+    if (additionalForm.observation.trim().length > OBSERVATION_MAX_LENGTH) {
+        toast.add({
+            severity: 'warn',
+            summary: 'Observación inválida',
+            detail: `La observación no puede superar ${OBSERVATION_MAX_LENGTH} caracteres.`,
             life: 2800,
         });
         return;
@@ -399,7 +411,7 @@ onMounted(fetchCatalog);
                         </div>
                         <div class="col-12">
                             <label class="prestamo-label">Observación Adicional</label>
-                            <textarea v-model="additionalForm.observation" rows="4" class="prestamo-textarea mt-2" placeholder="Ej: Se transfirieron el 10 de marzo de 2022"></textarea>
+                            <textarea v-model="additionalForm.observation" rows="4" class="prestamo-textarea mt-2" :maxlength="OBSERVATION_MAX_LENGTH" placeholder="Ej: Se transfirieron el 10 de marzo de 2022"></textarea>
                         </div>
                     </div>
 
@@ -853,7 +865,6 @@ onMounted(fetchCatalog);
 
 .prestamo-primary:disabled {
     cursor: not-allowed;
-    opacity: 0.62;
 }
 
 .prestamo-secondary {

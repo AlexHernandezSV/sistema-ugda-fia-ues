@@ -9,6 +9,7 @@ use App\Models\Transfer;
 use App\Models\TransferBox;
 use App\Models\TransferDocument;
 use App\Models\Unit;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -355,7 +356,12 @@ class ArchiveController extends Controller
             }
 
             $resultsQuery = (clone $documentsBaseQuery)
-                ->with(['box.transfer.unit'])
+                ->with([
+                    'box.assignedBy.person',
+                    'box.transfer.unit',
+                    'box.transfer.requester.person',
+                    'box.transfer.completedBy.person',
+                ])
                 ->where(function (Builder $query) use ($term, $searchDate) {
                     $this->addSearchClauses($query, [
                         'transfer_box_documents.code',
@@ -486,8 +492,13 @@ class ArchiveController extends Controller
                 'number' => $boxNumber,
                 'title' => $box?->title,
                 'period' => $box?->period_label,
+                'start_year' => $box?->start_year,
+                'end_year' => $box?->end_year,
                 'location' => $box?->location_code,
                 'series' => $box?->series_name,
+                'content_description' => $box?->content_description,
+                'assigned_at_label' => $box?->assigned_at?->format('d/m/Y'),
+                'assigned_by' => $this->formatUserName($box?->assignedBy),
             ],
             'unit' => [
                 'id' => $unit?->id,
@@ -497,10 +508,34 @@ class ArchiveController extends Controller
             'transfer' => [
                 'id' => $transfer?->id,
                 'code' => $transfer?->code,
+                'request_date_label' => $transfer?->request_date?->format('d/m/Y'),
                 'completed_at' => $transfer?->completed_at?->toDateTimeString(),
                 'completed_at_label' => $transfer?->completed_at?->format('d/m/Y'),
+                'responsible' => $this->formatUserName($transfer?->completedBy) ?: $this->formatUserName($transfer?->requester),
             ],
         ];
+    }
+
+    private function formatUserName(?User $user): ?string
+    {
+        if ($user === null) {
+            return null;
+        }
+
+        $person = $user->person;
+
+        if ($person === null) {
+            return $user->email;
+        }
+
+        $name = trim(collect([
+            $person->first_name,
+            $person->second_name,
+            $person->first_last_name,
+            $person->second_last_name,
+        ])->filter()->implode(' '));
+
+        return $name !== '' ? $name : $user->email;
     }
 
     private function mapBox(TransferBox $box): array
