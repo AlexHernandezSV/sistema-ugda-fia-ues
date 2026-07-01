@@ -34,6 +34,7 @@ const boxesList = ref([]);
 const editObservations = ref([]);
 const correctionNotes = ref('');
 const seriesOptions = ref([]);
+const seriesCatalog = ref([]);
 const unitsList = ref([]);
 const supportOptions = ref(['Físico', 'Digital', 'Mixto']);
 const isLoading = ref(false);
@@ -169,6 +170,44 @@ const getBoxSeriesLabels = (box) => (
         ? box.series_list
         : splitSeriesLabel(box.series)
 );
+
+const normalizeSeriesLabel = (value) => String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+
+const isAssignedToUnit = (item, unitId) => (
+    Array.isArray(item?.unit_ids)
+    && item.unit_ids.some((assignedUnitId) => Number(assignedUnitId) === Number(unitId))
+);
+
+const buildSeriesOptionsForUnit = (seriesData, unitId) => (Array.isArray(seriesData) ? seriesData : [])
+    .filter((series) => series.is_active && isAssignedToUnit(series, unitId))
+    .flatMap((series) => {
+        const activeSubseries = Array.isArray(series.subseries)
+            ? series.subseries.filter((subseries) => subseries.is_active && isAssignedToUnit(subseries, unitId))
+            : [];
+
+        if (activeSubseries.length > 0) {
+            return activeSubseries.map((subseries) => ({
+                id: `subseries-${subseries.id}`,
+                label: `${series.code} - ${series.name} / ${subseries.code} - ${subseries.name}`,
+            }));
+        }
+
+        return [{
+            id: `series-${series.id}`,
+            label: `${series.code} - ${series.name}`,
+        }];
+    });
+
+const isPdfFileName = (fileName) => String(fileName ?? '').toLowerCase().endsWith('.pdf');
+
+const currentBoxDocumentSeriesOptions = computed(() => {
+    const boxLabels = new Set(getBoxSeriesLabels(currentBoxData.value).map(normalizeSeriesLabel));
+
+    return seriesOptions.value.filter((option) => boxLabels.has(normalizeSeriesLabel(option.label)));
+});
 
 const resetDocumentForm = (defaultSeries = null) => {
     docForm.value = {
@@ -374,38 +413,7 @@ onMounted(async () => {
         unitsList.value = Array.isArray(userRes.units)
             ? userRes.units.map((unit) => ({ label: unit.name, value: unit.id }))
             : [];
-        const userUnitIds = new Set(
-            Array.isArray(userRes.unit_ids) && userRes.unit_ids.length > 0
-                ? userRes.unit_ids.map((id) => Number(id))
-                : [Number(headerForm.value.unit_id)].filter(Boolean)
-        );
-        seriesOptions.value = Array.isArray(seriesRes.data)
-            ? seriesRes.data.filter((series) => (
-                isEditMode.value
-                    || (
-                        Array.isArray(series.unit_ids)
-                        && series.unit_ids.some((unitId) => userUnitIds.has(Number(unitId)))
-                    )
-            )).flatMap((series) => {
-                if (Array.isArray(series.subseries) && series.subseries.length > 0) {
-                    return series.subseries.filter((subseries) => (
-                        isEditMode.value
-                            || (
-                                Array.isArray(subseries.unit_ids)
-                                && subseries.unit_ids.some((unitId) => userUnitIds.has(Number(unitId)))
-                            )
-                    )).map((subseries) => ({
-                        id: `subseries-${subseries.id}`,
-                        label: `${series.code} - ${series.name} / ${subseries.code} - ${subseries.name}`,
-                    }));
-                }
-
-                return [{
-                    id: `series-${series.id}`,
-                    label: `${series.code} - ${series.name}`,
-                }];
-            })
-            : [];
+        seriesCatalog.value = Array.isArray(seriesRes.data) ? seriesRes.data : [];
 
         if (isEditMode.value) {
             const editTransfer = transferRes.data.transfer ?? {};
@@ -427,6 +435,8 @@ onMounted(async () => {
         } else {
             headerForm.value.code = transferRes.data.code ?? '';
         }
+
+        seriesOptions.value = buildSeriesOptionsForUnit(seriesCatalog.value, headerForm.value.unit_id);
     } catch (error) {
         console.error('Error cargando datos de transferencia:', error);
         showError('No se pudo cargar la información base de la solicitud.');
@@ -444,6 +454,14 @@ watch(
         if (!isLoading.value) {
             refreshNextTransferCode();
         }
+    }
+);
+
+watch(
+    () => headerForm.value.unit_id,
+    (unitId) => {
+        seriesOptions.value = buildSeriesOptionsForUnit(seriesCatalog.value, unitId);
+        batchForm.value.series = [];
     }
 );
 
@@ -641,6 +659,72 @@ const getUniqueDocuments = (documents) => {
     });
 };
 
+const validateDocumentForBox = (document, box) => {
+    const documentName = String(document?.name ?? 'documento').trim() || 'documento';
+    const documentSeries = String(document?.series ?? '').trim();
+    const normalizedDocumentSeries = normalizeSeriesLabel(documentSeries);
+    const unitSeriesLabels = new Set(seriesOptions.value.map((option) => normalizeSeriesLabel(option.label)));
+    const boxSeriesLabels = new Set(getBoxSeriesLabels(box).map(normalizeSeriesLabel));
+
+    if (!normalizedDocumentSeries || !unitSeriesLabels.has(normalizedDocumentSeries)) {
+        return `La serie del documento "${documentName}" no existe o no esta habilitada para la unidad productora.`;
+    }
+
+    if (!boxSeriesLabels.has(normalizedDocumentSeries)) {
+        return `El documento "${documentName}" pertenece a una serie o subserie que no forma parte de la caja.`;
+    }
+
+    const documentYear = getYearString(document?.date);
+    const startYear = Number(getYearString(box.year_start));
+    const endYear = Number(getYearString(box.year_end));
+
+    if (documentYear !== '') {
+        const yearNumber = Number(documentYear);
+
+        if (!/^\d{4}$/.test(documentYear) || yearNumber < startYear || yearNumber > endYear) {
+            return `El anio del documento "${documentName}" debe estar dentro del rango de la caja (${startYear} - ${endYear}).`;
+        }
+    }
+
+    if (document?.file && !isPdfFile(document.file)) {
+        return `El archivo digital del documento "${documentName}" debe estar en formato PDF.`;
+    }
+
+    if (document?.file_name && !isPdfFileName(document.file_name)) {
+        return `El archivo digital del documento "${documentName}" debe estar en formato PDF.`;
+    }
+
+    return '';
+};
+
+const validateDocumentForCurrentBox = (document) => validateDocumentForBox(document, currentBoxData.value);
+
+const validateTempDocumentsForCurrentBox = (documents) => {
+    for (const document of documents) {
+        const message = validateDocumentForCurrentBox(document);
+
+        if (message) {
+            return message;
+        }
+    }
+
+    return '';
+};
+
+const validateAllBoxesDocuments = () => {
+    for (const box of boxesList.value) {
+        for (const document of box.documents_list ?? []) {
+            const message = validateDocumentForBox(document, box);
+
+            if (message) {
+                return message;
+            }
+        }
+    }
+
+    return '';
+};
+
 const importDocumentsFromExcel = async () => {
     if (!excelFile.value) {
         showError('Seleccione un archivo Excel para importar.');
@@ -652,7 +736,10 @@ const importDocumentsFromExcel = async () => {
     try {
         const formData = new FormData();
         formData.append('file', excelFile.value);
-        formData.append('current_box_series', currentBoxData.value.series ?? '');
+        formData.append('current_box_series', getBoxSeriesLabels(currentBoxData.value).join('; '));
+        formData.append('unit_id', headerForm.value.unit_id ?? '');
+        formData.append('box_year_start', getYearString(currentBoxData.value.year_start));
+        formData.append('box_year_end', getYearString(currentBoxData.value.year_end));
 
         const { data } = await axios.post('/api/transfers/import-documents', formData, {
             headers: {
@@ -661,9 +748,15 @@ const importDocumentsFromExcel = async () => {
         });
 
         const importedDocuments = Array.isArray(data.documents) ? data.documents : [];
+        const importValidationMessage = validateTempDocumentsForCurrentBox(importedDocuments);
 
         if (importedDocuments.length === 0) {
             showError('El archivo no contiene filas con documentos.');
+            return;
+        }
+
+        if (importValidationMessage) {
+            showError(importValidationMessage);
             return;
         }
 
@@ -723,6 +816,24 @@ const addDocumentToTemp = () => {
         return;
     }
 
+    const documentDraft = {
+        series: documentSeries,
+        name: documentName,
+        code: documentCode,
+        date: documentDate,
+        pages: documentPages,
+        support: docForm.value.support,
+        file: docForm.value.file,
+        file_name: docForm.value.file ? docForm.value.file.name : null,
+    };
+
+    const documentValidationMessage = validateDocumentForCurrentBox(documentDraft);
+
+    if (documentValidationMessage) {
+        showError(documentValidationMessage);
+        return;
+    }
+
     // NUEVA VALIDACIÓN: Año no mayor al actual (solo si se ingresó)
     if (documentDate !== '') {
         const currentYear = new Date().getFullYear();
@@ -743,12 +854,7 @@ const addDocumentToTemp = () => {
 
     tempDocuments.value.push({
         id_doc: Date.now(),
-        series: documentSeries,
-        name: documentName,
-        code: documentCode,
-        date: documentDate,
-        pages: documentPages,
-        support: docForm.value.support,
+        ...documentDraft,
         file: docForm.value.file,
         file_name: docForm.value.file ? docForm.value.file.name : null,
         file_url: docForm.value.file_url,
@@ -824,6 +930,13 @@ const saveBoxChanges = () => {
         return;
     }
 
+    const validationMessage = validateTempDocumentsForCurrentBox(tempDocuments.value);
+
+    if (validationMessage) {
+        showError(validationMessage);
+        return;
+    }
+
     const uniqueDocuments = getUniqueDocuments(tempDocuments.value);
     const skippedDocuments = tempDocuments.value.length - uniqueDocuments.length;
 
@@ -865,6 +978,13 @@ const validateTransferDraft = () => {
     const emptyBoxes = boxesList.value.filter((box) => box.documents_count === 0);
     if (emptyBoxes.length > 0) {
         showError('Cada caja debe tener al menos un documento en su inventario.');
+        return false;
+    }
+
+    const documentValidationMessage = validateAllBoxesDocuments();
+
+    if (documentValidationMessage) {
+        showError(documentValidationMessage);
         return false;
     }
 
@@ -1294,7 +1414,7 @@ const goBack = () => {
                         <Dropdown
                             id="documentSeries"
                             v-model="docForm.series"
-                            :options="seriesOptions"
+                            :options="currentBoxDocumentSeriesOptions"
                             optionLabel="label"
                             placeholder="Seleccionar"
                             filter

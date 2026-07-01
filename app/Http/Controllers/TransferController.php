@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\DocumentarySeries;
 use App\Models\RequestStatusCatalog;
 use App\Models\PhysicalLocationShelf;
 use App\Models\Transfer;
@@ -59,6 +60,9 @@ class TransferController extends Controller
         $validator = Validator::make($request->all(), [
             'file' => ['required', 'file', 'mimes:xlsx', 'max:5120'],
             'current_box_series' => ['nullable', 'string', 'max:2000'],
+            'unit_id' => ['nullable', 'integer', 'exists:units,id'],
+            'box_year_start' => ['nullable', 'integer', 'min:1900', 'max:2100'],
+            'box_year_end' => ['nullable', 'integer', 'min:1900', 'max:2100'],
         ]);
 
         if ($validator->fails()) {
@@ -80,6 +84,7 @@ class TransferController extends Controller
             $headers = array_map(fn ($header) => $this->normalizeImportKey($header), $rows[0]);
             $documents = [];
             $currentBoxSeries = trim((string) $request->input('current_box_series', ''));
+            $currentBoxSeriesLabels = $this->splitSeriesPayloadLabels($currentBoxSeries);
 
             foreach (array_slice($rows, 1) as $index => $row) {
                 if (!collect($row)->contains(fn ($cell) => trim((string) $cell) !== '')) {
@@ -99,8 +104,18 @@ class TransferController extends Controller
                     ], 422);
                 }
 
+                if ($series === '') {
+                    if (count($currentBoxSeriesLabels) !== 1) {
+                        return response()->json([
+                            'message' => 'La fila ' . ($index + 2) . ' debe indicar la Serie del documento.',
+                        ], 422);
+                    }
+
+                    $series = $currentBoxSeriesLabels[0];
+                }
+
                 $documents[] = [
-                    'series' => $series !== '' ? $series : $currentBoxSeries,
+                    'series' => $series,
                     'name' => $name,
                     'code' => $code,
                     'date' => $year,
@@ -113,6 +128,28 @@ class TransferController extends Controller
                 return response()->json([
                     'message' => 'El archivo no contiene filas con documentos.',
                 ], 422);
+            }
+
+            if ($request->filled('unit_id')) {
+                $unitId = (int) $request->input('unit_id');
+
+                if (!$request->user()->units()->where('units.id', $unitId)->exists()) {
+                    return response()->json([
+                        'message' => 'No puede importar documentos para una unidad que no tiene asignada.',
+                    ], 403);
+                }
+
+                $businessError = $this->validateTransferBoxBusinessRules([[
+                    'series' => $currentBoxSeries,
+                    'year_start' => $request->input('box_year_start'),
+                    'year_end' => $request->input('box_year_end'),
+                    'box_number' => 1,
+                    'documents_list' => $documents,
+                ]], $unitId);
+
+                if ($businessError !== null) {
+                    return response()->json(['message' => $businessError], 422);
+                }
             }
 
             return response()->json([
@@ -431,6 +468,15 @@ class TransferController extends Controller
                 ], 422);
             }
 
+            $businessError = $this->validateTransferBoxBusinessRules(
+                $request->input('boxes', []),
+                (int) $request->input('unit_id')
+            );
+
+            if ($businessError !== null) {
+                return response()->json(['message' => $businessError], 422);
+            }
+
             DB::transaction(function () use ($request, $transfer, $previousWorkflowCode) {
                 $requestedAt = Carbon::parse($request->input('request_date'));
                 $correctionNotes = trim($request->string('correction_notes')->toString());
@@ -536,6 +582,15 @@ class TransferController extends Controller
             return response()->json([
                 'message' => 'No puede crear una transferencia para una unidad que no tiene asignada.',
             ], 403);
+        }
+
+        $businessError = $this->validateTransferBoxBusinessRules(
+            $request->input('boxes', []),
+            (int) $request->input('unit_id')
+        );
+
+        if ($businessError !== null) {
+            return response()->json(['message' => $businessError], 422);
         }
 
         try {
@@ -648,6 +703,132 @@ class TransferController extends Controller
         return collect($values)
             ->map(fn ($value) => mb_strtolower(preg_replace('/\s+/', ' ', trim((string) $value)) ?? ''))
             ->implode('|');
+    }
+
+    private function validateTransferBoxBusinessRules(array $boxesPayload, int $unitId): ?string
+    {
+        $allowedSeriesLabels = $this->allowedSeriesLabelsForUnit($unitId);
+
+        foreach ($boxesPayload as $boxIndex => $boxPayload) {
+            $boxNumber = $boxPayload['box_number'] ?? ($boxIndex + 1);
+            $boxLabels = $this->splitSeriesPayloadLabels($boxPayload['series'] ?? '');
+            $normalizedBoxLabels = collect($boxLabels)
+                ->map(fn ($label) => $this->normalizeSeriesLabel($label))
+                ->filter()
+                ->values()
+                ->all();
+
+            if (empty($normalizedBoxLabels)) {
+                return 'La caja #' . $boxNumber . ' debe tener una serie o subserie definida.';
+            }
+
+            foreach ($boxLabels as $boxLabel) {
+                if (!isset($allowedSeriesLabels[$this->normalizeSeriesLabel($boxLabel)])) {
+                    return 'La serie "' . $boxLabel . '" no existe o no esta habilitada para la unidad productora.';
+                }
+            }
+
+            $startYear = (int) ($boxPayload['year_start'] ?? 0);
+            $endYear = (int) ($boxPayload['year_end'] ?? 0);
+
+            foreach (($boxPayload['documents_list'] ?? []) as $documentPayload) {
+                $documentName = trim((string) ($documentPayload['name'] ?? 'documento'));
+                $documentSeries = trim((string) ($documentPayload['series'] ?? ''));
+
+                if ($documentSeries === '' && count($boxLabels) === 1) {
+                    $documentSeries = $boxLabels[0];
+                }
+
+                $normalizedDocumentSeries = $this->normalizeSeriesLabel($documentSeries);
+
+                if ($normalizedDocumentSeries === '' || !isset($allowedSeriesLabels[$normalizedDocumentSeries])) {
+                    return 'La serie del documento "' . $documentName . '" no existe o no esta habilitada para la unidad productora.';
+                }
+
+                if (!in_array($normalizedDocumentSeries, $normalizedBoxLabels, true)) {
+                    return 'El documento "' . $documentName . '" pertenece a una serie o subserie que no forma parte de la caja #' . $boxNumber . '.';
+                }
+
+                $year = trim((string) ($documentPayload['date'] ?? ''));
+
+                if ($year !== '') {
+                    if (!preg_match('/^\d{4}$/', $year)) {
+                        return 'El anio del documento "' . $documentName . '" debe tener formato YYYY.';
+                    }
+
+                    $yearNumber = (int) $year;
+
+                    if ($yearNumber < $startYear || $yearNumber > $endYear) {
+                        return 'El anio del documento "' . $documentName . '" debe estar dentro del rango de la caja (' . $startYear . ' - ' . $endYear . ').';
+                    }
+                }
+
+                $fileName = trim((string) ($documentPayload['file_name'] ?? ''));
+
+                if ($fileName !== '' && !$this->isPdfFileName($fileName)) {
+                    return 'El archivo digital del documento "' . $documentName . '" debe estar en formato PDF.';
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function allowedSeriesLabelsForUnit(int $unitId): array
+    {
+        $labels = [];
+
+        DocumentarySeries::query()
+            ->where('is_active', true)
+            ->with([
+                'units:id',
+                'subseries' => fn ($query) => $query
+                    ->where('is_active', true)
+                    ->with('units:id'),
+            ])
+            ->get()
+            ->each(function (DocumentarySeries $series) use ($unitId, &$labels) {
+                $seriesUnitIds = $series->units->pluck('id')->map(fn ($id) => (int) $id);
+
+                if (!$seriesUnitIds->contains($unitId)) {
+                    return;
+                }
+
+                $seriesLabel = $series->code . ' - ' . $series->name;
+                $labels[$this->normalizeSeriesLabel($seriesLabel)] = $seriesLabel;
+
+                foreach ($series->subseries as $subseries) {
+                    $subseriesUnitIds = $subseries->units->pluck('id')->map(fn ($id) => (int) $id);
+
+                    if (!$subseriesUnitIds->contains($unitId)) {
+                        continue;
+                    }
+
+                    $subseriesLabel = $seriesLabel . ' / ' . $subseries->code . ' - ' . $subseries->name;
+                    $labels[$this->normalizeSeriesLabel($subseriesLabel)] = $subseriesLabel;
+                }
+            });
+
+        return $labels;
+    }
+
+    private function splitSeriesPayloadLabels(string $value): array
+    {
+        return collect(explode(';', $value))
+            ->map(fn ($label) => trim($label))
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    private function normalizeSeriesLabel(string $value): string
+    {
+        return mb_strtolower(preg_replace('/\s+/', ' ', trim($value)) ?? '');
+    }
+
+    private function isPdfFileName(string $fileName): bool
+    {
+        return preg_match('/\.pdf$/i', $fileName) === 1;
     }
 
     private function createDocumentImportWorkbook(array $rows): string

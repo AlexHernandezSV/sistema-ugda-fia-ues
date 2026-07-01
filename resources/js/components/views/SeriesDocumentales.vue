@@ -21,6 +21,9 @@ const searchValue = ref("");
 const seriesList = ref([]);
 const unitOptions = ref([]);
 
+const SERIES_CODE_MAX_LENGTH = 20;
+const SERIES_NAME_MAX_LENGTH = 150;
+
 const createSeriesForm = ref({
     code: "",
     name: "",
@@ -79,6 +82,8 @@ const canSaveSubseries = computed(
         /^\d+$/.test(createSubseriesForm.value.code) &&
         String(createSubseriesForm.value.name ?? "").trim().length > 0,
 );
+
+const getCharacterCount = (value) => String(value ?? "").length;
 
 const filteredSeries = computed(() => {
     if (!searchTerm.value) {
@@ -144,13 +149,13 @@ const resetSubseriesErrors = () => {
 const normalizeSeriesCode = (target = createSeriesForm.value) => {
     target.code = String(target.code ?? "")
         .replace(/\D/g, "")
-        .slice(0, 20);
+        .slice(0, SERIES_CODE_MAX_LENGTH);
 };
 
 const normalizeSubseriesCode = (target = createSubseriesForm.value) => {
     target.code = String(target.code ?? "")
         .replace(/\D/g, "")
-        .slice(0, 20);
+        .slice(0, SERIES_CODE_MAX_LENGTH);
 };
 
 const validateSeriesForm = (target = createSeriesForm.value) => {
@@ -658,31 +663,46 @@ const clearFilter = () => {
             <div
                 class="series-create-grid__field series-create-grid__field--code"
             >
-                <label class="series-field__label">Código de Serie</label>
+                <label class="series-field__label">Código de Serie *</label>
                 <InputText
                     v-model="createSeriesForm.code"
-                    maxlength="20"
+                    :maxlength="SERIES_CODE_MAX_LENGTH"
                     placeholder="Ej: 5"
                     :class="{ 'p-invalid': seriesErrors.code }"
                     @input="normalizeSeriesCode(createSeriesForm)"
                 />
-                <small class="p-error block mt-1">{{
-                    seriesErrors.code
-                }}</small>
+                <div class="series-field__feedback">
+                    <small v-if="seriesErrors.code" class="p-error">{{
+                        seriesErrors.code
+                    }}</small>
+                    <small class="series-field__counter" style="justify-content: center; text-align: start">
+                        {{ getCharacterCount(createSeriesForm.code) }}/{{
+                            SERIES_CODE_MAX_LENGTH
+                        }}
+                    </small>
+                </div>
             </div>
             <div
                 class="series-create-grid__field series-create-grid__field--name"
             >
-                <label class="series-field__label">Nombre de Serie</label>
+                <label class="series-field__label">Nombre de Serie *</label>
                 <InputText
                     v-model="createSeriesForm.name"
-                    maxlength="150"
+                    :maxlength="SERIES_NAME_MAX_LENGTH"
                     placeholder="Ej: ACTAS"
                     :class="{ 'p-invalid': seriesErrors.name }"
                 />
-                <small class="p-error block mt-1">{{
-                    seriesErrors.name
-                }}</small>
+                <div class="series-field__feedback">
+                    <small v-if="seriesErrors.name" class="p-error">{{
+                        seriesErrors.name
+                    }}</small>
+                    <small class="series-field__counter" style="justify-content: center; text-align: start"
+>
+                        {{ getCharacterCount(createSeriesForm.name) }}/{{
+                            SERIES_NAME_MAX_LENGTH
+                        }}
+                    </small>
+                </div>
             </div>
         </div>
 
@@ -827,33 +847,55 @@ const clearFilter = () => {
                 >
                     <div class="subseries-inline-form__row">
                         <div>
-                            <label class="series-field__label">Código</label>
+                            <label class="series-field__label">Código *</label>
                             <InputText
                                 v-model="createSubseriesForm.code"
-                                maxlength="20"
+                                :maxlength="SERIES_CODE_MAX_LENGTH"
                                 placeholder="Ej: 12"
                                 :class="{ 'p-invalid': subseriesErrors.code }"
                                 @input="
                                     normalizeSubseriesCode(createSubseriesForm)
                                 "
                             />
-                            <small class="p-error block mt-1">{{
-                                subseriesErrors.code
-                            }}</small>
+                            <div class="series-field__feedback">
+                                <small
+                                    v-if="subseriesErrors.code"
+                                    class="p-error"
+                                    >{{ subseriesErrors.code }}</small
+                                >
+                                <small class="series-field__counter">
+                                    {{
+                                        getCharacterCount(
+                                            createSubseriesForm.code,
+                                        )
+                                    }}/{{ SERIES_CODE_MAX_LENGTH }}
+                                </small>
+                            </div>
                         </div>
                         <div>
                             <label class="series-field__label"
-                                >Nombre de Subserie</label
+                                >Nombre de Subserie *</label
                             >
                             <InputText
                                 v-model="createSubseriesForm.name"
-                                maxlength="150"
+                                :maxlength="SERIES_NAME_MAX_LENGTH"
                                 placeholder="Ej: Actas Asamblea General Universitaria"
                                 :class="{ 'p-invalid': subseriesErrors.name }"
                             />
-                            <small class="p-error block mt-1">{{
-                                subseriesErrors.name
-                            }}</small>
+                            <div class="series-field__feedback">
+                                <small
+                                    v-if="subseriesErrors.name"
+                                    class="p-error"
+                                    >{{ subseriesErrors.name }}</small
+                                >
+                                <small class="series-field__counter">
+                                    {{
+                                        getCharacterCount(
+                                            createSubseriesForm.name,
+                                        )
+                                    }}/{{ SERIES_NAME_MAX_LENGTH }}
+                                </small>
+                            </div>
                         </div>
                     </div>
 
@@ -918,11 +960,11 @@ const clearFilter = () => {
                                 <div class="subseries-inline-form__row">
                                     <div>
                                         <label class="series-field__label"
-                                            >Código</label
+                                            >Código *</label
                                         >
                                         <InputText
                                             v-model="editSubseriesForm.code"
-                                            maxlength="20"
+                                            :maxlength="SERIES_CODE_MAX_LENGTH"
                                             placeholder="Ej: 12"
                                             :class="{
                                                 'p-invalid':
@@ -934,26 +976,52 @@ const clearFilter = () => {
                                                 )
                                             "
                                         />
-                                        <small class="p-error block mt-1">{{
-                                            subseriesErrors.code
-                                        }}</small>
+                                        <div class="series-field__feedback">
+                                            <small
+                                                v-if="subseriesErrors.code"
+                                                class="p-error"
+                                                >{{ subseriesErrors.code }}</small
+                                            >
+                                            <small
+                                                class="series-field__counter"
+                                            >
+                                                {{
+                                                    getCharacterCount(
+                                                        editSubseriesForm.code,
+                                                    )
+                                                }}/{{ SERIES_CODE_MAX_LENGTH }}
+                                            </small>
+                                        </div>
                                     </div>
                                     <div>
                                         <label class="series-field__label"
-                                            >Nombre de Subserie</label
+                                            >Nombre de Subserie *</label
                                         >
                                         <InputText
                                             v-model="editSubseriesForm.name"
-                                            maxlength="150"
+                                            :maxlength="SERIES_NAME_MAX_LENGTH"
                                             placeholder="Ej: Actas Asamblea General Universitaria"
                                             :class="{
                                                 'p-invalid':
                                                     subseriesErrors.name,
                                             }"
                                         />
-                                        <small class="p-error block mt-1">{{
-                                            subseriesErrors.name
-                                        }}</small>
+                                        <div class="series-field__feedback">
+                                            <small
+                                                v-if="subseriesErrors.name"
+                                                class="p-error"
+                                                >{{ subseriesErrors.name }}</small
+                                            >
+                                            <small
+                                                class="series-field__counter"
+                                            >
+                                                {{
+                                                    getCharacterCount(
+                                                        editSubseriesForm.name,
+                                                    )
+                                                }}/{{ SERIES_NAME_MAX_LENGTH }}
+                                            </small>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -976,7 +1044,7 @@ const clearFilter = () => {
 
                                 <div class="subseries-inline-form__status">
                                     <label class="series-field__label"
-                                        >Estado</label
+                                        >Estado *</label
                                     >
                                     <div
                                         :class="[
@@ -1097,31 +1165,45 @@ const clearFilter = () => {
                 <div
                     class="series-edit-dialog__field series-edit-dialog__field--code"
                 >
-                    <label class="series-field__label">Código de Serie</label>
+                    <label class="series-field__label">Código de Serie *</label>
                     <InputText
                         v-model="editSeriesForm.code"
-                        maxlength="20"
+                        :maxlength="SERIES_CODE_MAX_LENGTH"
                         placeholder="Ej: 5"
                         :class="{ 'p-invalid': seriesErrors.code }"
                         @input="normalizeSeriesCode(editSeriesForm)"
                     />
-                    <small class="p-error block mt-1">{{
-                        seriesErrors.code
-                    }}</small>
+                    <div class="series-field__feedback">
+                        <small v-if="seriesErrors.code" class="p-error">{{
+                            seriesErrors.code
+                        }}</small>
+                        <small class="series-field__counter">
+                            {{ getCharacterCount(editSeriesForm.code) }}/{{
+                                SERIES_CODE_MAX_LENGTH
+                            }}
+                        </small>
+                    </div>
                 </div>
                 <div
                     class="series-edit-dialog__field series-edit-dialog__field--name"
                 >
-                    <label class="series-field__label">Nombre de Serie</label>
+                    <label class="series-field__label">Nombre de Serie *</label>
                     <InputText
                         v-model="editSeriesForm.name"
-                        maxlength="150"
+                        :maxlength="SERIES_NAME_MAX_LENGTH"
                         placeholder="Nombre de la serie"
                         :class="{ 'p-invalid': seriesErrors.name }"
                     />
-                    <small class="p-error block mt-1">{{
-                        seriesErrors.name
-                    }}</small>
+                    <div class="series-field__feedback">
+                        <small v-if="seriesErrors.name" class="p-error">{{
+                            seriesErrors.name
+                        }}</small>
+                        <small class="series-field__counter">
+                            {{ getCharacterCount(editSeriesForm.name) }}/{{
+                                SERIES_NAME_MAX_LENGTH
+                            }}
+                        </small>
+                    </div>
                 </div>
             </div>
             <div
@@ -1149,7 +1231,7 @@ const clearFilter = () => {
             <div
                 class="series-edit-dialog__field series-edit-dialog__field--status"
             >
-                <label class="series-field__label">Estado</label>
+                <label class="series-field__label">Estado *</label>
                 <div
                     :class="[
                         'series-status-toggle',
@@ -1664,6 +1746,27 @@ const clearFilter = () => {
     color: var(--ugda-text-primary);
     font-size: var(--ugda-font-body);
     font-weight: var(--ugda-weight-medium);
+}
+
+.series-field__feedback {
+    align-items: flex-start;
+    display: flex;
+    gap: var(--ugda-space-sm);
+    justify-content: space-between;
+    margin-top: var(--ugda-space-xs);
+    min-height: 1.1rem;
+}
+
+.series-field__feedback .p-error {
+    min-width: 0;
+}
+
+.series-field__counter {
+    color: var(--ugda-text-muted);
+    flex: 0 0 auto;
+    font-size: var(--ugda-font-helper);
+    line-height: 1.2;
+    margin-left: auto;
 }
 
 .series-field__hint {
