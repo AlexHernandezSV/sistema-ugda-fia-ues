@@ -208,8 +208,8 @@ onMounted(() => fetchArchive());
 
             <template v-else-if="hasSearched">
                 <div class="archive-results__header">
-                    <h2>Resultados de Busqueda</h2>
-                    <span>{{ resultCountLabel }}</span>
+                    <h2 data-v-b54a6ae6="" style="color: #ffffff;">Resultados de Busqueda</h2>
+                    <span>{{"( " + resultCountLabel + " )" }}</span>
                 </div>
 
                 <div v-if="loading" class="archive-state archive-state--compact">

@@ -1,8 +1,10 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
-import axios from 'axios';
-import { useToast } from 'primevue/usetoast';
+import { computed, onMounted, ref, watch } from "vue";
+import axios from "axios";
+import { useRouter } from "vue-router";
+import { useToast } from "primevue/usetoast";
 
+const router = useRouter();
 const toast = useToast();
 const loading = ref(false);
 const saving = ref(false);
@@ -10,13 +12,13 @@ const offices = ref([]);
 const aisles = ref([]);
 const shelves = ref([]);
 const dialogVisible = ref(false);
-const activeType = ref('office');
+const activeType = ref("office");
 const editingId = ref(null);
 const rowsPerPageOptions = ref([5, 10, 25, 50]);
 
 const form = ref({
-    name: '',
-    code: '',
+    name: "",
+    code: "",
     is_active: true,
     office_id: null,
     aisle_id: null,
@@ -24,67 +26,86 @@ const form = ref({
 
 const typeConfig = {
     office: {
-        title: 'Oficina',
-        createTitle: 'Nueva Oficina',
-        editTitle: 'Editar Oficina',
-        endpoint: '/api/physical-location-offices',
+        title: "Oficina",
+        createTitle: "Nueva Oficina",
+        editTitle: "Editar Oficina",
+        endpoint: "/api/physical-location-offices",
     },
     aisle: {
-        title: 'Pasillo',
-        createTitle: 'Nuevo Pasillo',
-        editTitle: 'Editar Pasillo',
-        endpoint: '/api/physical-location-aisles',
+        title: "Pasillo",
+        createTitle: "Nuevo Pasillo",
+        editTitle: "Editar Pasillo",
+        endpoint: "/api/physical-location-aisles",
     },
     shelf: {
-        title: 'Estante',
-        createTitle: 'Nuevo Estante',
-        editTitle: 'Editar Estante',
-        endpoint: '/api/physical-location-shelves',
+        title: "Estante",
+        createTitle: "Nuevo Estante",
+        editTitle: "Editar Estante",
+        endpoint: "/api/physical-location-shelves",
     },
 };
 
-const dialogTitle = computed(() => (
-    editingId.value ? typeConfig[activeType.value].editTitle : typeConfig[activeType.value].createTitle
-));
+const dialogTitle = computed(() =>
+    editingId.value
+        ? typeConfig[activeType.value].editTitle
+        : typeConfig[activeType.value].createTitle,
+);
 
-const officeOptions = computed(() => offices.value.map((office) => ({
-    ...office,
-    label: `${office.name} (${office.code})`,
-})));
+const officeOptions = computed(() =>
+    offices.value.map((office) => ({
+        ...office,
+        label: `${office.name} (${office.code})`,
+    })),
+);
 
-const aisleOptions = computed(() => aisles.value.map((aisle) => ({
-    ...aisle,
-    label: `${aisle.office_name} / ${aisle.name} (${aisle.code})`,
-})));
+const aisleOptions = computed(() =>
+    aisles.value.map((aisle) => ({
+        ...aisle,
+        label: `${aisle.office_name} / ${aisle.name} (${aisle.code})`,
+    })),
+);
 
 const filteredAisleOptions = computed(() => {
     if (!form.value.office_id) {
         return aisleOptions.value;
     }
 
-    return aisleOptions.value.filter((aisle) => aisle.office_id === form.value.office_id);
+    return aisleOptions.value.filter(
+        (aisle) => aisle.office_id === form.value.office_id,
+    );
 });
 
-watch(() => form.value.office_id, () => {
-    if (activeType.value === 'shelf' && !filteredAisleOptions.value.some((aisle) => aisle.id === form.value.aisle_id)) {
-        form.value.aisle_id = null;
-    }
-});
+watch(
+    () => form.value.office_id,
+    () => {
+        if (
+            activeType.value === "shelf" &&
+            !filteredAisleOptions.value.some(
+                (aisle) => aisle.id === form.value.aisle_id,
+            )
+        ) {
+            form.value.aisle_id = null;
+        }
+    },
+);
 
 const showError = (detail) => {
-    toast.add({ severity: 'error', summary: 'Error', detail, life: 4200 });
+    toast.add({ severity: "error", summary: "Error", detail, life: 4200 });
 };
 
 const fetchCatalog = async () => {
     loading.value = true;
 
     try {
-        const { data } = await axios.get('/api/physical-locations');
+        const { data } = await axios.get("/api/physical-locations");
         offices.value = Array.isArray(data.offices) ? data.offices : [];
         aisles.value = Array.isArray(data.aisles) ? data.aisles : [];
         shelves.value = Array.isArray(data.shelves) ? data.shelves : [];
     } catch (error) {
-        showError(error.response?.data?.message ?? 'No se pudieron cargar las ubicaciones fisicas.');
+        showError(
+            error.response?.data?.message ??
+                "No se pudieron cargar las ubicaciones fisicas.",
+        );
     } finally {
         loading.value = false;
     }
@@ -92,8 +113,8 @@ const fetchCatalog = async () => {
 
 const resetForm = () => {
     form.value = {
-        name: '',
-        code: '',
+        name: "",
+        code: "",
         is_active: true,
         office_id: null,
         aisle_id: null,
@@ -127,11 +148,11 @@ const payloadForType = () => {
         is_active: form.value.is_active,
     };
 
-    if (activeType.value === 'aisle') {
+    if (activeType.value === "aisle") {
         payload.office_id = form.value.office_id;
     }
 
-    if (activeType.value === 'shelf') {
+    if (activeType.value === "shelf") {
         payload.aisle_id = form.value.aisle_id;
     }
 
@@ -140,17 +161,17 @@ const payloadForType = () => {
 
 const validateForm = () => {
     if (!form.value.name.trim() || !form.value.code.trim()) {
-        showError('Ingrese nombre y código.');
+        showError("Ingrese nombre y código.");
         return false;
     }
 
-    if (activeType.value === 'aisle' && !form.value.office_id) {
-        showError('Seleccione la oficina del pasillo.');
+    if (activeType.value === "aisle" && !form.value.office_id) {
+        showError("Seleccione la oficina del pasillo.");
         return false;
     }
 
-    if (activeType.value === 'shelf' && !form.value.aisle_id) {
-        showError('Seleccione el pasillo del estante.');
+    if (activeType.value === "shelf" && !form.value.aisle_id) {
+        showError("Seleccione el pasillo del estante.");
         return false;
     }
 
@@ -173,15 +194,18 @@ const saveLocation = async () => {
         const { data } = await request;
 
         toast.add({
-            severity: 'success',
-            summary: 'Guardado',
-            detail: data.message ?? 'Ubicacion fisica guardada correctamente.',
+            severity: "success",
+            summary: "Guardado",
+            detail: data.message ?? "Ubicacion fisica guardada correctamente.",
             life: 3000,
         });
         dialogVisible.value = false;
         await fetchCatalog();
     } catch (error) {
-        showError(error.response?.data?.message ?? 'No se pudo guardar la ubicacion fisica.');
+        showError(
+            error.response?.data?.message ??
+                "No se pudo guardar la ubicacion fisica.",
+        );
     } finally {
         saving.value = false;
     }
@@ -195,29 +219,52 @@ const deleteLocation = async (type, item) => {
     try {
         await axios.delete(`${typeConfig[type].endpoint}/${item.id}`);
         toast.add({
-            severity: 'success',
-            summary: 'Eliminado',
-            detail: 'Registro eliminado correctamente.',
+            severity: "success",
+            summary: "Eliminado",
+            detail: "Registro eliminado correctamente.",
             life: 2600,
         });
         await fetchCatalog();
     } catch (error) {
-        showError(error.response?.data?.message ?? 'No se pudo eliminar el registro.');
+        showError(
+            error.response?.data?.message ?? "No se pudo eliminar el registro.",
+        );
     }
 };
 
 onMounted(fetchCatalog);
+
+const goBack = () => {
+    router.back();
+};
 </script>
 
 <template>
     <div class="locations-page fadein animation-duration-500">
-        <header class="locations-header">
-            <div>
-                <span class="locations-eyebrow">Archivo General</span>
-                <h1>Ubicaciones Fisicas</h1>
-                <p>Administre la estructura Oficina, Pasillo y Estante usada para ubicar cajas.</p>
-            </div>
-        </header>
+        <div class="mb-4">
+            <section class="reports-hero shadow-1">
+                <div class="reports-hero__nav">
+                    <button
+                        type="button"
+                        class="reports-back-button"
+                        @click="goBack"
+                    >
+                        <i class="pi pi-arrow-left"></i>
+                        <span>Volver</span>
+                    </button>
+                </div>
+
+                <div class="reports-hero__copy">
+                    <h1 class="reports-hero__title m-0">
+                        Gestión de Ubicaciones Físicas
+                    </h1>
+                    <p class="reports-hero__subtitle m-0">
+                        Administre la estructura Oficina, Pasillo y Estante
+                        usada para ubicar cajas.
+                    </p>
+                </div>
+            </section>
+        </div>
 
         <main class="locations-grid">
             <section class="locations-panel">
@@ -226,15 +273,30 @@ onMounted(fetchCatalog);
                         <h2>Oficinas</h2>
                         <span>{{ offices.length }} registro(s)</span>
                     </div>
-                    <Button icon="pi pi-plus" label="Agregar" @click="openCreate('office')" />
+                    <Button
+                        icon="pi pi-plus"
+                        label="Agregar"
+                        @click="openCreate('office')"
+                    />
                 </div>
-                <DataTable :value="offices" :loading="loading" responsiveLayout="scroll" stripedRows>
+                <DataTable
+                    :value="offices"
+                    :loading="loading"
+                    responsiveLayout="scroll"
+                    stripedRows
+                >
                     <Column field="name" header="Nombre" />
                     <Column field="code" header="Código" />
                     <Column header="Estado">
                         <template #body="{ data }">
-                            <span :class="data.is_active ? 'locations-status locations-status--active' : 'locations-status'">
-                                {{ data.is_active ? 'Activo' : 'Inactivo' }}
+                            <span
+                                :class="
+                                    data.is_active
+                                        ? 'locations-status locations-status--active'
+                                        : 'locations-status'
+                                "
+                            >
+                                {{ data.is_active ? "Activo" : "Inactivo" }}
                             </span>
                         </template>
                     </Column>
@@ -253,16 +315,31 @@ onMounted(fetchCatalog);
                         <h2>Pasillos</h2>
                         <span>{{ aisles.length }} registro(s)</span>
                     </div>
-                    <Button icon="pi pi-plus" label="Agregar" @click="openCreate('aisle')" />
+                    <Button
+                        icon="pi pi-plus"
+                        label="Agregar"
+                        @click="openCreate('aisle')"
+                    />
                 </div>
-                <DataTable :value="aisles" :loading="loading" responsiveLayout="scroll" stripedRows>
+                <DataTable
+                    :value="aisles"
+                    :loading="loading"
+                    responsiveLayout="scroll"
+                    stripedRows
+                >
                     <Column field="office_name" header="Oficina" />
                     <Column field="name" header="Nombre" />
                     <Column field="code" header="Código" />
                     <Column header="Estado">
                         <template #body="{ data }">
-                            <span :class="data.is_active ? 'locations-status locations-status--active' : 'locations-status'">
-                                {{ data.is_active ? 'Activo' : 'Inactivo' }}
+                            <span
+                                :class="
+                                    data.is_active
+                                        ? 'locations-status locations-status--active'
+                                        : 'locations-status'
+                                "
+                            >
+                                {{ data.is_active ? "Activo" : "Inactivo" }}
                             </span>
                         </template>
                     </Column>
@@ -281,7 +358,11 @@ onMounted(fetchCatalog);
                         <h2>Estantes</h2>
                         <span>{{ shelves.length }} registro(s)</span>
                     </div>
-                    <Button icon="pi pi-plus" label="Agregar" @click="openCreate('shelf')" />
+                    <Button
+                        icon="pi pi-plus"
+                        label="Agregar"
+                        @click="openCreate('shelf')"
+                    />
                 </div>
                 <DataTable
                     :value="shelves"
@@ -298,8 +379,14 @@ onMounted(fetchCatalog);
                     <Column field="code" header="Código" />
                     <Column header="Estado">
                         <template #body="{ data }">
-                            <span :class="data.is_active ? 'locations-status locations-status--active' : 'locations-status'">
-                                {{ data.is_active ? 'Activo' : 'Inactivo' }}
+                            <span
+                                :class="
+                                    data.is_active
+                                        ? 'locations-status locations-status--active'
+                                        : 'locations-status'
+                                "
+                            >
+                                {{ data.is_active ? "Activo" : "Inactivo" }}
                             </span>
                         </template>
                     </Column>
@@ -313,7 +400,12 @@ onMounted(fetchCatalog);
             </section>
         </main>
 
-        <Dialog v-model:visible="dialogVisible" :header="dialogTitle" modal :style="{ width: '520px', maxWidth: '92vw' }">
+        <Dialog
+            v-model:visible="dialogVisible"
+            :header="dialogTitle"
+            modal
+            :style="{ width: '520px', maxWidth: '92vw' }"
+        >
             <div class="locations-form">
                 <label v-if="activeType === 'aisle' || activeType === 'shelf'">
                     <span>Oficina</span>
@@ -340,11 +432,19 @@ onMounted(fetchCatalog);
                 </label>
                 <label>
                     <span>Nombre</span>
-                    <InputText v-model="form.name" class="w-full" placeholder="Nombre visible" />
+                    <InputText
+                        v-model="form.name"
+                        class="w-full"
+                        placeholder="Nombre visible"
+                    />
                 </label>
                 <label>
                     <span>Código</span>
-                    <InputText v-model="form.code" class="w-full" placeholder="Código para ubicacion" />
+                    <InputText
+                        v-model="form.code"
+                        class="w-full"
+                        placeholder="Código para ubicacion"
+                    />
                 </label>
                 <label class="locations-check">
                     <Checkbox v-model="form.is_active" binary />
@@ -353,8 +453,19 @@ onMounted(fetchCatalog);
             </div>
 
             <template #footer>
-                <Button label="Cancelar" severity="secondary" outlined :disabled="saving" @click="dialogVisible = false" />
-                <Button icon="pi pi-save" label="Guardar" :loading="saving" @click="saveLocation" />
+                <Button
+                    label="Cancelar"
+                    severity="secondary"
+                    outlined
+                    :disabled="saving"
+                    @click="dialogVisible = false"
+                />
+                <Button
+                    icon="pi pi-save"
+                    label="Guardar"
+                    :loading="saving"
+                    @click="saveLocation"
+                />
             </template>
         </Dialog>
     </div>
