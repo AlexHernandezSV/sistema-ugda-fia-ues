@@ -72,16 +72,6 @@ const deleteDialogState = ref({
 });
 
 const searchTerm = computed(() => searchValue.value.trim().toLowerCase());
-const canSaveSeries = computed(
-    () =>
-        /^\d+$/.test(createSeriesForm.value.code) &&
-        String(createSeriesForm.value.name ?? "").trim().length > 0,
-);
-const canSaveSubseries = computed(
-    () =>
-        /^\d+$/.test(createSubseriesForm.value.code) &&
-        String(createSubseriesForm.value.name ?? "").trim().length > 0,
-);
 
 const getCharacterCount = (value) => String(value ?? "").length;
 
@@ -148,13 +138,11 @@ const resetSubseriesErrors = () => {
 
 const normalizeSeriesCode = (target = createSeriesForm.value) => {
     target.code = String(target.code ?? "")
-        .replace(/\D/g, "")
         .slice(0, SERIES_CODE_MAX_LENGTH);
 };
 
 const normalizeSubseriesCode = (target = createSubseriesForm.value) => {
     target.code = String(target.code ?? "")
-        .replace(/\D/g, "")
         .slice(0, SERIES_CODE_MAX_LENGTH);
 };
 
@@ -162,7 +150,9 @@ const validateSeriesForm = (target = createSeriesForm.value) => {
     resetSeriesErrors();
     normalizeSeriesCode(target);
 
-    if (!/^\d+$/.test(target.code)) {
+    if (!String(target.code ?? "").trim()) {
+        seriesErrors.value.code = "El código de la serie es obligatorio.";
+    } else if (!/^\d+$/.test(target.code)) {
         seriesErrors.value.code = "El código solo puede contener digitos.";
     }
 
@@ -177,7 +167,9 @@ const validateSubseriesForm = (target = createSubseriesForm.value) => {
     resetSubseriesErrors();
     normalizeSubseriesCode(target);
 
-    if (!/^\d+$/.test(target.code)) {
+    if (!String(target.code ?? "").trim()) {
+        subseriesErrors.value.code = "El código de la subserie es obligatorio.";
+    } else if (!/^\d+$/.test(target.code)) {
         subseriesErrors.value.code = "El código solo puede contener digitos.";
     }
 
@@ -675,7 +667,7 @@ const clearFilter = () => {
                     <small v-if="seriesErrors.code" class="p-error">{{
                         seriesErrors.code
                     }}</small>
-                    <small class="series-field__counter" style="justify-content: center; text-align: start">
+                    <small class="series-field__counter">
                         {{ getCharacterCount(createSeriesForm.code) }}/{{
                             SERIES_CODE_MAX_LENGTH
                         }}
@@ -696,8 +688,7 @@ const clearFilter = () => {
                     <small v-if="seriesErrors.name" class="p-error">{{
                         seriesErrors.name
                     }}</small>
-                    <small class="series-field__counter" style="justify-content: center; text-align: start"
->
+                    <small class="series-field__counter">
                         {{ getCharacterCount(createSeriesForm.name) }}/{{
                             SERIES_NAME_MAX_LENGTH
                         }}
@@ -738,7 +729,6 @@ const clearFilter = () => {
                 label="Guardar Serie"
                 icon="pi pi-save"
                 class="border-none"
-                :disabled="!canSaveSeries"
                 :loading="isSavingSeries"
                 @click="saveSeries"
             />
@@ -927,7 +917,6 @@ const clearFilter = () => {
                             label="Guardar"
                             icon="pi pi-save"
                             class="border-none"
-                            :disabled="!canSaveSubseries"
                             :loading="isSavingSubseries"
                             @click="saveSubseries"
                         />
@@ -1751,8 +1740,8 @@ const clearFilter = () => {
 .series-field__feedback {
     align-items: flex-start;
     display: flex;
-    gap: var(--ugda-space-sm);
-    justify-content: space-between;
+    flex-direction: column;
+    gap: 0.15rem;
     margin-top: var(--ugda-space-xs);
     min-height: 1.1rem;
 }
@@ -1763,10 +1752,12 @@ const clearFilter = () => {
 
 .series-field__counter {
     color: var(--ugda-text-muted);
-    flex: 0 0 auto;
+    display: block;
     font-size: var(--ugda-font-helper);
     line-height: 1.2;
-    margin-left: auto;
+    margin-left: 0;
+    order: -1;
+    text-align: left;
 }
 
 .series-field__hint {
