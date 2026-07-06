@@ -344,6 +344,24 @@ class NormalizedAuthAndUserManagementTest extends TestCase
         ]);
     }
 
+    public function test_documentary_series_name_must_be_unique(): void
+    {
+        $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
+
+        $response = $this->actingAs($admin)->postJson('/api/documentary-series', [
+            'code' => '06',
+            'name' => ' actas ',
+            'is_active' => true,
+        ]);
+
+        $response->assertUnprocessable()
+            ->assertJsonValidationErrors(['name'])
+            ->assertJsonPath(
+                'errors.name.0',
+                'No se pudo guardar ya que existe otra serie documental con ese nombre.'
+            );
+    }
+
     public function test_admin_can_create_documentary_subseries_with_variable_length_numeric_code(): void
     {
         $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
@@ -362,6 +380,47 @@ class NormalizedAuthAndUserManagementTest extends TestCase
             'documentary_series_id' => $seriesId,
             'code' => '7',
             'name' => 'Actas Varias',
+            'is_active' => 1,
+        ]);
+    }
+
+    public function test_documentary_subseries_name_must_be_unique_inside_the_same_series(): void
+    {
+        $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
+        $seriesId = DB::table('documentary_series')->where('code', '010')->value('id');
+
+        $response = $this->actingAs($admin)->postJson("/api/documentary-series/{$seriesId}/subseries", [
+            'code' => '88',
+            'name' => ' actas junta directiva de facultad ',
+            'is_active' => true,
+        ]);
+
+        $response->assertUnprocessable()
+            ->assertJsonValidationErrors(['name'])
+            ->assertJsonPath(
+                'errors.name.0',
+                'No se pudo guardar ya que existe otra subserie documental con ese nombre dentro de la misma serie.'
+            );
+    }
+
+    public function test_documentary_subseries_name_can_repeat_in_different_series(): void
+    {
+        $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
+        $seriesId = DB::table('documentary_series')->where('code', '020')->value('id');
+
+        $response = $this->actingAs($admin)->postJson("/api/documentary-series/{$seriesId}/subseries", [
+            'code' => '88',
+            'name' => 'Actas Junta Directiva de Facultad',
+            'is_active' => true,
+        ]);
+
+        $response->assertOk()
+            ->assertJson(['message' => 'Subserie documental creada con exito']);
+
+        $this->assertDatabaseHas('documentary_subseries', [
+            'documentary_series_id' => $seriesId,
+            'code' => '88',
+            'name' => 'Actas Junta Directiva de Facultad',
             'is_active' => 1,
         ]);
     }
@@ -427,4 +486,3 @@ class NormalizedAuthAndUserManagementTest extends TestCase
         }
     }
 }
-

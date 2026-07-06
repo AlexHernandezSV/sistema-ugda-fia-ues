@@ -487,6 +487,9 @@ class ArchiveController extends Controller
             'pages' => $document->pages_label,
             'digital_available' => !empty($document->digital_file_name),
             'digital_file' => $document->digital_file_name,
+            'digital_url' => !empty($document->digital_file_name) && $transfer?->code && $document->code
+                ? '/api/transfers/' . $transfer->code . '/documents/' . $document->code . '/download'
+                : null,
             'box' => [
                 'id' => $box?->id,
                 'number' => $boxNumber,

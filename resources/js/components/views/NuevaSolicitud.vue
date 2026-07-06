@@ -1,13 +1,10 @@
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import axios from 'axios';
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf';
-import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.js?url';
+import DocumentPreviewDialog from '../shared/DocumentPreviewDialog.vue';
 import { getCurrentUser } from '../../services/authSession';
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 const router = useRouter();
 const route = useRoute();
@@ -47,19 +44,14 @@ const isConfirmModalOpen = ref(false);
 const shouldRestoreDocsModalAfterImport = ref(false);
 const isPdfPreviewOpen = ref(false);
 const shouldRestoreDocsModalAfterPreview = ref(false);
-const pdfPreviewCanvas = ref(null);
 const pdfPreviewTitle = ref('');
-const pdfPreviewLoading = ref(false);
-const pdfPreviewError = ref('');
-const pdfPreviewPage = ref(1);
-const pdfPreviewTotalPages = ref(0);
+const pdfPreviewSource = ref(null);
 const currentBoxIndex = ref(null);
 const currentBoxData = ref({});
 const tempDocuments = ref([]);
 const excelFile = ref(null);
 const isImporting = ref(false);
 let modalSwapTimer = null;
-let pdfPreviewDocument = null;
 const docForm = ref({
     series: null,
     name: '',
@@ -222,6 +214,14 @@ const resetDocumentForm = (defaultSeries = null) => {
     };
 };
 
+const clearDocumentFileInput = () => {
+    const fileInput = document.getElementById('transferDocumentFile');
+
+    if (fileInput) {
+        fileInput.value = '';
+    }
+};
+
 const isPdfFile = (file) => (
     file
     && (
@@ -242,70 +242,6 @@ const revokeFilePreviewUrl = (url) => {
     }
 };
 
-const closePdfPreviewDocument = async () => {
-    if (!pdfPreviewDocument) {
-        return;
-    }
-
-    try {
-        await pdfPreviewDocument.destroy();
-    } catch (error) {
-        console.warn('No se pudo liberar la vista previa del PDF:', error);
-    } finally {
-        pdfPreviewDocument = null;
-    }
-};
-
-const renderPdfPreviewPage = async () => {
-    if (!pdfPreviewDocument || !pdfPreviewCanvas.value) {
-        return;
-    }
-
-    const page = await pdfPreviewDocument.getPage(pdfPreviewPage.value);
-    const canvas = pdfPreviewCanvas.value;
-    const context = canvas.getContext('2d');
-    const viewport = page.getViewport({ scale: 1.25 });
-    const pixelRatio = window.devicePixelRatio || 1;
-
-    canvas.width = Math.floor(viewport.width * pixelRatio);
-    canvas.height = Math.floor(viewport.height * pixelRatio);
-    canvas.style.width = `${viewport.width}px`;
-    canvas.style.height = `${viewport.height}px`;
-
-    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-    context.clearRect(0, 0, viewport.width, viewport.height);
-
-    await page.render({ canvasContext: context, viewport }).promise;
-};
-
-const loadPdfPreview = async (document) => {
-    await closePdfPreviewDocument();
-
-    const file = document?.file;
-
-    if (file) {
-        if (!isPdfFile(file)) {
-            throw new Error('Solo se puede visualizar archivos PDF.');
-        }
-
-        const arrayBuffer = await file.arrayBuffer();
-        return pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
-    }
-
-    if (document?.file_url) {
-        const response = await fetch(document.file_url);
-
-        if (!response.ok) {
-            throw new Error('No se pudo cargar el archivo digital.');
-        }
-
-        const arrayBuffer = await response.arrayBuffer();
-        return pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
-    }
-
-    throw new Error('No hay archivo digital para visualizar.');
-};
-
 const previewDocumentFile = async (document) => {
     clearModalSwapTimer();
 
@@ -317,57 +253,14 @@ const previewDocumentFile = async (document) => {
     }
 
     pdfPreviewTitle.value = document?.file_name || document?.file?.name || 'Documento PDF';
-    pdfPreviewLoading.value = true;
-    pdfPreviewError.value = '';
-    pdfPreviewPage.value = 1;
-    pdfPreviewTotalPages.value = 0;
+    pdfPreviewSource.value = document?.file
+        ? { file: document.file }
+        : { url: document?.file_url };
     isPdfPreviewOpen.value = true;
-
-    await nextTick();
-
-    try {
-        pdfPreviewDocument = await loadPdfPreview(document);
-        pdfPreviewTotalPages.value = pdfPreviewDocument.numPages;
-        await renderPdfPreviewPage();
-    } catch (error) {
-        pdfPreviewError.value = error.message || 'No se pudo visualizar el PDF.';
-    } finally {
-        pdfPreviewLoading.value = false;
-    }
 };
 
-const goToPdfPreviewPage = async (direction) => {
-    if (!pdfPreviewDocument || pdfPreviewLoading.value) {
-        return;
-    }
-
-    const nextPage = pdfPreviewPage.value + direction;
-
-    if (nextPage < 1 || nextPage > pdfPreviewTotalPages.value) {
-        return;
-    }
-
-    pdfPreviewLoading.value = true;
-    pdfPreviewError.value = '';
-    pdfPreviewPage.value = nextPage;
-
-    try {
-        await renderPdfPreviewPage();
-    } catch (error) {
-        pdfPreviewError.value = error.message || 'No se pudo cargar la pagina del PDF.';
-    } finally {
-        pdfPreviewLoading.value = false;
-    }
-};
-
-const closePdfPreview = () => {
-    isPdfPreviewOpen.value = false;
-};
-
-const restoreDocsModalAfterPreview = async () => {
-    await closePdfPreviewDocument();
-    pdfPreviewError.value = '';
-    pdfPreviewLoading.value = false;
+const restoreDocsModalAfterPreview = () => {
+    pdfPreviewSource.value = null;
 
     if (!shouldRestoreDocsModalAfterPreview.value) {
         return;
@@ -678,12 +571,14 @@ const validateDocumentForBox = (document, box) => {
     const startYear = Number(getYearString(box.year_start));
     const endYear = Number(getYearString(box.year_end));
 
-    if (documentYear !== '') {
-        const yearNumber = Number(documentYear);
+    if (documentYear === '') {
+        return `Debe indicar el anio del documento "${documentName}".`;
+    }
 
-        if (!/^\d{4}$/.test(documentYear) || yearNumber < startYear || yearNumber > endYear) {
-            return `El anio del documento "${documentName}" debe estar dentro del rango de la caja (${startYear} - ${endYear}).`;
-        }
+    const yearNumber = Number(documentYear);
+
+    if (!/^\d{4}$/.test(documentYear) || yearNumber < startYear || yearNumber > endYear) {
+        return `El anio del documento "${documentName}" debe estar dentro del rango de la caja (${startYear} - ${endYear}).`;
     }
 
     if (document?.file && !isPdfFile(document.file)) {
@@ -724,6 +619,24 @@ const validateAllBoxesDocuments = () => {
 
     return '';
 };
+
+const hasDocumentFormInput = () => Boolean(
+    String(docForm.value.name ?? '').trim()
+    || String(docForm.value.code ?? '').trim()
+    || getYearString(docForm.value.date)
+    || String(docForm.value.pages ?? '').trim()
+    || docForm.value.support
+    || docForm.value.file
+    || docForm.value.file_url
+);
+
+const hasRequiredDocumentFormFields = () => Boolean(
+    (docForm.value.series?.label ?? currentBoxData.value.series ?? '')
+    && String(docForm.value.name ?? '').trim()
+    && String(docForm.value.code ?? '').trim()
+    && getYearString(docForm.value.date)
+    && docForm.value.support
+);
 
 const importDocumentsFromExcel = async () => {
     if (!excelFile.value) {
@@ -811,7 +724,7 @@ const addDocumentToTemp = () => {
     const documentDate = getYearString(docForm.value.date);
     const documentPages = String(docForm.value.pages ?? '').trim();
 
-    if (!documentSeries || !documentName || !documentCode || !docForm.value.support) {
+    if (!documentSeries || !documentName || !documentCode || !documentDate || !docForm.value.support) {
         showError('Complete los datos obligatorios del documento.');
         return;
     }
@@ -862,11 +775,7 @@ const addDocumentToTemp = () => {
 
     const defaultSeries = docForm.value.series;
     resetDocumentForm(defaultSeries);
-
-    const fileInput = document.getElementById('transferDocumentFile');
-    if (fileInput) {
-        fileInput.value = '';
-    }
+    clearDocumentFileInput();
 };
 
 const removeTempDoc = (index) => {
@@ -930,6 +839,21 @@ const saveBoxChanges = () => {
         return;
     }
 
+    if (hasDocumentFormInput()) {
+        if (!hasRequiredDocumentFormFields()) {
+            showError('Complete los campos obligatorios del documento antes de guardar.');
+            return;
+        }
+
+        showError('Agregue el documento a la lista antes de guardar.');
+        return;
+    }
+
+    if (tempDocuments.value.length === 0) {
+        showError('Complete los campos obligatorios del documento antes de guardar.');
+        return;
+    }
+
     const validationMessage = validateTempDocumentsForCurrentBox(tempDocuments.value);
 
     if (validationMessage) {
@@ -952,6 +876,16 @@ const saveBoxChanges = () => {
             life: 3600,
         });
     }
+};
+
+const cancelDocsModal = () => {
+    revokeFilePreviewUrl(docForm.value.file_url);
+    tempDocuments.value = [];
+    currentBoxIndex.value = null;
+    currentBoxData.value = {};
+    resetDocumentForm();
+    clearDocumentFileInput();
+    isModalOpen.value = false;
 };
 
 const validateTransferDraft = () => {
@@ -1438,7 +1372,7 @@ const goBack = () => {
                     </div>
 
                     <div class="transfer-request__field">
-                        <label for="documentDate">Año</label>
+                        <label for="documentDate">Año <span>*</span></label>
                         <DatePicker
                             inputId="documentDate"
                             v-model="docForm.date"
@@ -1448,6 +1382,7 @@ const goBack = () => {
                             iconDisplay="input"
                             readonlyInput
                             placeholder="Ej: 2025"
+                            required
                             fluid
                         />
                     </div>
@@ -1562,61 +1497,17 @@ const goBack = () => {
             </div>
 
             <template #footer>
-                <Button label="Cancelar" outlined class="transfer-docs__cancel" @click="isModalOpen = false" />
+                <Button label="Cancelar" outlined class="transfer-docs__cancel" @click="cancelDocsModal" />
                 <Button label="Guardar documentos" class="transfer-docs__save" @click="saveBoxChanges" />
             </template>
         </Dialog>
 
-        <Dialog
+        <DocumentPreviewDialog
             v-model:visible="isPdfPreviewOpen"
-            modal
-            :draggable="false"
-            class="transfer-pdf-preview-dialog"
-            :style="{ width: 'min(960px, 94vw)' }"
+            :title="pdfPreviewTitle"
+            :source="pdfPreviewSource"
             @hide="restoreDocsModalAfterPreview"
-        >
-            <template #header>
-                <div class="transfer-docs__header">
-                    <h2>Vista previa del documento</h2>
-                    <p>{{ pdfPreviewTitle }}</p>
-                </div>
-            </template>
-
-            <div class="transfer-pdf-preview">
-                <div v-if="pdfPreviewLoading" class="transfer-pdf-preview__state">
-                    Cargando PDF...
-                </div>
-                <div v-else-if="pdfPreviewError" class="transfer-pdf-preview__state transfer-pdf-preview__state--error">
-                    {{ pdfPreviewError }}
-                </div>
-                <div v-show="!pdfPreviewLoading && !pdfPreviewError" class="transfer-pdf-preview__canvas-wrap">
-                    <canvas ref="pdfPreviewCanvas" class="transfer-pdf-preview__canvas"></canvas>
-                </div>
-            </div>
-
-            <template #footer>
-                <div class="transfer-pdf-preview__footer">
-                    <div class="transfer-pdf-preview__pagination">
-                        <Button
-                            icon="pi pi-chevron-left"
-                            outlined
-                            class="transfer-docs__cancel transfer-pdf-preview__page-button"
-                            :disabled="pdfPreviewLoading || pdfPreviewPage <= 1"
-                            @click="goToPdfPreviewPage(-1)"
-                        />
-                        <span>Pagina {{ pdfPreviewPage }} de {{ pdfPreviewTotalPages || 1 }}</span>
-                        <Button
-                            icon="pi pi-chevron-right"
-                            outlined
-                            class="transfer-docs__cancel transfer-pdf-preview__page-button"
-                            :disabled="pdfPreviewLoading || pdfPreviewPage >= pdfPreviewTotalPages"
-                            @click="goToPdfPreviewPage(1)"
-                        />
-                    </div>
-                    <Button label="Cerrar" class="transfer-docs__save" @click="closePdfPreview" />
-                </div>
-            </template>
-        </Dialog>
+        />
 
         <Dialog
             v-model:visible="isImportModalOpen"
@@ -2041,10 +1932,11 @@ const goBack = () => {
 .transfer-docs__cancel:hover,
 .transfer-docs__cancel:focus,
 .transfer-docs__cancel:focus-visible {
-    background: #eaf4ff;
-    border-color: #2d6f9f;
-    box-shadow: 0 0 0 0.2rem rgba(45, 111, 159, 0.18);
-    color: #1f5f8e;
+    background: transparent !important;
+    border-color: #2d6f9f !important;
+    box-shadow: none !important;
+    color: #1f5f8e !important;
+    outline: 0 !important;
 }
 
 .transfer-docs {
@@ -2284,8 +2176,7 @@ const goBack = () => {
 }
 
 :global(.transfer-docs-dialog.p-dialog),
-:global(.transfer-import-dialog.p-dialog),
-:global(.transfer-pdf-preview-dialog.p-dialog) {
+:global(.transfer-import-dialog.p-dialog) {
     border-radius: 8px;
     overflow: hidden;
 }
@@ -2295,8 +2186,7 @@ const goBack = () => {
 }
 
 :global(.transfer-docs-dialog .p-dialog-header),
-:global(.transfer-import-dialog .p-dialog-header),
-:global(.transfer-pdf-preview-dialog .p-dialog-header) {
+:global(.transfer-import-dialog .p-dialog-header) {
     background: #2d6f9f;
     border-bottom: 0;
     color: #ffffff;
@@ -2304,14 +2194,12 @@ const goBack = () => {
 }
 
 :global(.transfer-docs-dialog .p-dialog-header-close),
-:global(.transfer-import-dialog .p-dialog-header-close),
-:global(.transfer-pdf-preview-dialog .p-dialog-header-close) {
+:global(.transfer-import-dialog .p-dialog-header-close) {
     color: #ffffff;
 }
 
 :global(.transfer-docs-dialog .p-dialog-content),
-:global(.transfer-import-dialog .p-dialog-content),
-:global(.transfer-pdf-preview-dialog .p-dialog-content) {
+:global(.transfer-import-dialog .p-dialog-content) {
     padding: 1.5rem;
 }
 
@@ -2321,65 +2209,9 @@ const goBack = () => {
 }
 
 :global(.transfer-docs-dialog .p-dialog-footer),
-:global(.transfer-import-dialog .p-dialog-footer),
-:global(.transfer-pdf-preview-dialog .p-dialog-footer) {
+:global(.transfer-import-dialog .p-dialog-footer) {
     border-top: 1px solid #dbe3ed;
     padding: 1rem 1.5rem;
-}
-
-.transfer-pdf-preview {
-    background: #f8fafc;
-    border: 1px solid #dbe3ed;
-    border-radius: 8px;
-    max-height: min(68vh, 720px);
-    overflow: auto;
-    padding: 1rem;
-}
-
-.transfer-pdf-preview__canvas-wrap {
-    display: flex;
-    justify-content: center;
-    min-height: 18rem;
-}
-
-.transfer-pdf-preview__canvas {
-    background: #ffffff;
-    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.12);
-    max-width: 100%;
-}
-
-.transfer-pdf-preview__state {
-    align-items: center;
-    color: #48627c;
-    display: flex;
-    font-weight: 700;
-    justify-content: center;
-    min-height: 18rem;
-    text-align: center;
-}
-
-.transfer-pdf-preview__state--error {
-    color: #b42318;
-}
-
-.transfer-pdf-preview__footer {
-    align-items: center;
-    display: flex;
-    gap: 1rem;
-    justify-content: space-between;
-    width: 100%;
-}
-
-.transfer-pdf-preview__pagination {
-    align-items: center;
-    color: #48627c;
-    display: flex;
-    gap: 0.75rem;
-    font-weight: 700;
-}
-
-.transfer-pdf-preview__page-button {
-    min-width: 2.75rem;
 }
 
 .transfer-docs__form {

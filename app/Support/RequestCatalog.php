@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Loan;
+use App\Models\RequestStatusCatalog;
 use App\Models\Transfer;
 use App\Models\TransferDocument;
 use App\Models\User;
@@ -47,7 +48,61 @@ class RequestCatalog
             'transfers' => $transfers,
             'loans' => $loans,
             'units' => $units,
+            'filters' => self::filterOptions($transfers, $loans),
         ];
+    }
+
+    private static function filterOptions(array $transfers, array $loans): array
+    {
+        return [
+            'transfers' => [
+                'auth' => self::statusOptions('transfer', 'authorization', array_column($transfers, 'auth')),
+                'status' => self::statusOptions('transfer', 'workflow', array_column($transfers, 'status')),
+            ],
+            'loans' => [
+                'auth' => self::statusOptions('loan', 'authorization', array_column($loans, 'auth')),
+                'status' => self::statusOptions('loan', 'workflow', array_column($loans, 'status')),
+                'search' => self::statusOptions('loan', 'search', array_column($loans, 'search'), 'Busqueda: '),
+            ],
+        ];
+    }
+
+    private static function statusOptions(string $requestType, string $category, array $visibleValues = [], string $labelPrefix = ''): array
+    {
+        $catalogValues = RequestStatusCatalog::query()
+            ->where('request_type', $requestType)
+            ->where('category', $category)
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('label')
+            ->pluck('label')
+            ->map(fn ($label) => self::normalizeFilterLabel((string) $label, $labelPrefix))
+            ->filter()
+            ->values()
+            ->all();
+
+        $dataValues = collect($visibleValues)
+            ->map(fn ($label) => self::normalizeFilterLabel((string) $label, $labelPrefix))
+            ->filter(fn ($label) => $label !== '' && $label !== '-')
+            ->values()
+            ->all();
+
+        return collect($catalogValues)
+            ->merge($dataValues)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private static function normalizeFilterLabel(string $label, string $prefix = ''): string
+    {
+        $label = trim($label);
+
+        if ($prefix !== '' && str_starts_with($label, $prefix)) {
+            return trim(substr($label, strlen($prefix)));
+        }
+
+        return $label;
     }
 
     public static function transferDetail(string $number, ?User $viewer = null): ?array
@@ -80,6 +135,12 @@ class RequestCatalog
             ->where('event_type', 'observation')
             ->sortBy('occurred_at')
             ->values();
+        $physicalReviewObservations = $observations
+            ->filter(fn ($event) => ($event->context['observation_scope'] ?? null) === 'physical_review')
+            ->values();
+        $initialReviewObservations = $observations
+            ->reject(fn ($event) => ($event->context['observation_scope'] ?? null) === 'physical_review')
+            ->values();
 
         $latestDecision = $transfer->events
             ->where('event_type', 'decision')
@@ -89,7 +150,8 @@ class RequestCatalog
             ->filter(fn ($event) => $event->status?->code === 'transfer_status_scheduled')
             ->sortByDesc('occurred_at')
             ->first();
-        $latestObservation = $observations->sortByDesc('occurred_at')->first();
+        $latestObservation = $initialReviewObservations->sortByDesc('occurred_at')->first();
+        $latestPhysicalObservation = $physicalReviewObservations->sortByDesc('occurred_at')->first();
         $latestCorrection = $transfer->events
             ->filter(fn ($event) => $event->title === 'Corregido y reenviado')
             ->sortByDesc('occurred_at')
@@ -115,9 +177,21 @@ class RequestCatalog
             ->filter(fn ($event) => $event->status?->code === 'transfer_status_subsanated' || $event->title === 'Subsanada')
             ->sortByDesc('occurred_at')
             ->first();
-        $hasSubsanationAfterObservation = $latestObservation
+        $hasSubsanationAfterObservation = $latestPhysicalObservation
             && $latestSubsanation
-            && $latestSubsanation->occurred_at?->greaterThan($latestObservation->occurred_at);
+            && $latestSubsanation->occurred_at?->greaterThan($latestPhysicalObservation->occurred_at);
+        $latestApplicantClarification = $transfer->events
+            ->filter(fn ($event) => in_array($event->title, ['Subsanada', 'Corregido y reenviado'], true)
+                || $event->status?->code === 'transfer_status_subsanated')
+            ->sortByDesc('occurred_at')
+            ->first();
+        $isPhysicalClarification = $latestApplicantClarification
+            && ($latestApplicantClarification->status?->code === 'transfer_status_subsanated'
+                || $latestApplicantClarification->title === 'Subsanada');
+        $clarificationObservation = $isPhysicalClarification ? $latestPhysicalObservation : $latestObservation;
+        $hasApplicantClarificationAfterObservation = $clarificationObservation
+            && $latestApplicantClarification
+            && $latestApplicantClarification->occurred_at?->greaterThan($clarificationObservation->occurred_at);
 
         $isUgdaReview = $authCode === 'transfer_auth_authorized'
             && $workflowCode === 'transfer_status_pending'
@@ -206,31 +280,37 @@ class RequestCatalog
                     'description' => 'Esta solicitud ha sido autorizada por la jefatura de unidad y requiere gestión de la UGDA para continuar el proceso.',
                 ]
                 : null),
-            'physicalObservations' => $isPhysicalReviewFlow && $observations->isNotEmpty()
+            'physicalObservations' => $isPhysicalReviewFlow && $physicalReviewObservations->isNotEmpty()
                 ? self::buildPhysicalObservationPanel(
-                    $observations,
+                    $physicalReviewObservations,
                     $workflowCode,
                     $hasSubsanationAfterObservation,
-                    self::viewerCanCorrectObservedTransfer($viewer, $transfer)
+                    $workflowCode === 'transfer_status_physical_observed'
+                        && self::viewerCanCorrectObservedTransfer($viewer, $transfer)
                 )
                 : null,
-            'subsanationSummary' => $hasSubsanationAfterObservation && in_array($workflowCode, ['transfer_status_subsanated', 'transfer_status_physical_review'], true)
+            'subsanationSummary' => $hasApplicantClarificationAfterObservation
+                && in_array($workflowCode, ['transfer_status_pending', 'transfer_status_subsanated', 'transfer_status_physical_review'], true)
                 ? [
-                    'title' => 'Observaciones Subsanadas',
-                    'description' => 'El solicitante ha corregido las observaciones y reenviado la solicitud para nueva validación',
-                    'message' => 'Se ha recibido la documentación corregida. Revise las aclaraciones del solicitante e inicie una nueva revisión física para validar los cambios realizados.',
+                    'title' => $isPhysicalClarification ? 'Observaciones Subsanadas' : 'Aclaraciones del solicitante',
                     'notesLabel' => 'Aclaraciones del solicitante:',
-                    'notes' => $latestSubsanation->context['correction_notes'] ?? 'Sin aclaraciones registradas.',
+                    'notes' => $latestApplicantClarification->context['correction_notes'] ?? 'Sin aclaraciones registradas.',
+                    'description' => $isPhysicalClarification
+                        ? 'El solicitante ha corregido las observaciones y reenviado la solicitud para nueva validaciÃ³n'
+                        : 'El solicitante ha atendido las observaciones de UGDA y reenviado la solicitud para nueva validaciÃ³n',
+                    'message' => $isPhysicalClarification
+                        ? 'Se ha recibido la documentaciÃ³n corregida. Revise las aclaraciones del solicitante e inicie una nueva revisiÃ³n fÃ­sica para validar los cambios realizados.'
+                        : 'Se han recibido las aclaraciones del solicitante. Revise la respuesta antes de continuar con la autorizaciÃ³n o gestiÃ³n de la solicitud.',
                 ]
                 : null,
-            'observationsRegistered' => $workflowCode === 'transfer_status_observed' && $observations->isNotEmpty()
+            'observationsRegistered' => $workflowCode === 'transfer_status_observed' && $initialReviewObservations->isNotEmpty()
                 ? [
-                    'count' => $observations->count(),
+                    'count' => $initialReviewObservations->count(),
                     'title' => 'Observaciones Registradas',
                     'description' => 'Esta solicitud tiene ' . $observations->count() . ' observación(es) registrada(s)',
                     'canCorrect' => $canCorrectObserved,
                     'actionLabel' => 'Editar solicitud y corregir observaciones',
-                    'items' => $observations->map(fn ($event) => [
+                    'items' => $initialReviewObservations->map(fn ($event) => [
                         'actor' => self::eventActorName($event),
                         'dateTime' => self::formatDateTime($event->occurred_at),
                         'message' => $event->description,

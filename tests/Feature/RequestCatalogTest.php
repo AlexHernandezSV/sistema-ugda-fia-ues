@@ -182,6 +182,109 @@ class RequestCatalogTest extends TestCase
             ->assertJsonPath('boxes.0.title', 'Caja #001 - Expedientes Academicos');
     }
 
+    public function test_transfer_correction_notes_before_schedule_are_visible_to_director_and_ugda(): void
+    {
+        $requester = User::where('email', 'unidad.solicitante@yopmail.com')->firstOrFail();
+        $director = User::where('email', 'director.unidad@yopmail.com')->firstOrFail();
+        $ugda = User::where('email', 'usuario.ugda@yopmail.com')->firstOrFail();
+        $pendingAuth = RequestStatusCatalog::where('code', 'transfer_auth_pending')->firstOrFail();
+        $pendingWorkflow = RequestStatusCatalog::where('code', 'transfer_status_pending')->firstOrFail();
+        $transfer = Transfer::where('code', '000975')->firstOrFail();
+        $notes = 'Se completaron las fichas descriptivas y se adjunto la firma solicitada.';
+
+        $transfer->update([
+            'authorization_status_id' => $pendingAuth->id,
+            'workflow_status_id' => $pendingWorkflow->id,
+            'scheduled_for' => null,
+        ]);
+
+        $transfer->events()->create([
+            'status_catalog_id' => $pendingWorkflow->id,
+            'actor_user_id' => $requester->id,
+            'event_type' => 'status',
+            'title' => 'Corregido y reenviado',
+            'description' => 'Solicitud corregida por la unidad solicitante y reenviada a jefatura para autorizacion.',
+            'context' => [
+                'previous_status' => 'transfer_status_observed',
+                'correction_notes' => $notes,
+            ],
+            'occurred_at' => now()->addMinute(),
+        ]);
+
+        $this->actingAs($director)->getJson('/api/transfers/000975')
+            ->assertOk()
+            ->assertJsonPath('subsanationSummary.title', 'Aclaraciones del solicitante')
+            ->assertJsonPath('subsanationSummary.notes', $notes);
+
+        $this->actingAs($ugda)->getJson('/api/transfers/000975')
+            ->assertOk()
+            ->assertJsonPath('subsanationSummary.title', 'Aclaraciones del solicitante')
+            ->assertJsonPath('subsanationSummary.notes', $notes);
+    }
+
+    public function test_digital_observations_do_not_appear_as_physical_review_observations(): void
+    {
+        $requester = User::where('email', 'unidad.solicitante@yopmail.com')->firstOrFail();
+        $director = User::where('email', 'director.unidad@yopmail.com')->firstOrFail();
+        $ugda = User::where('email', 'usuario.ugda@yopmail.com')->firstOrFail();
+        $authorizedAuth = RequestStatusCatalog::where('code', 'transfer_auth_authorized')->firstOrFail();
+        $physicalReview = RequestStatusCatalog::where('code', 'transfer_status_physical_review')->firstOrFail();
+        $transfer = Transfer::where('code', '000975')->firstOrFail();
+
+        $transfer->update([
+            'authorization_status_id' => $authorizedAuth->id,
+            'workflow_status_id' => $physicalReview->id,
+            'scheduled_for' => now()->addDay(),
+        ]);
+
+        $this->actingAs($requester)->getJson('/api/transfers/000975')
+            ->assertOk()
+            ->assertJsonPath('physicalObservations', null);
+
+        $this->actingAs($director)->getJson('/api/transfers/000975')
+            ->assertOk()
+            ->assertJsonPath('physicalObservations', null);
+
+        $this->actingAs($ugda)->getJson('/api/transfers/000975')
+            ->assertOk()
+            ->assertJsonPath('physicalObservations', null);
+    }
+
+    public function test_physical_review_observations_enable_correction_only_after_physical_observation(): void
+    {
+        $requester = User::where('email', 'unidad.solicitante@yopmail.com')->firstOrFail();
+        $ugda = User::where('email', 'usuario.ugda@yopmail.com')->firstOrFail();
+        $authorizedAuth = RequestStatusCatalog::where('code', 'transfer_auth_authorized')->firstOrFail();
+        $physicalObserved = RequestStatusCatalog::where('code', 'transfer_status_physical_observed')->firstOrFail();
+        $transfer = Transfer::where('code', '000975')->firstOrFail();
+        $physicalMessage = 'Falta rotular fisicamente la caja 2.';
+
+        $transfer->update([
+            'authorization_status_id' => $authorizedAuth->id,
+            'workflow_status_id' => $physicalObserved->id,
+            'scheduled_for' => now()->addDay(),
+        ]);
+
+        $transfer->events()->create([
+            'status_catalog_id' => $physicalObserved->id,
+            'actor_user_id' => $ugda->id,
+            'event_type' => 'observation',
+            'title' => 'Observacion de revision fisica',
+            'description' => $physicalMessage,
+            'context' => [
+                'observation_scope' => 'physical_review',
+                'previous_status' => 'transfer_status_physical_review',
+            ],
+            'occurred_at' => now()->addMinute(),
+        ]);
+
+        $this->actingAs($requester)->getJson('/api/transfers/000975')
+            ->assertOk()
+            ->assertJsonPath('physicalObservations.count', 1)
+            ->assertJsonPath('physicalObservations.canCorrect', true)
+            ->assertJsonPath('physicalObservations.items.0.message', $physicalMessage);
+    }
+
     public function test_authenticated_user_can_get_denied_transfer_detail_with_decision_card(): void
     {
         $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import axios from 'axios';
+import DocumentPreviewDialog from '../shared/DocumentPreviewDialog.vue';
 
 const query = ref('');
 const searchedQuery = ref('');
@@ -18,6 +19,9 @@ const resultsLimit = ref(100);
 const hasSearched = ref(false);
 const selectedDocument = ref(null);
 const documentDialogVisible = ref(false);
+const documentPreviewVisible = ref(false);
+const documentPreviewTitle = ref('Documento PDF');
+const documentPreviewSource = ref(null);
 
 const trimmedQuery = computed(() => query.value.trim());
 const hasResults = computed(() => results.value.length > 0);
@@ -84,6 +88,20 @@ const openDocumentDialog = (document) => {
 
 const closeDocumentDialog = () => {
     documentDialogVisible.value = false;
+};
+
+const openDocumentPreview = (document = selectedDocument.value) => {
+    if (!document?.digital_url) {
+        return;
+    }
+
+    documentPreviewTitle.value = document.digital_file || document.title || 'Documento PDF';
+    documentPreviewSource.value = { url: document.digital_url };
+    documentPreviewVisible.value = true;
+};
+
+const clearDocumentPreview = () => {
+    documentPreviewSource.value = null;
 };
 
 const fetchArchive = async (searchTerm = '') => {
@@ -381,7 +399,16 @@ onMounted(() => fetchArchive());
                             </div>
                             <div class="archive-document-modal__field">
                                 <span>Archivo digital</span>
-                                <strong class="archive-document-modal__link">{{ selectedDocument.digital_file || 'No disponible' }}</strong>
+                                <button
+                                    v-if="selectedDocument.digital_available"
+                                    type="button"
+                                    class="archive-document-modal__link archive-document-modal__link-button"
+                                    @click="openDocumentPreview(selectedDocument)"
+                                >
+                                    <i class="pi pi-eye"></i>
+                                    <span>{{ selectedDocument.digital_file }}</span>
+                                </button>
+                                <strong v-else class="archive-document-modal__link">No disponible</strong>
                             </div>
                         </div>
                     </section>
@@ -478,6 +505,13 @@ onMounted(() => fetchArchive());
                 </footer>
             </div>
         </Dialog>
+
+        <DocumentPreviewDialog
+            v-model:visible="documentPreviewVisible"
+            :title="documentPreviewTitle"
+            :source="documentPreviewSource"
+            @hide="clearDocumentPreview"
+        />
     </div>
 </template>
 
@@ -1095,6 +1129,23 @@ onMounted(() => fetchArchive());
 
 .archive-document-modal__link {
     color: #2f6f9f !important;
+}
+
+.archive-document-modal__link-button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    display: inline-flex;
+    font: inherit;
+    font-weight: 800;
+    gap: 0.45rem;
+    padding: 0;
+    text-align: left;
+}
+
+.archive-document-modal__link-button:hover {
+    text-decoration: underline;
 }
 
 .archive-document-modal__location-grid {

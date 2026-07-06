@@ -6,6 +6,7 @@ import { useToast } from 'primevue/usetoast';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
+import DocumentPreviewDialog from '../shared/DocumentPreviewDialog.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -23,6 +24,9 @@ const labelsPreviewRef = ref(null);
 const labelPreviewCards = ref([]);
 const labelPreviewItems = ref([]);
 const labelsBusy = ref(false);
+const documentPreviewVisible = ref(false);
+const documentPreviewTitle = ref('Documento PDF');
+const documentPreviewSource = ref(null);
 const labelSize = {
     widthCm: 10,
     heightCm: 18,
@@ -80,6 +84,20 @@ const toggleBox = (boxNumber) => {
     expandedBoxes.value[boxNumber] = !expandedBoxes.value[boxNumber];
     allBoxesExpanded.value = (transfer.value?.boxes ?? []).length > 0
         && (transfer.value?.boxes ?? []).every((box) => expandedBoxes.value[box.number]);
+};
+
+const openDocumentPreview = (document) => {
+    if (!document?.digitalUrl) {
+        return;
+    }
+
+    documentPreviewTitle.value = document.digitalFile || document.name || 'Documento PDF';
+    documentPreviewSource.value = { url: document.digitalUrl };
+    documentPreviewVisible.value = true;
+};
+
+const clearDocumentPreview = () => {
+    documentPreviewSource.value = null;
 };
 
 const toggleAllBoxes = () => {
@@ -1890,15 +1908,15 @@ watch(
                                                 <td>{{ document.year }}</td>
                                                 <td>{{ document.pages }}</td>
                                                 <td>
-                                                    <a
+                                                    <button
                                                         v-if="document.digitalAvailable"
+                                                        type="button"
                                                         class="detalle-document-file detalle-document-link"
-                                                        :href="document.digitalUrl"
-                                                        :download="document.digitalFile"
+                                                        @click="openDocumentPreview(document)"
                                                     >
-                                                        <i class="pi pi-download"></i>
+                                                        <i class="pi pi-eye"></i>
                                                         <span>{{ document.digitalFile }}</span>
-                                                    </a>
+                                                    </button>
                                                     <span v-else-if="document.digitalRestricted" class="detalle-document-file detalle-document-file--restricted">
                                                         <i class="pi pi-lock"></i>
                                                         <span>Restringido</span>
@@ -2137,15 +2155,15 @@ watch(
                                             <td>{{ document.year }}</td>
                                             <td>{{ document.pages }}</td>
                                             <td>
-                                                <a
+                                                <button
                                                     v-if="document.digitalAvailable"
+                                                    type="button"
                                                     class="detalle-document-file detalle-document-link"
-                                                    :href="document.digitalUrl"
-                                                    :download="document.digitalFile"
+                                                    @click="openDocumentPreview(document)"
                                                 >
-                                                    <i class="pi pi-download"></i>
+                                                    <i class="pi pi-eye"></i>
                                                     <span>{{ document.digitalFile }}</span>
-                                                </a>
+                                                </button>
                                                 <span v-else-if="document.digitalRestricted" class="detalle-document-file detalle-document-file--restricted">
                                                     <i class="pi pi-lock"></i>
                                                     <span>Restringido</span>
@@ -2184,6 +2202,13 @@ watch(
             </div>
         </template>
     </div>
+
+    <DocumentPreviewDialog
+        v-model:visible="documentPreviewVisible"
+        :title="documentPreviewTitle"
+        :source="documentPreviewSource"
+        @hide="clearDocumentPreview"
+    />
 
     <Dialog
         v-model:visible="decisionModalVisible"
@@ -3742,6 +3767,11 @@ watch(
 }
 
 .detalle-document-link {
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    font: inherit;
+    padding: 0;
     text-decoration: none;
 }
 

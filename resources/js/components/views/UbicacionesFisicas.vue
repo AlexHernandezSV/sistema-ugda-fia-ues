@@ -11,10 +11,24 @@ const saving = ref(false);
 const offices = ref([]);
 const aisles = ref([]);
 const shelves = ref([]);
+const optionOffices = ref([]);
+const optionAisles = ref([]);
 const dialogVisible = ref(false);
 const activeType = ref("office");
 const editingId = ref(null);
 const rowsPerPageOptions = ref([5, 10, 25, 50]);
+const createTableFilters = () => ({
+    global: { value: null, matchMode: "contains" },
+});
+const officeFilters = ref(createTableFilters());
+const aisleFilters = ref(createTableFilters());
+const shelfFilters = ref(createTableFilters());
+const searchTimeout = ref(null);
+const tableState = ref({
+    office: { page: 1, perPage: 10, total: 0 },
+    aisle: { page: 1, perPage: 10, total: 0 },
+    shelf: { page: 1, perPage: 10, total: 0 },
+});
 
 const form = ref({
     name: "",
@@ -52,14 +66,14 @@ const dialogTitle = computed(() =>
 );
 
 const officeOptions = computed(() =>
-    offices.value.map((office) => ({
+    optionOffices.value.map((office) => ({
         ...office,
         label: `${office.name} (${office.code})`,
     })),
 );
 
 const aisleOptions = computed(() =>
-    aisles.value.map((aisle) => ({
+    optionAisles.value.map((aisle) => ({
         ...aisle,
         label: `${aisle.office_name} / ${aisle.name} (${aisle.code})`,
     })),
@@ -93,14 +107,48 @@ const showError = (detail) => {
     toast.add({ severity: "error", summary: "Error", detail, life: 4200 });
 };
 
+const searchForType = (type) => {
+    const filters = {
+        office: officeFilters,
+        aisle: aisleFilters,
+        shelf: shelfFilters,
+    };
+
+    return filters[type].value.global.value ?? "";
+};
+
+const catalogParams = () => ({
+    office_page: tableState.value.office.page,
+    office_per_page: tableState.value.office.perPage,
+    office_search: searchForType("office"),
+    aisle_page: tableState.value.aisle.page,
+    aisle_per_page: tableState.value.aisle.perPage,
+    aisle_search: searchForType("aisle"),
+    shelf_page: tableState.value.shelf.page,
+    shelf_per_page: tableState.value.shelf.perPage,
+    shelf_search: searchForType("shelf"),
+});
+
+const applyPaginatedTable = (type, payload, target) => {
+    target.value = Array.isArray(payload?.data) ? payload.data : [];
+    tableState.value[type] = {
+        page: payload?.meta?.current_page ?? tableState.value[type].page,
+        perPage: payload?.meta?.per_page ?? tableState.value[type].perPage,
+        total: payload?.meta?.total ?? 0,
+    };
+};
+
 const fetchCatalog = async () => {
     loading.value = true;
 
     try {
-        const { data } = await axios.get("/api/physical-locations");
-        offices.value = Array.isArray(data.offices) ? data.offices : [];
-        aisles.value = Array.isArray(data.aisles) ? data.aisles : [];
-        shelves.value = Array.isArray(data.shelves) ? data.shelves : [];
+        const { data } = await axios.get("/api/physical-locations", {
+            params: catalogParams(),
+        });
+
+        applyPaginatedTable("office", data.offices, offices);
+        applyPaginatedTable("aisle", data.aisles, aisles);
+        applyPaginatedTable("shelf", data.shelves, shelves);
     } catch (error) {
         showError(
             error.response?.data?.message ??
@@ -108,6 +156,17 @@ const fetchCatalog = async () => {
         );
     } finally {
         loading.value = false;
+    }
+};
+
+const fetchLocationOptions = async () => {
+    try {
+        const { data } = await axios.get("/api/physical-locations/options");
+        optionOffices.value = Array.isArray(data.offices) ? data.offices : [];
+        optionAisles.value = Array.isArray(data.aisles) ? data.aisles : [];
+    } catch (error) {
+        optionOffices.value = [];
+        optionAisles.value = [];
     }
 };
 
@@ -200,7 +259,7 @@ const saveLocation = async () => {
             life: 3000,
         });
         dialogVisible.value = false;
-        await fetchCatalog();
+        await Promise.all([fetchCatalog(), fetchLocationOptions()]);
     } catch (error) {
         showError(
             error.response?.data?.message ??
@@ -224,7 +283,7 @@ const deleteLocation = async (type, item) => {
             detail: "Registro eliminado correctamente.",
             life: 2600,
         });
-        await fetchCatalog();
+        await Promise.all([fetchCatalog(), fetchLocationOptions()]);
     } catch (error) {
         showError(
             error.response?.data?.message ?? "No se pudo eliminar el registro.",
@@ -232,7 +291,44 @@ const deleteLocation = async (type, item) => {
     }
 };
 
-onMounted(fetchCatalog);
+const onTablePage = (type, event) => {
+    tableState.value[type] = {
+        ...tableState.value[type],
+        page: event.page + 1,
+        perPage: event.rows,
+    };
+    fetchCatalog();
+};
+
+const tableFirst = (type) =>
+    (tableState.value[type].page - 1) * tableState.value[type].perPage;
+
+const queueSearch = (type) => {
+    tableState.value[type] = {
+        ...tableState.value[type],
+        page: 1,
+    };
+
+    if (searchTimeout.value) {
+        window.clearTimeout(searchTimeout.value);
+    }
+
+    searchTimeout.value = window.setTimeout(fetchCatalog, 350);
+};
+
+const clearLocationFilter = (filters, type) => {
+    filters.global.value = null;
+    queueSearch(type);
+};
+
+watch(() => officeFilters.value.global.value, () => queueSearch("office"));
+watch(() => aisleFilters.value.global.value, () => queueSearch("aisle"));
+watch(() => shelfFilters.value.global.value, () => queueSearch("shelf"));
+
+onMounted(() => {
+    fetchCatalog();
+    fetchLocationOptions();
+});
 
 const goBack = () => {
     router.back();
@@ -271,7 +367,7 @@ const goBack = () => {
                 <div class="locations-panel__head">
                     <div>
                         <h2>Oficinas</h2>
-                        <span>{{ offices.length }} registro(s)</span>
+                        <span>{{ tableState.office.total }} registro(s)</span>
                     </div>
                     <Button
                         icon="pi pi-plus"
@@ -279,12 +375,40 @@ const goBack = () => {
                         @click="openCreate('office')"
                     />
                 </div>
+                <div class="locations-search">
+                    <span class="locations-search__field">
+                        <i class="pi pi-search"></i>
+                        <InputText
+                            v-model="officeFilters['global'].value"
+                            placeholder="Buscar oficina..."
+                        />
+                    </span>
+                    <Button
+                        icon="pi pi-times"
+                        label="Limpiar"
+                        severity="secondary"
+                        outlined
+                        @click="clearLocationFilter(officeFilters, 'office')"
+                    />
+                </div>
                 <DataTable
                     :value="offices"
                     :loading="loading"
+                    :paginator="true"
+                    lazy
+                    :first="tableFirst('office')"
+                    :rows="tableState.office.perPage"
+                    :totalRecords="tableState.office.total"
+                    :rowsPerPageOptions="rowsPerPageOptions"
                     responsiveLayout="scroll"
                     stripedRows
+                    @page="onTablePage('office', $event)"
                 >
+                    <template #empty>
+                        <div class="locations-empty">
+                            Sin oficinas registradas
+                        </div>
+                    </template>
                     <Column field="name" header="Nombre" />
                     <Column field="code" header="Código" />
                     <Column header="Estado">
@@ -313,7 +437,7 @@ const goBack = () => {
                 <div class="locations-panel__head">
                     <div>
                         <h2>Pasillos</h2>
-                        <span>{{ aisles.length }} registro(s)</span>
+                        <span>{{ tableState.aisle.total }} registro(s)</span>
                     </div>
                     <Button
                         icon="pi pi-plus"
@@ -321,12 +445,40 @@ const goBack = () => {
                         @click="openCreate('aisle')"
                     />
                 </div>
+                <div class="locations-search">
+                    <span class="locations-search__field">
+                        <i class="pi pi-search"></i>
+                        <InputText
+                            v-model="aisleFilters['global'].value"
+                            placeholder="Buscar pasillo..."
+                        />
+                    </span>
+                    <Button
+                        icon="pi pi-times"
+                        label="Limpiar"
+                        severity="secondary"
+                        outlined
+                        @click="clearLocationFilter(aisleFilters, 'aisle')"
+                    />
+                </div>
                 <DataTable
                     :value="aisles"
                     :loading="loading"
+                    :paginator="true"
+                    lazy
+                    :first="tableFirst('aisle')"
+                    :rows="tableState.aisle.perPage"
+                    :totalRecords="tableState.aisle.total"
+                    :rowsPerPageOptions="rowsPerPageOptions"
                     responsiveLayout="scroll"
                     stripedRows
+                    @page="onTablePage('aisle', $event)"
                 >
+                    <template #empty>
+                        <div class="locations-empty">
+                            Sin pasillos registrados
+                        </div>
+                    </template>
                     <Column field="office_name" header="Oficina" />
                     <Column field="name" header="Nombre" />
                     <Column field="code" header="Código" />
@@ -356,7 +508,7 @@ const goBack = () => {
                 <div class="locations-panel__head">
                     <div>
                         <h2>Estantes</h2>
-                        <span>{{ shelves.length }} registro(s)</span>
+                        <span>{{ tableState.shelf.total }} registro(s)</span>
                     </div>
                     <Button
                         icon="pi pi-plus"
@@ -364,15 +516,40 @@ const goBack = () => {
                         @click="openCreate('shelf')"
                     />
                 </div>
+                <div class="locations-search">
+                    <span class="locations-search__field">
+                        <i class="pi pi-search"></i>
+                        <InputText
+                            v-model="shelfFilters['global'].value"
+                            placeholder="Buscar estante..."
+                        />
+                    </span>
+                    <Button
+                        icon="pi pi-times"
+                        label="Limpiar"
+                        severity="secondary"
+                        outlined
+                        @click="clearLocationFilter(shelfFilters, 'shelf')"
+                    />
+                </div>
                 <DataTable
                     :value="shelves"
                     :loading="loading"
                     :paginator="true"
-                    :rows="10"
+                    lazy
+                    :first="tableFirst('shelf')"
+                    :rows="tableState.shelf.perPage"
+                    :totalRecords="tableState.shelf.total"
                     :rowsPerPageOptions="rowsPerPageOptions"
                     responsiveLayout="scroll"
                     stripedRows
+                    @page="onTablePage('shelf', $event)"
                 >
+                    <template #empty>
+                        <div class="locations-empty">
+                            Sin estantes registrados
+                        </div>
+                    </template>
                     <Column field="office_name" header="Oficina" />
                     <Column field="aisle_name" header="Pasillo" />
                     <Column field="name" header="Nombre" />
@@ -536,6 +713,40 @@ const goBack = () => {
     font-size: 0.85rem;
 }
 
+.locations-search {
+    align-items: center;
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.locations-search__field {
+    align-items: center;
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    position: relative;
+}
+
+.locations-search__field i {
+    color: #64748b;
+    left: 0.9rem;
+    position: absolute;
+    z-index: 1;
+}
+
+.locations-search__field :deep(.p-inputtext) {
+    padding-left: 2.35rem;
+    width: 100%;
+}
+
+.locations-empty {
+    color: #64748b;
+    font-weight: 600;
+    padding: 1rem;
+    text-align: center;
+}
+
 .locations-status {
     background: #fee2e2;
     border-radius: 999px;
@@ -600,6 +811,11 @@ const goBack = () => {
 @media (max-width: 768px) {
     .locations-panel {
         padding: 1rem;
+    }
+
+    .locations-search {
+        align-items: stretch;
+        flex-direction: column;
     }
 }
 </style>

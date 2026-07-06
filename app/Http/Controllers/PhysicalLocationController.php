@@ -5,8 +5,11 @@ namespace App\Http\Controllers;
 use App\Models\PhysicalLocationAisle;
 use App\Models\PhysicalLocationOffice;
 use App\Models\PhysicalLocationShelf;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Throwable;
@@ -21,12 +24,12 @@ class PhysicalLocationController extends Controller
             ], 403);
         }
 
-        return response()->json($this->catalogPayload(false));
+        return response()->json($this->cachedPaginatedCatalogPayload($request));
     }
 
     public function options(): JsonResponse
     {
-        return response()->json($this->catalogPayload(true));
+        return response()->json($this->cachedCatalogPayload(true));
     }
 
     public function storeOffice(Request $request): JsonResponse
@@ -53,6 +56,8 @@ class PhysicalLocationController extends Controller
                 'code' => $this->normalizeCode((string) $request->input('code')),
                 'is_active' => $request->boolean('is_active', true),
             ]);
+
+            $this->refreshCatalogCacheVersion();
 
             return response()->json([
                 'message' => 'Oficina registrada correctamente.',
@@ -89,6 +94,8 @@ class PhysicalLocationController extends Controller
             'is_active' => $request->boolean('is_active', true),
         ]);
 
+        $this->refreshCatalogCacheVersion();
+
         return response()->json([
             'message' => 'Oficina actualizada correctamente.',
             'office' => $this->mapOffice($office->fresh()),
@@ -110,6 +117,7 @@ class PhysicalLocationController extends Controller
         }
 
         $office->delete();
+        $this->refreshCatalogCacheVersion();
 
         return response()->json(['message' => 'Oficina eliminada correctamente.']);
     }
@@ -145,6 +153,8 @@ class PhysicalLocationController extends Controller
             'code' => $this->normalizeCode((string) $request->input('code')),
             'is_active' => $request->boolean('is_active', true),
         ]);
+
+        $this->refreshCatalogCacheVersion();
 
         return response()->json([
             'message' => 'Pasillo registrado correctamente.',
@@ -186,6 +196,8 @@ class PhysicalLocationController extends Controller
             'is_active' => $request->boolean('is_active', true),
         ]);
 
+        $this->refreshCatalogCacheVersion();
+
         return response()->json([
             'message' => 'Pasillo actualizado correctamente.',
             'aisle' => $this->mapAisle($aisle->fresh('office')),
@@ -207,6 +219,7 @@ class PhysicalLocationController extends Controller
         }
 
         $aisle->delete();
+        $this->refreshCatalogCacheVersion();
 
         return response()->json(['message' => 'Pasillo eliminado correctamente.']);
     }
@@ -242,6 +255,8 @@ class PhysicalLocationController extends Controller
             'code' => $this->normalizeCode((string) $request->input('code')),
             'is_active' => $request->boolean('is_active', true),
         ]);
+
+        $this->refreshCatalogCacheVersion();
 
         return response()->json([
             'message' => 'Estante registrado correctamente.',
@@ -283,6 +298,8 @@ class PhysicalLocationController extends Controller
             'is_active' => $request->boolean('is_active', true),
         ]);
 
+        $this->refreshCatalogCacheVersion();
+
         return response()->json([
             'message' => 'Estante actualizado correctamente.',
             'shelf' => $this->mapShelf($shelf->fresh('aisle.office')),
@@ -296,8 +313,47 @@ class PhysicalLocationController extends Controller
         }
 
         PhysicalLocationShelf::query()->findOrFail($id)->delete();
+        $this->refreshCatalogCacheVersion();
 
         return response()->json(['message' => 'Estante eliminado correctamente.']);
+    }
+
+    private function cachedCatalogPayload(bool $onlyActive): array
+    {
+        $version = $this->catalogCacheVersion();
+        $key = "physical_locations:catalog:v{$version}:active:" . (int) $onlyActive;
+
+        return Cache::remember($key, now()->addMinutes(5), fn () => $this->catalogPayload($onlyActive));
+    }
+
+    private function cachedPaginatedCatalogPayload(Request $request): array
+    {
+        $version = $this->catalogCacheVersion();
+        $params = [
+            'office_page' => $this->pageValue($request, 'office'),
+            'office_per_page' => $this->perPageValue($request, 'office'),
+            'office_search' => $this->searchValue($request, 'office'),
+            'aisle_page' => $this->pageValue($request, 'aisle'),
+            'aisle_per_page' => $this->perPageValue($request, 'aisle'),
+            'aisle_search' => $this->searchValue($request, 'aisle'),
+            'shelf_page' => $this->pageValue($request, 'shelf'),
+            'shelf_per_page' => $this->perPageValue($request, 'shelf'),
+            'shelf_search' => $this->searchValue($request, 'shelf'),
+        ];
+        $key = 'physical_locations:paginated:v' . $version . ':' . md5(json_encode($params));
+
+        return Cache::remember($key, now()->addMinutes(5), fn () => $this->paginatedCatalogPayload($request));
+    }
+
+    private function catalogCacheVersion(): int
+    {
+        return (int) Cache::get('physical_locations:version', 1);
+    }
+
+    private function refreshCatalogCacheVersion(): void
+    {
+        Cache::add('physical_locations:version', 1);
+        Cache::increment('physical_locations:version');
     }
 
     private function catalogPayload(bool $onlyActive): array
@@ -326,6 +382,110 @@ class PhysicalLocationController extends Controller
             'aisles' => $aisles->map(fn (PhysicalLocationAisle $aisle) => $this->mapAisle($aisle))->values(),
             'shelves' => $shelves->map(fn (PhysicalLocationShelf $shelf) => $this->mapShelf($shelf))->values(),
         ];
+    }
+
+    private function paginatedCatalogPayload(Request $request): array
+    {
+        $offices = PhysicalLocationOffice::query()
+            ->when(
+                $this->searchValue($request, 'office'),
+                fn (Builder $query, string $search) => $query->where(function (Builder $query) use ($search) {
+                    $this->whereTextMatches($query, ['name', 'code'], $search);
+                })
+            )
+            ->orderBy('name')
+            ->paginate(
+                $this->perPageValue($request, 'office'),
+                ['*'],
+                'office_page',
+                $this->pageValue($request, 'office')
+            );
+
+        $aisles = PhysicalLocationAisle::query()
+            ->with('office')
+            ->when(
+                $this->searchValue($request, 'aisle'),
+                fn (Builder $query, string $search) => $query->where(function (Builder $query) use ($search) {
+                    $this->whereTextMatches($query, ['name', 'code'], $search);
+                    $query->orWhereHas('office', fn (Builder $office) => $this->whereTextMatches($office, ['name'], $search));
+                })
+            )
+            ->orderBy('name')
+            ->paginate(
+                $this->perPageValue($request, 'aisle'),
+                ['*'],
+                'aisle_page',
+                $this->pageValue($request, 'aisle')
+            );
+
+        $shelves = PhysicalLocationShelf::query()
+            ->with('aisle.office')
+            ->when(
+                $this->searchValue($request, 'shelf'),
+                fn (Builder $query, string $search) => $query->where(function (Builder $query) use ($search) {
+                    $this->whereTextMatches($query, ['name', 'code'], $search);
+                    $query->orWhereHas('aisle', fn (Builder $aisle) => $aisle
+                        ->where(fn (Builder $aisle) => $this->whereTextMatches($aisle, ['name'], $search))
+                        ->orWhereHas('office', fn (Builder $office) => $this->whereTextMatches($office, ['name'], $search)));
+                })
+            )
+            ->orderBy('name')
+            ->paginate(
+                $this->perPageValue($request, 'shelf'),
+                ['*'],
+                'shelf_page',
+                $this->pageValue($request, 'shelf')
+            );
+
+        return [
+            'offices' => $this->paginatedResponse($offices, fn (PhysicalLocationOffice $office) => $this->mapOffice($office)),
+            'aisles' => $this->paginatedResponse($aisles, fn (PhysicalLocationAisle $aisle) => $this->mapAisle($aisle)),
+            'shelves' => $this->paginatedResponse($shelves, fn (PhysicalLocationShelf $shelf) => $this->mapShelf($shelf)),
+        ];
+    }
+
+    private function paginatedResponse(LengthAwarePaginator $paginator, callable $mapper): array
+    {
+        return [
+            'data' => $paginator->getCollection()->map($mapper)->values(),
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'from' => $paginator->firstItem(),
+                'to' => $paginator->lastItem(),
+            ],
+        ];
+    }
+
+    private function searchValue(Request $request, string $type): ?string
+    {
+        $search = trim((string) $request->query("{$type}_search", ''));
+
+        return $search === '' ? null : $search;
+    }
+
+    private function pageValue(Request $request, string $type): int
+    {
+        return max(1, (int) $request->query("{$type}_page", 1));
+    }
+
+    private function perPageValue(Request $request, string $type): int
+    {
+        $perPage = (int) $request->query("{$type}_per_page", 10);
+
+        return min(max($perPage, 5), 50);
+    }
+
+    private function whereTextMatches(Builder $query, array $columns, string $search): void
+    {
+        $pattern = '%' . mb_strtolower($search) . '%';
+
+        foreach ($columns as $index => $column) {
+            $method = $index === 0 ? 'whereRaw' : 'orWhereRaw';
+            $query->{$method}("LOWER({$column}) LIKE ?", [$pattern]);
+        }
     }
 
     private function mapOffice(PhysicalLocationOffice $office): array

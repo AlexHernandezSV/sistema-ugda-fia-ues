@@ -98,9 +98,9 @@ class TransferController extends Controller
                 $year = $this->getImportValue($row, $headers, ['ano', 'ao']);
                 $pages = $this->getImportValue($row, $headers, ['cantidaddepaginas', 'cantidaddepginas']);
 
-                if ($name === '' || $code === '' || $support === '') {
+                if ($name === '' || $code === '' || $support === '' || $year === '') {
                     return response()->json([
-                        'message' => 'La fila ' . ($index + 2) . ' debe tener Nombre del documento, Código y Soporte válido.',
+                        'message' => 'La fila ' . ($index + 2) . ' debe tener Nombre del documento, Código, Año y Soporte válido.',
                     ], 422);
                 }
 
@@ -418,7 +418,7 @@ class TransferController extends Controller
             'boxes.*.documents_list.*.series' => ['nullable', 'string', 'max:2000'],
             'boxes.*.documents_list.*.name' => ['required', 'string', 'max:255'],
             'boxes.*.documents_list.*.code' => ['nullable', 'string', 'max:120'],
-            'boxes.*.documents_list.*.date' => ['nullable', 'string', 'max:50'],
+            'boxes.*.documents_list.*.date' => ['required', 'string', 'max:50'],
             'boxes.*.documents_list.*.pages' => ['nullable', 'string', 'max:50'],
             'boxes.*.documents_list.*.support' => ['required', 'string', 'max:30'],
             'boxes.*.documents_list.*.file_name' => ['nullable', 'string', 'max:255'],
@@ -565,7 +565,7 @@ class TransferController extends Controller
             'boxes.*.documents_list.*.series' => ['nullable', 'string', 'max:2000'],
             'boxes.*.documents_list.*.name' => ['required', 'string', 'max:255'],
             'boxes.*.documents_list.*.code' => ['nullable', 'string', 'max:120'],
-            'boxes.*.documents_list.*.date' => ['nullable', 'string', 'max:50'],
+            'boxes.*.documents_list.*.date' => ['required', 'string', 'max:50'],
             'boxes.*.documents_list.*.pages' => ['nullable', 'string', 'max:50'],
             'boxes.*.documents_list.*.support' => ['required', 'string', 'max:30'],
             'boxes.*.documents_list.*.file_name' => ['nullable', 'string', 'max:255'],

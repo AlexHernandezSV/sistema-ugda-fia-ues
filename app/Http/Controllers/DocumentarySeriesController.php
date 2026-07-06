@@ -26,9 +26,20 @@ class DocumentarySeriesController extends Controller
 
     public function store(Request $request)
     {
+        $this->normalizeCatalogPayload($request);
+
         $validated = $request->validate([
             'code' => ['required', 'string', 'max:20', 'regex:/^\d+$/', 'unique:documentary_series,code'],
-            'name' => ['required', 'string', 'max:150'],
+            'name' => [
+                'required',
+                'string',
+                'max:150',
+                function ($attribute, $value, $fail) {
+                    if ($this->seriesNameExists($value)) {
+                        $fail('No se pudo guardar ya que existe otra serie documental con ese nombre.');
+                    }
+                },
+            ],
             'is_active' => ['sometimes', 'boolean'],
             'unit_ids' => ['nullable', 'array'],
             'unit_ids.*' => ['integer', 'exists:units,id'],
@@ -55,6 +66,7 @@ class DocumentarySeriesController extends Controller
     public function update(Request $request, $id)
     {
         $series = DocumentarySeries::findOrFail($id);
+        $this->normalizeCatalogPayload($request);
 
         $validated = $request->validate([
             'code' => [
@@ -64,7 +76,16 @@ class DocumentarySeriesController extends Controller
                 'regex:/^\d+$/',
                 Rule::unique('documentary_series', 'code')->ignore($series->id),
             ],
-            'name' => ['required', 'string', 'max:150'],
+            'name' => [
+                'required',
+                'string',
+                'max:150',
+                function ($attribute, $value, $fail) use ($series) {
+                    if ($this->seriesNameExists($value, $series->id)) {
+                        $fail('No se pudo guardar ya que existe otra serie documental con ese nombre.');
+                    }
+                },
+            ],
             'is_active' => ['required', 'boolean'],
             'unit_ids' => ['nullable', 'array'],
             'unit_ids.*' => ['integer', 'exists:units,id'],
@@ -118,6 +139,7 @@ class DocumentarySeriesController extends Controller
     {
         $series = DocumentarySeries::with('units:id')->findOrFail($seriesId);
         $allowedUnitIds = $series->units->pluck('id')->all();
+        $this->normalizeCatalogPayload($request);
 
         $validated = $request->validate([
             'code' => [
@@ -128,7 +150,16 @@ class DocumentarySeriesController extends Controller
                 Rule::unique('documentary_subseries', 'code')
                     ->where(fn ($query) => $query->where('documentary_series_id', $series->id)->whereNull('deleted_at')),
             ],
-            'name' => ['required', 'string', 'max:150'],
+            'name' => [
+                'required',
+                'string',
+                'max:150',
+                function ($attribute, $value, $fail) use ($series) {
+                    if ($this->subseriesNameExists($series->id, $value)) {
+                        $fail('No se pudo guardar ya que existe otra subserie documental con ese nombre dentro de la misma serie.');
+                    }
+                },
+            ],
             'is_active' => ['sometimes', 'boolean'],
             'unit_ids' => ['nullable', 'array'],
             'unit_ids.*' => ['integer', Rule::in($allowedUnitIds)],
@@ -157,6 +188,7 @@ class DocumentarySeriesController extends Controller
     {
         $subseries = DocumentarySubseries::with('series.units:id')->findOrFail($id);
         $allowedUnitIds = $subseries->series?->units?->pluck('id')->all() ?? [];
+        $this->normalizeCatalogPayload($request);
 
         $validated = $request->validate([
             'code' => [
@@ -168,7 +200,16 @@ class DocumentarySeriesController extends Controller
                     ->where(fn ($query) => $query->where('documentary_series_id', $subseries->documentary_series_id)->whereNull('deleted_at'))
                     ->ignore($subseries->id),
             ],
-            'name' => ['required', 'string', 'max:150'],
+            'name' => [
+                'required',
+                'string',
+                'max:150',
+                function ($attribute, $value, $fail) use ($subseries) {
+                    if ($this->subseriesNameExists($subseries->documentary_series_id, $value, $subseries->id)) {
+                        $fail('No se pudo guardar ya que existe otra subserie documental con ese nombre dentro de la misma serie.');
+                    }
+                },
+            ],
             'is_active' => ['required', 'boolean'],
             'unit_ids' => ['nullable', 'array'],
             'unit_ids.*' => ['integer', Rule::in($allowedUnitIds)],
@@ -198,6 +239,33 @@ class DocumentarySeriesController extends Controller
         $subseries->delete();
 
         return response()->json(['message' => 'Subserie documental eliminada']);
+    }
+
+    private function normalizeCatalogPayload(Request $request): void
+    {
+        $request->merge([
+            'code' => is_string($request->input('code')) ? trim($request->input('code')) : $request->input('code'),
+            'name' => is_string($request->input('name')) ? trim($request->input('name')) : $request->input('name'),
+        ]);
+    }
+
+    private function seriesNameExists(string $name, ?int $ignoreId = null): bool
+    {
+        return DocumentarySeries::query()
+            ->whereNull('deleted_at')
+            ->when($ignoreId, fn ($query) => $query->whereKeyNot($ignoreId))
+            ->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])
+            ->exists();
+    }
+
+    private function subseriesNameExists(int $seriesId, string $name, ?int $ignoreId = null): bool
+    {
+        return DocumentarySubseries::query()
+            ->where('documentary_series_id', $seriesId)
+            ->whereNull('deleted_at')
+            ->when($ignoreId, fn ($query) => $query->whereKeyNot($ignoreId))
+            ->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])
+            ->exists();
     }
 
     private function transformSeries(DocumentarySeries $series): array

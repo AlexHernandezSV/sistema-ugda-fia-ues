@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Support\RequestCatalog;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Throwable;
 
 class RequestCatalogController extends Controller
@@ -139,29 +140,20 @@ class RequestCatalogController extends Controller
                 ], 404);
             }
 
-            $fileName = $document['digitalFile'] ?? ($document['code'] . '.txt');
-            $content = implode(PHP_EOL, [
-                'Sistema UGDA FIA UES',
-                'Documento de transferencia documental',
-                'Transferencia: ' . $number,
-                'Caja: ' . ($document['boxNumber'] ?? 'N/D'),
-                'Código: ' . ($document['code'] ?? 'N/D'),
-                'Nombre: ' . ($document['name'] ?? 'N/D'),
-                'Serie: ' . ($document['series'] ?? 'N/D'),
-                'Soporte: ' . ($document['support'] ?? 'N/D'),
-                'Año: ' . ($document['year'] ?? 'N/D'),
-                'Páginas: ' . ($document['pages'] ?? 'N/D'),
-            ]);
+            $fileName = $document['digitalFile'] ?? ($document['code'] . '.pdf');
+            $filePath = $this->resolveDigitalDocumentPath($document['digitalPath'] ?? null);
 
-            return response()->streamDownload(
-                static function () use ($content) {
-                    echo $content;
-                },
-                $fileName,
-                [
-                    'Content-Type' => 'application/octet-stream',
-                ]
-            );
+            if ($filePath !== null) {
+                return response()->file($filePath, [
+                    'Content-Type' => 'application/pdf',
+                    'Content-Disposition' => 'inline; filename="' . addslashes($fileName) . '"',
+                ]);
+            }
+
+            return response($this->buildDigitalDocumentPreviewPdf($number, $document), 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="' . addslashes($fileName) . '"',
+            ]);
         } catch (Throwable $exception) {
             report($exception);
 
@@ -182,5 +174,105 @@ class RequestCatalogController extends Controller
                 'message' => 'No se pudo cargar el dashboard.',
             ], 500);
         }
+    }
+
+    private function resolveDigitalDocumentPath(?string $digitalPath): ?string
+    {
+        $normalizedPath = str_replace('\\', '/', trim((string) $digitalPath));
+
+        if ($normalizedPath === '' || str_contains($normalizedPath, '..')) {
+            return null;
+        }
+
+        $candidatePaths = array_values(array_unique(array_filter([
+            $normalizedPath,
+            'public/' . $normalizedPath,
+            str_starts_with($normalizedPath, 'uploads/') ? $normalizedPath : 'uploads/' . basename($normalizedPath),
+            str_starts_with($normalizedPath, 'uploads/') ? 'public/' . $normalizedPath : 'public/uploads/' . basename($normalizedPath),
+        ])));
+
+        foreach ($candidatePaths as $candidatePath) {
+            if (Storage::disk('local')->exists($candidatePath)) {
+                return Storage::disk('local')->path($candidatePath);
+            }
+
+            if (str_starts_with($candidatePath, 'public/')) {
+                $publicPath = substr($candidatePath, strlen('public/'));
+
+                if (Storage::disk('public')->exists($publicPath)) {
+                    return Storage::disk('public')->path($publicPath);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function buildDigitalDocumentPreviewPdf(string $number, array $document): string
+    {
+        $lines = [
+            'Sistema UGDA FIA UES',
+            'Vista previa del documento',
+            'Transferencia: ' . $number,
+            'Caja: ' . ($document['boxNumber'] ?? 'N/D'),
+            'Codigo: ' . ($document['code'] ?? 'N/D'),
+            'Nombre: ' . ($document['name'] ?? 'N/D'),
+            'Serie: ' . ($document['series'] ?? 'N/D'),
+            'Soporte: ' . ($document['support'] ?? 'N/D'),
+            'Anio: ' . ($document['year'] ?? 'N/D'),
+            'Paginas: ' . ($document['pages'] ?? 'N/D'),
+            'Archivo registrado: ' . ($document['digitalFile'] ?? 'N/D'),
+        ];
+
+        $content = "BT\n/F1 16 Tf\n72 760 Td\n";
+
+        foreach ($lines as $index => $line) {
+            $fontSize = $index === 0 ? 18 : 12;
+            $content .= "/F1 {$fontSize} Tf\n";
+            $content .= '(' . $this->escapePdfText($line) . ") Tj\n";
+            $content .= '0 -' . ($index === 0 ? 30 : 22) . " Td\n";
+        }
+
+        $content .= "ET\n";
+
+        $objects = [
+            "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+            "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+            "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n",
+            "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+            "5 0 obj\n<< /Length " . strlen($content) . " >>\nstream\n" . $content . "endstream\nendobj\n",
+        ];
+
+        $pdf = "%PDF-1.4\n";
+        $offsets = [0];
+
+        foreach ($objects as $object) {
+            $offsets[] = strlen($pdf);
+            $pdf .= $object;
+        }
+
+        $xrefOffset = strlen($pdf);
+        $pdf .= "xref\n0 " . (count($objects) + 1) . "\n";
+        $pdf .= "0000000000 65535 f \n";
+
+        foreach (array_slice($offsets, 1) as $offset) {
+            $pdf .= sprintf("%010d 00000 n \n", $offset);
+        }
+
+        $pdf .= "trailer\n<< /Size " . (count($objects) + 1) . " /Root 1 0 R >>\n";
+        $pdf .= "startxref\n" . $xrefOffset . "\n%%EOF";
+
+        return $pdf;
+    }
+
+    private function escapePdfText(string $text): string
+    {
+        $converted = @iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE', $text);
+
+        if ($converted === false) {
+            $converted = $text;
+        }
+
+        return str_replace(['\\', '(', ')'], ['\\\\', '\\(', '\\)'], $converted);
     }
 }

@@ -23,10 +23,17 @@ const transferRequests = ref([]);
 
 const loanRequests = ref([]);
 
-const authOptions = ['Autorizado', 'Pendiente', 'Denegado'];
-const transferStatusOptions = ['Transferido', 'Agendado', 'Pendiente', 'Observado', 'Denegado', 'Cancelada'];
-const loanStatusOptions = ['Pendiente', 'Autorizado', 'Observado', 'Cancelada'];
-const loanSearchOptions = ['En proceso', 'Finalizada'];
+const requestFilterOptions = ref({
+    transfers: {
+        auth: ['Pendiente', 'Autorizado', 'Denegado'],
+        status: ['Pendiente', 'Observado', 'Agendado', 'En Revisión', 'Obs. en Revisión', 'Subsanada', 'Transferido', 'Denegado', 'Cancelada'],
+    },
+    loans: {
+        auth: ['Pendiente', 'Autorizado', 'Denegado'],
+        status: ['Pendiente', 'Autorizado', 'Observado', 'Prestado', 'Devuelto', 'Denegado', 'Cancelada'],
+        search: ['En proceso', 'Finalizada', 'No encontrados'],
+    },
+});
 
 const pageTitles = {
     transferencias: 'Listado de solicitudes de transferencia documental',
@@ -35,8 +42,29 @@ const pageTitles = {
 
 const pageTitle = computed(() => pageTitles[activeTab.value] ?? pageTitles.transferencias);
 
+const uniqueOptions = (values) => [...new Set((values ?? []).filter((value) => value && value !== '-'))];
+
+const optionsWithDataValues = (catalogOptions, rows, field) => uniqueOptions([
+    ...(catalogOptions ?? []),
+    ...rows.map((item) => item[field]),
+]);
+
+const currentAuthOptions = computed(() => {
+    if (activeTab.value === 'transferencias') {
+        return optionsWithDataValues(requestFilterOptions.value.transfers?.auth, transferRequests.value, 'auth');
+    }
+
+    return optionsWithDataValues(requestFilterOptions.value.loans?.auth, loanRequests.value, 'auth');
+});
+
 const currentStatusOptions = computed(() =>
-    activeTab.value === 'transferencias' ? transferStatusOptions : loanStatusOptions
+    activeTab.value === 'transferencias'
+        ? optionsWithDataValues(requestFilterOptions.value.transfers?.status, transferRequests.value, 'status')
+        : optionsWithDataValues(requestFilterOptions.value.loans?.status, loanRequests.value, 'status')
+);
+
+const currentLoanSearchOptions = computed(() =>
+    optionsWithDataValues(requestFilterOptions.value.loans?.search, loanRequests.value, 'search')
 );
 
 const transferCount = computed(() => transferRequests.value.length);
@@ -160,15 +188,21 @@ const getStatusBadge = (status) => {
         case 'Transferido':
         case 'Autorizado':
         case 'Finalizada':
+        case 'Devuelto':
             return 'solicitudes-chip solicitudes-chip--success';
         case 'Agendado':
         case 'En proceso':
+        case 'Subsanada':
+        case 'Prestado':
             return 'solicitudes-chip solicitudes-chip--info';
         case 'Observado':
         case 'Pendiente':
+        case 'En Revisión':
+        case 'Obs. en Revisión':
             return 'solicitudes-chip solicitudes-chip--warning';
         case 'Cancelada':
         case 'Denegado':
+        case 'No encontrados':
             return 'solicitudes-chip solicitudes-chip--danger';
         default:
             return 'solicitudes-chip solicitudes-chip--neutral';
@@ -185,6 +219,16 @@ onMounted(async () => {
         transferRequests.value = catalogRes.data.transfers ?? [];
         loanRequests.value = catalogRes.data.loans ?? [];
         unitsList.value = catalogRes.data.units ?? [];
+        requestFilterOptions.value = {
+            transfers: {
+                ...requestFilterOptions.value.transfers,
+                ...(catalogRes.data.filters?.transfers ?? {}),
+            },
+            loans: {
+                ...requestFilterOptions.value.loans,
+                ...(catalogRes.data.filters?.loans ?? {}),
+            },
+        };
     } catch (error) {
         console.error('Error cargando catálogo de solicitudes:', error);
     }
@@ -235,7 +279,7 @@ onMounted(async () => {
 
             <div class="col-12 md:col-6 xl:col">
                 <label class="solicitudes-filter__label">Autorización</label>
-                <Dropdown v-model="filters.auth" :options="authOptions" placeholder="Seleccionar" showClear class="w-full mt-2" />
+                <Dropdown v-model="filters.auth" :options="currentAuthOptions" placeholder="Seleccionar" showClear class="w-full mt-2" />
             </div>
 
             <div class="col-12 md:col-6 xl:col">
@@ -271,7 +315,7 @@ onMounted(async () => {
 
             <div class="col-12 md:col-6 xl:col">
                 <label class="solicitudes-filter__label">Autorización</label>
-                <Dropdown v-model="filters.auth" :options="authOptions" placeholder="Seleccionar" showClear class="w-full mt-2" />
+                <Dropdown v-model="filters.auth" :options="currentAuthOptions" placeholder="Seleccionar" showClear class="w-full mt-2" />
             </div>
 
             <div class="col-12 md:col-6 xl:col">
@@ -281,7 +325,7 @@ onMounted(async () => {
 
             <div class="col-12 md:col-6 xl:col">
                 <label class="solicitudes-filter__label">Búsqueda</label>
-                <Dropdown v-model="filters.search" :options="loanSearchOptions" placeholder="Seleccionar" showClear class="w-full mt-2" />
+                <Dropdown v-model="filters.search" :options="currentLoanSearchOptions" placeholder="Seleccionar" showClear class="w-full mt-2" />
             </div>
 
             <div class="col-12 md:col-6 xl:col">
