@@ -3,6 +3,10 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import axios from 'axios';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
+import QRCode from 'qrcode';
+import DocumentPreviewDialog from '../shared/DocumentPreviewDialog.vue';
 
 const router = useRouter();
 const toast = useToast();
@@ -36,12 +40,41 @@ const documents = ref([]);
 const addDocumentDialogVisible = ref(false);
 const importDialogVisible = ref(false);
 const searchDialogVisible = ref(false);
+const labelDialogVisible = ref(false);
+const labelPreviewRef = ref(null);
+const labelPreviewCard = ref(null);
+const labelPreviewItem = ref(null);
+const labelsBusy = ref(false);
 const excelFile = ref(null);
 const excelInputRef = ref(null);
+const documentFileInputRef = ref(null);
 const isExcelDragging = ref(false);
 const documentSearch = ref('');
 const documentSearchResults = ref([]);
 const selectedExistingDocuments = ref([]);
+const documentPreviewVisible = ref(false);
+const documentPreviewTitle = ref('Documento PDF');
+const documentPreviewSource = ref(null);
+
+// Control de visibilidad de modales
+watch(
+    () => documentPreviewVisible.value,
+    (newValue) => {
+        if (newValue) {
+            // Ocultar el modal del documento cuando se abre el preview del PDF
+            addDocumentDialogVisible.value = false;
+        }
+    },
+);
+const documentDigitalFile = ref(null);
+const documentDigitalFileName = ref('');
+const labelSize = {
+    widthCm: 10,
+    heightCm: 18,
+    widthMm: 100,
+    heightMm: 180,
+};
+const currentYear = new Date().getFullYear();
 
 const docForm = ref({
     series_id: null,
@@ -54,6 +87,12 @@ const docForm = ref({
 
 const selectedSeriesName = computed(() => (
     seriesOptions.value.find((item) => item.value === form.value.series_id)?.label ?? ''
+));
+
+const requiresDigitalDocFile = computed(() => ['Digital', 'Mixto'].includes(docForm.value.support));
+
+const selectedUnitName = computed(() => (
+    units.value.find((item) => item.value === form.value.unit_id)?.label ?? ''
 ));
 
 const allDocuments = computed(() => [
@@ -111,6 +150,91 @@ const showError = (detail) => {
     });
 };
 
+const onlyDigits = (value) => String(value ?? '').replace(/\D/g, '');
+
+const sanitizeYear = (value) => {
+    const digits = onlyDigits(value).slice(0, 4);
+
+    if (digits.length < 4) {
+        return digits;
+    }
+
+    return String(Math.min(Number(digits), currentYear));
+};
+
+const sanitizePositiveInteger = (value) => {
+    const digits = onlyDigits(value);
+
+    if (!digits) {
+        return '';
+    }
+
+    const number = Number(digits);
+
+    return number > 0 ? String(number) : '';
+};
+
+const onBoxYearInput = (field, event) => {
+    form.value[field] = sanitizeYear(event.target.value);
+};
+
+const onDocumentYearInput = (event) => {
+    docForm.value.year = sanitizeYear(event.target.value);
+};
+
+const onDocumentPagesInput = (event) => {
+    docForm.value.pages = sanitizePositiveInteger(event.target.value);
+};
+
+const escapeHtml = (value = '') => String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+
+const currentDateLabel = () => {
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+
+    return `${day}/${month}/${year}`;
+};
+
+const buildQrDataUrl = async (seed) => QRCode.toDataURL(seed, {
+    errorCorrectionLevel: 'M',
+    type: 'image/png',
+    margin: 1,
+    width: 180,
+    color: {
+        dark: '#111827',
+        light: '#ffffff',
+    },
+});
+
+const buildBoxLabelCode = () => `C-AG-${String(Number(form.value.box_number) || form.value.box_number || 0).padStart(3, '0')}`;
+
+const buildLabelSeed = () => JSON.stringify({
+    type: 'archivo-general-box-preview',
+    box: buildBoxLabelCode(),
+    location: generatedLocationCode.value,
+});
+
+const buildLabelPreviewItem = async () => ({
+    boxLabel: buildBoxLabelCode(),
+    transferNumber: 'Archivo General',
+    transferDate: currentDateLabel(),
+    unit: selectedUnitName.value || 'Unidad no seleccionada',
+    content: selectedSeriesName.value || 'Serie documental no seleccionada',
+    period: [form.value.start_year, form.value.end_year].filter(Boolean).join(' - ') || 'Periodo no definido',
+    locationCode: generatedLocationCode.value,
+    labelCode: buildBoxLabelCode(),
+    assignedBy: 'UGDA',
+    assignedAt: currentDateLabel(),
+    qrDataUrl: await buildQrDataUrl(buildLabelSeed()),
+});
+
 const resetDocForm = () => {
     docForm.value = {
         series_id: form.value.series_id,
@@ -120,6 +244,12 @@ const resetDocForm = () => {
         support: null,
         pages: '',
     };
+    documentDigitalFile.value = null;
+    documentDigitalFileName.value = '';
+
+    if (documentFileInputRef.value) {
+        documentFileInputRef.value.value = '';
+    }
 };
 
 const fetchCatalog = async () => {
@@ -149,12 +279,98 @@ const openAddDocumentDialog = () => {
     addDocumentDialogVisible.value = true;
 };
 
-const addDocument = () => {
-    const selectedDocSeries = seriesOptions.value.find((item) => item.value === docForm.value.series_id);
+const readFileAsBase64 = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
 
-    if (!docForm.value.name || !docForm.value.code || !docForm.value.year || !docForm.value.support) {
-        showError('Complete los campos obligatorios del documento.');
+    reader.onload = () => {
+        const result = reader.result;
+        const base64 = typeof result === 'string' && result.includes(',') ? result.split(',')[1] : '';
+        resolve(base64);
+    };
+
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo PDF.'));
+    reader.readAsDataURL(file);
+});
+
+const onDocumentDigitalFileSelect = async (event) => {
+    const file = event.target.files?.[0] ?? null;
+
+    if (!file) {
+        documentDigitalFile.value = null;
+        documentDigitalFileName.value = '';
         return;
+    }
+
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+        showError('Seleccione un archivo PDF para el documento digital.');
+        if (event.target) {
+            event.target.value = '';
+        }
+        documentDigitalFile.value = null;
+        documentDigitalFileName.value = '';
+        return;
+    }
+
+    documentDigitalFile.value = file;
+    documentDigitalFileName.value = file.name;
+};
+
+const previewDocumentFile = () => {
+    if (!documentDigitalFile.value) {
+        showError('Adjunte primero un archivo PDF para visualizarlo.');
+        return;
+    }
+
+    documentPreviewTitle.value = documentDigitalFileName.value || 'Documento PDF';
+    documentPreviewSource.value = { file: documentDigitalFile.value };
+    documentPreviewVisible.value = true;
+};
+
+const previewStoredDocument = (documentEntry) => {
+    if (!documentEntry?.digital_file_base64) {
+        showError('Este documento no tiene un archivo PDF adjunto.');
+        return;
+    }
+
+    const binary = atob(documentEntry.digital_file_base64);
+    const bytes = new Uint8Array(binary.length);
+
+    for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index);
+    }
+
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    const objectUrl = URL.createObjectURL(blob);
+
+    documentPreviewTitle.value = documentEntry.digital_file_name || documentEntry.name || 'Documento PDF';
+    documentPreviewSource.value = { url: objectUrl };
+    documentPreviewVisible.value = true;
+};
+
+const addDocument = async () => {
+    const selectedDocSeries = seriesOptions.value.find((item) => item.value === docForm.value.series_id);
+    const documentYear = Number(docForm.value.year);
+    const pages = docForm.value.pages === '' ? null : Number(docForm.value.pages);
+
+    if (!docForm.value.series_id || !docForm.value.name || !docForm.value.code || !docForm.value.year || !docForm.value.support || !docForm.value.pages) {
+        showError('Complete los campos obligatorios del documento, incluyendo la serie documental.');
+        return;
+    }
+
+    if (docForm.value.year.length !== 4 || !Number.isInteger(documentYear) || documentYear > currentYear) {
+        showError(`El ano del documento debe ser un numero entero de 4 digitos hasta ${currentYear}.`);
+        return;
+    }
+
+    if (!Number.isInteger(pages) || pages <= 0) {
+        showError('El numero de paginas debe ser un entero positivo mayor que 0.');
+        return;
+    }
+
+    let digitalFileBase64 = null;
+
+    if (requiresDigitalDocFile.value && documentDigitalFile.value) {
+        digitalFileBase64 = await readFileAsBase64(documentDigitalFile.value);
     }
 
     documents.value.push({
@@ -162,9 +378,11 @@ const addDocument = () => {
         series: selectedDocSeries?.label ?? selectedSeriesName.value,
         code: docForm.value.code,
         name: docForm.value.name,
-        year: docForm.value.year,
+        year: String(documentYear),
         support: docForm.value.support,
-        pages: docForm.value.pages,
+        pages: String(pages),
+        digital_file_name: documentDigitalFileName.value || null,
+        digital_file_base64: digitalFileBase64,
     });
 
     toast.add({
@@ -305,13 +523,209 @@ const addExistingDocument = (document) => {
     documentSearchResults.value = documentSearchResults.value.filter((item) => item.id !== document.id);
 };
 
-const previewLabel = () => {
-    window.print();
+const previewLabel = async () => {
+    if (!generatedLocationCode.value) {
+        showError('Complete la ubicacion fisica de la caja.');
+        return;
+    }
+
+    labelPreviewCard.value = null;
+    labelPreviewItem.value = await buildLabelPreviewItem();
+    labelDialogVisible.value = true;
+
+    requestAnimationFrame(() => {
+        labelPreviewRef.value?.scrollTo({ top: 0, behavior: 'auto' });
+    });
+};
+
+const buildLabelsDocument = () => {
+    const label = labelPreviewItem.value;
+
+    if (!label) {
+        return '';
+    }
+
+    return `
+        <!DOCTYPE html>
+        <html lang="es">
+            <head>
+                <meta charset="utf-8" />
+                <title>Etiqueta ${escapeHtml(label.labelCode)}</title>
+                <style>
+                    * { box-sizing: border-box; }
+                    @page { size: ${labelSize.widthCm}cm ${labelSize.heightCm}cm; margin: 0; }
+                    html, body { width: ${labelSize.widthCm}cm; min-height: ${labelSize.heightCm}cm; }
+                    body { margin: 0; font-family: 'Instrument Sans', Arial, Helvetica, sans-serif; background: #ffffff; color: #0f172a; }
+                    .print-label-card { width: ${labelSize.widthCm}cm; height: ${labelSize.heightCm}cm; min-height: ${labelSize.heightCm}cm; background: #ffffff; border: 2px solid #1f2937; border-radius: 0.5cm; display: flex; flex-direction: column; overflow: hidden; }
+                    .print-label-card__header, .print-label-card__hero, .print-label-card__details { display: grid; gap: 0.35cm; }
+                    .print-label-card__header { grid-template-columns: 1fr auto; align-items: flex-start; padding: 0.58cm 0.55cm 0.36cm; border-bottom: 1px solid #d9e2ec; }
+                    .print-label-card__university { font-size: 0.44cm; font-weight: 700; line-height: 1.15; letter-spacing: 0; }
+                    .print-label-card__faculty { margin-top: 0.12cm; color: #64748b; font-size: 0.28cm; line-height: 1.25; }
+                    .print-label-card__date { min-width: 2.25cm; text-align: right; }
+                    .print-label-card__date span, .print-label-card__box span, .print-label-card__details span, .print-label-card__assigned, .print-label-card__qr span { color: #64748b; font-size: 0.25cm; line-height: 1.25; }
+                    .print-label-card__date strong { display: block; margin-top: 0.12cm; color: #0f172a; font-size: 0.34cm; line-height: 1.2; }
+                    .print-label-card__hero { grid-template-columns: 1fr; align-items: center; padding: 0.42cm 0.55cm; border-bottom: 1px solid #d9e2ec; }
+                    .print-label-card__qr { text-align: center; }
+                    .print-label-card__qr img { width: 2.8cm; height: 2.8cm; display: block; margin: 0 auto 0.12cm; }
+                    .print-label-card__location { background: #2f6f9f; border-radius: 0.32cm; padding: 0.34cm 0.36cm; text-align: center; color: #ffffff; }
+                    .print-label-card__location span { display: block; font-size: 0.25cm; font-weight: 700; letter-spacing: 0; }
+                    .print-label-card__location strong { display: block; margin-top: 0.14cm; font-size: 0.7cm; font-weight: 700; letter-spacing: 0; line-height: 1.05; }
+                    .print-label-card__box { margin-top: 0.28cm; border-radius: 0.28cm; background: #edf3fa; padding: 0.3cm 0.36cm; }
+                    .print-label-card__box strong { display: block; margin-top: 0.1cm; color: #0f172a; font-size: 0.58cm; line-height: 1.1; }
+                    .print-label-card__details { grid-template-columns: 1fr; padding: 0.42cm 0.55cm 0.24cm; }
+                    .print-label-card__details strong { display: block; margin-top: 0.08cm; font-size: 0.33cm; color: #0f172a; line-height: 1.25; }
+                    .print-label-card__assigned { margin: 0 0.55cm; padding: 0.3cm 0; border-top: 1px solid #d9e2ec; }
+                    .print-label-card__footer { margin-top: auto; background: #fff7db; padding: 0.28cm 0.55cm; color: #b45309; font-size: 0.24cm; font-weight: 700; line-height: 1.3; }
+                </style>
+            </head>
+            <body>
+                <article class="print-label-card">
+                    <div class="print-label-card__header">
+                        <div>
+                            <div class="print-label-card__university">UNIVERSIDAD DE EL SALVADOR</div>
+                            <div class="print-label-card__faculty">Facultad de Ingenieria y Arquitectura - UGDA</div>
+                        </div>
+                        <div class="print-label-card__date">
+                            <span>Fecha de transferencia</span>
+                            <strong>${escapeHtml(label.transferDate)}</strong>
+                        </div>
+                    </div>
+                    <div class="print-label-card__hero">
+                        <div class="print-label-card__qr">
+                            <img src="${label.qrDataUrl}" alt="Codigo QR ${escapeHtml(label.labelCode)}" />
+                            <span>Codigo: ${escapeHtml(label.labelCode)}</span>
+                        </div>
+                        <div class="print-label-card__hero-main">
+                            <div class="print-label-card__location">
+                                <span>CODIGO DE UBICACION</span>
+                                <strong>${escapeHtml(label.locationCode)}</strong>
+                            </div>
+                            <div class="print-label-card__box">
+                                <span>N de caja</span>
+                                <strong>${escapeHtml(label.boxLabel)}</strong>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="print-label-card__details">
+                        <div>
+                            <span>N° de transferencia</span>
+                            <strong>${escapeHtml(label.transferNumber)}</strong>
+                        </div>
+                        <div>
+                            <span>Unidad productora</span>
+                            <strong>${escapeHtml(label.unit)}</strong>
+                        </div>
+                        <div class="print-label-card__details--full">
+                            <span>Contenido de la caja</span>
+                            <strong>${escapeHtml(label.content)}</strong>
+                        </div>
+                    </div>
+                    <div class="print-label-card__assigned">
+                        Ubicacion asignada por ${escapeHtml(label.assignedBy)} el ${escapeHtml(label.assignedAt)}
+                    </div>
+                    <div class="print-label-card__footer">
+                        Instrucciones: Adherir esta etiqueta en la parte frontal de la caja de forma visible. Mantener limpia y legible para facilitar su ubicacion.
+                    </div>
+                </article>
+            </body>
+        </html>
+    `;
+};
+
+const printLabels = () => {
+    const popup = window.open('', '_blank', 'width=1200,height=900');
+
+    if (!popup) {
+        toast.add({
+            severity: 'warn',
+            summary: 'Ventana bloqueada',
+            detail: 'Habilite las ventanas emergentes para imprimir o guardar el PDF.',
+            life: 3500,
+        });
+        return;
+    }
+
+    popup.document.open();
+    popup.document.write(buildLabelsDocument());
+    popup.document.close();
+
+    popup.onload = () => {
+        popup.focus();
+        popup.print();
+    };
+};
+
+const downloadLabelsPdf = async () => {
+    if (!labelPreviewCard.value || labelsBusy.value) {
+        return;
+    }
+
+    labelsBusy.value = true;
+    let exportHost = null;
+
+    try {
+        const pdf = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: [labelSize.widthMm, labelSize.heightMm],
+        });
+
+        exportHost = document.createElement('div');
+        exportHost.style.position = 'fixed';
+        exportHost.style.left = '-10000px';
+        exportHost.style.top = '0';
+        exportHost.style.width = `${labelSize.widthCm}cm`;
+        exportHost.style.pointerEvents = 'none';
+        exportHost.style.zIndex = '-1';
+        document.body.appendChild(exportHost);
+
+        const exportCard = labelPreviewCard.value.cloneNode(true);
+        exportCard.classList.add('transfer-label--export');
+        exportHost.appendChild(exportCard);
+
+        const exportImages = Array.from(exportCard.querySelectorAll('img'));
+        await Promise.all(exportImages.map((image) => {
+            if (image.complete) {
+                return Promise.resolve();
+            }
+
+            return new Promise((resolve) => {
+                image.addEventListener('load', resolve, { once: true });
+                image.addEventListener('error', resolve, { once: true });
+            });
+        }));
+
+        const canvas = await html2canvas(exportCard, {
+            backgroundColor: '#ffffff',
+            scale: 2,
+            useCORS: true,
+        });
+
+        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, labelSize.widthMm, labelSize.heightMm, undefined, 'FAST');
+        pdf.save(`etiqueta-caja-archivo-${form.value.box_number || 'nueva'}.pdf`);
+    } catch (error) {
+        console.error('Error generando PDF de etiqueta:', error);
+        showError('Ocurrio un problema al generar el PDF de la etiqueta.');
+    } finally {
+        exportHost?.remove();
+        document.querySelectorAll('.transfer-label--export').forEach((node) => node.remove());
+        labelsBusy.value = false;
+    }
 };
 
 const validateForm = () => {
     if (!form.value.box_number || !form.value.unit_id || !form.value.series_id || !form.value.start_year || !form.value.end_year) {
         showError('Complete la información obligatoria de la caja.');
+        return false;
+    }
+
+    if (form.value.start_year.length !== 4 || form.value.end_year.length !== 4) {
+        showError('Los anos de la caja deben tener 4 digitos.');
+        return false;
+    }
+
+    if (Number(form.value.start_year) > currentYear || Number(form.value.end_year) > currentYear) {
+        showError(`El ano de la caja no puede ser mayor que ${currentYear}.`);
         return false;
     }
 
@@ -353,6 +767,8 @@ const submitBox = async () => {
                 year: document.year,
                 support: document.support,
                 pages: document.pages,
+                digital_file_name: document.digital_file_name ?? null,
+                digital_file_base64: document.digital_file_base64 ?? null,
             })),
         };
 
@@ -425,11 +841,27 @@ onMounted(fetchCatalog);
                 <div class="create-box-grid create-box-grid--two">
                     <label>
                         <span>Ano Inicial <b>*</b></span>
-                        <InputText v-model="form.start_year" type="number" placeholder="Ej: 2024" class="w-full" />
+                        <InputText
+                            v-model="form.start_year"
+                            inputmode="numeric"
+                            maxlength="4"
+                            :max="currentYear"
+                            placeholder="Ej: 2024"
+                            class="w-full"
+                            @input="onBoxYearInput('start_year', $event)"
+                        />
                     </label>
                     <label>
                         <span>Ano Final <b>*</b></span>
-                        <InputText v-model="form.end_year" type="number" placeholder="Ej: 2024" class="w-full" />
+                        <InputText
+                            v-model="form.end_year"
+                            inputmode="numeric"
+                            maxlength="4"
+                            :max="currentYear"
+                            placeholder="Ej: 2024"
+                            class="w-full"
+                            @input="onBoxYearInput('end_year', $event)"
+                        />
                     </label>
                 </div>
             </section>
@@ -529,9 +961,19 @@ onMounted(fetchCatalog);
                     <Column field="pages" header="N° Paginas" />
                     <Column header="Acciones">
                         <template #body="{ data }">
-                            <button type="button" class="create-box-remove" @click="removeDocument(data)">
-                                <i class="pi pi-trash"></i>
-                            </button>
+                            <div class="create-box-doc-actions">
+                                <button
+                                    v-if="(data.support === 'Digital' || data.support === 'Mixto') && data.digital_file_base64"
+                                    type="button"
+                                    class="create-box-outline"
+                                    @click="previewStoredDocument(data)"
+                                >
+                                    <i class="pi pi-eye"></i>
+                                </button>
+                                <button type="button" class="create-box-remove" @click="removeDocument(data)">
+                                    <i class="pi pi-trash"></i>
+                                </button>
+                            </div>
                         </template>
                     </Column>
                 </DataTable>
@@ -553,6 +995,7 @@ onMounted(fetchCatalog);
             :draggable="false"
             class="archive-doc-dialog"
             :style="{ width: 'min(1024px, 94vw)' }"
+            :contentStyle="{ maxHeight: 'calc(90vh - 11rem)', overflowY: 'auto' }"
         >
             <template #header>
                 <div>
@@ -582,7 +1025,15 @@ onMounted(fetchCatalog);
                     </label>
                     <label>
                         <span>Ano <b>*</b></span>
-                        <InputText v-model="docForm.year" placeholder="Ej: 2024" class="w-full" />
+                        <InputText
+                            v-model="docForm.year"
+                            inputmode="numeric"
+                            maxlength="4"
+                            :max="currentYear"
+                            placeholder="Ej: 2024"
+                            class="w-full"
+                            @input="onDocumentYearInput"
+                        />
                     </label>
                 </div>
 
@@ -597,9 +1048,41 @@ onMounted(fetchCatalog);
                         <Dropdown v-model="docForm.support" :options="supportOptions" placeholder="Seleccionar" class="w-full" />
                     </label>
                     <label>
-                        <span>N de Paginas</span>
-                        <InputText v-model="docForm.pages" placeholder="Ej: 150" class="w-full" />
+                        <span>N de Paginas <b>*</b></span>
+                        <InputText
+                            v-model="docForm.pages"
+                            inputmode="numeric"
+                            placeholder="Ej: 150"
+                            class="w-full"
+                            @input="onDocumentPagesInput"
+                        />
                     </label>
+                </div>
+
+                <div v-if="requiresDigitalDocFile" class="archive-doc-form__digital-file">
+                    <input
+                        ref="documentFileInputRef"
+                        type="file"
+                        accept=".pdf"
+                        class="archive-doc-form__file-input"
+                        @change="onDocumentDigitalFileSelect"
+                    />
+                    <button
+                        type="button"
+                        class="archive-doc-form__file-name"
+                        @click="documentFileInputRef?.click()"
+                    >
+                        {{ documentDigitalFileName || 'Seleccionar PDF' }}
+                    </button>
+                    <button
+                        v-if="documentDigitalFile"
+                        type="button"
+                        class="create-box-outline"
+                        @click="previewDocumentFile"
+                    >
+                        <i class="pi pi-eye"></i>
+                        Ver PDF
+                    </button>
                 </div>
 
                 <div class="archive-doc-form__actions">
@@ -615,6 +1098,8 @@ onMounted(fetchCatalog);
 
                 <DataTable
                     :value="documents"
+                    scrollable
+                    scrollHeight="260px"
                     responsiveLayout="scroll"
                     class="archive-doc-added__table"
                 >
@@ -623,11 +1108,22 @@ onMounted(fetchCatalog);
                     <Column field="name" header="Nombre" />
                     <Column field="year" header="Año" />
                     <Column field="support" header="Soporte" />
+                    <Column field="pages" header="N° Paginas" />
                     <Column header="Acciones">
                         <template #body="{ data }">
-                            <button type="button" class="create-box-remove" @click="removeDocument({ ...data, source: 'manual' })">
-                                <i class="pi pi-trash"></i>
-                            </button>
+                            <div class="create-box-doc-actions">
+                                <button
+                                    v-if="(data.support === 'Digital' || data.support === 'Mixto') && data.digital_file_base64"
+                                    type="button"
+                                    class="create-box-outline"
+                                    @click="previewStoredDocument(data)"
+                                >
+                                    <i class="pi pi-eye"></i>
+                                </button>
+                                <button type="button" class="create-box-remove" @click="removeDocument({ ...data, source: 'manual' })">
+                                    <i class="pi pi-trash"></i>
+                                </button>
+                            </div>
                         </template>
                     </Column>
                 </DataTable>
@@ -689,6 +1185,13 @@ onMounted(fetchCatalog);
             </template>
         </Dialog>
 
+        <DocumentPreviewDialog
+            v-model:visible="documentPreviewVisible"
+            :title="documentPreviewTitle"
+            :source="documentPreviewSource"
+            @hide="addDocumentDialogVisible = true"
+        />
+
         <Dialog v-model:visible="searchDialogVisible" modal :draggable="false" header="Buscar documentos existentes" :style="{ width: 'min(900px, 94vw)' }">
             <form class="archive-existing-search" @submit.prevent="searchExistingDocuments">
                 <InputText v-model="documentSearch" placeholder="Buscar por código, nombre, serie, caja o ubicacion" class="w-full" />
@@ -717,6 +1220,109 @@ onMounted(fetchCatalog);
                     <div class="create-box-empty create-box-empty--small">No hay resultados para mostrar.</div>
                 </template>
             </DataTable>
+        </Dialog>
+
+        <Dialog
+            v-model:visible="labelDialogVisible"
+            modal
+            :draggable="false"
+            :closable="false"
+            :showHeader="false"
+            :contentStyle="{ padding: '0', overflow: 'hidden' }"
+            :style="{ width: 'min(900px, 96vw)', maxWidth: '900px', maxHeight: '80vh' }"
+        >
+            <div class="detalle-labels-modal">
+                <div class="detalle-labels-modal__header">
+                    <div class="flex align-items-start gap-3">
+                        <div class="detalle-labels-modal__title-icon">
+                            <i class="pi pi-box"></i>
+                        </div>
+                        <div>
+                            <h2 class="detalle-labels-modal__title m-0">Etiquetas de Identificacion</h2>
+                            <p class="detalle-labels-modal__subtitle m-0">
+                                Vista previa de 1 etiqueta para la caja #{{ form.box_number || '---' }}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="detalle-labels-modal__actions">
+                        <button type="button" class="detalle-labels-modal__button detalle-labels-modal__button--ghost" :disabled="labelsBusy" @click="downloadLabelsPdf">
+                            <i class="pi pi-download"></i>
+                            <span>{{ labelsBusy ? 'Generando PDF...' : 'Descargar PDF' }}</span>
+                        </button>
+                        <button type="button" class="detalle-labels-modal__button detalle-labels-modal__button--primary" @click="printLabels">
+                            <i class="pi pi-print"></i>
+                            <span>Imprimir</span>
+                        </button>
+                        <button type="button" class="detalle-labels-modal__close" @click="labelDialogVisible = false">
+                            <i class="pi pi-times"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="detalle-labels-modal__body">
+                    <div
+                        ref="labelPreviewRef"
+                        class="detalle-labels-preview"
+                        :style="{ overflow: 'auto', maxHeight: 'calc(80vh - 140px)', padding: '1rem' }"
+                    >
+                        <article v-if="labelPreviewItem" ref="labelPreviewCard" class="transfer-label">
+                            <div class="transfer-label__header">
+                                <div>
+                                    <div class="transfer-label__university">UNIVERSIDAD DE EL SALVADOR</div>
+                                    <div class="transfer-label__faculty">Facultad de Ingenieria y Arquitectura - UGDA</div>
+                                </div>
+                                <div class="transfer-label__date">
+                                    <span>Fecha de transferencia</span>
+                                    <strong>{{ labelPreviewItem.transferDate }}</strong>
+                                </div>
+                            </div>
+
+                            <div class="transfer-label__hero">
+                                <div class="transfer-label__qr">
+                                    <img :src="labelPreviewItem.qrDataUrl" :alt="`Codigo QR ${labelPreviewItem.labelCode}`" />
+                                    <span>Codigo: {{ labelPreviewItem.labelCode }}</span>
+                                </div>
+
+                                <div class="transfer-label__hero-main">
+                                    <div class="transfer-label__location">
+                                        <span>CODIGO DE UBICACION</span>
+                                        <strong>{{ labelPreviewItem.locationCode }}</strong>
+                                    </div>
+
+                                    <div class="transfer-label__box">
+                                        <span>N de caja</span>
+                                        <strong>{{ labelPreviewItem.boxLabel }}</strong>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="transfer-label__details">
+                                <div>
+                                    <span>N° de transferencia</span>
+                                    <strong>{{ labelPreviewItem.transferNumber }}</strong>
+                                </div>
+                                <div>
+                                    <span>Unidad productora</span>
+                                    <strong>{{ labelPreviewItem.unit }}</strong>
+                                </div>
+                                <div class="transfer-label__details--full">
+                                    <span>Contenido de la caja</span>
+                                    <strong>{{ labelPreviewItem.content }}</strong>
+                                </div>
+                            </div>
+
+                            <div class="transfer-label__assigned">
+                                Ubicacion asignada por {{ labelPreviewItem.assignedBy }} el {{ labelPreviewItem.assignedAt }}
+                            </div>
+
+                            <div class="transfer-label__footer">
+                                Instrucciones: Adherir esta etiqueta en la parte frontal de la caja de forma visible. Mantener limpia y legible para facilitar su ubicacion.
+                            </div>
+                        </article>
+                    </div>
+                </div>
+            </div>
         </Dialog>
     </div>
 </template>
@@ -989,6 +1595,32 @@ onMounted(fetchCatalog);
     margin: 0 0 1.2rem;
 }
 
+.archive-doc-form__digital-file {
+    margin-top: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.archive-doc-form__file-input {
+    display: none;
+}
+
+.archive-doc-form__file-name {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    color: #0f4c8f;
+    font-size: 0.95rem;
+    text-align: left;
+    text-decoration: underline;
+}
+
+.archive-doc-form__file-name:hover {
+    opacity: 0.8;
+}
+
 .archive-doc-form__actions {
     margin-top: 1.25rem;
 }
@@ -1107,6 +1739,288 @@ onMounted(fetchCatalog);
     margin-bottom: 1rem;
 }
 
+.detalle-labels-modal {
+    background: #ffffff;
+}
+
+.detalle-labels-modal__header {
+    align-items: flex-start;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+    padding: 1.5rem 1.5rem 1rem;
+}
+
+.detalle-labels-modal__title-icon {
+    align-items: center;
+    background: #edf3fa;
+    border-radius: 0.9rem;
+    color: #2f6f9f;
+    display: inline-flex;
+    flex-shrink: 0;
+    font-size: 1.1rem;
+    height: 2.75rem;
+    justify-content: center;
+    width: 2.75rem;
+}
+
+.detalle-labels-modal__title {
+    color: #2f6f9f;
+    font-size: 2rem;
+    font-weight: 700;
+}
+
+.detalle-labels-modal__subtitle {
+    color: #64748b;
+    font-size: 1rem;
+    margin-top: 0.7rem;
+}
+
+.detalle-labels-modal__actions {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.detalle-labels-modal__button,
+.detalle-labels-modal__close {
+    align-items: center;
+    border-radius: 0.9rem;
+    cursor: pointer;
+    display: inline-flex;
+    font: inherit;
+    gap: 0.6rem;
+    justify-content: center;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.detalle-labels-modal__button:hover,
+.detalle-labels-modal__close:hover {
+    transform: translateY(-1px);
+}
+
+.detalle-labels-modal__button {
+    font-size: 0.98rem;
+    font-weight: 700;
+    min-height: 3rem;
+    padding: 0.8rem 1.15rem;
+}
+
+.detalle-labels-modal__button:disabled {
+    cursor: wait;
+}
+
+.detalle-labels-modal__button--ghost {
+    background: #ffffff;
+    border: 1px solid #2f6f9f;
+    color: #2f6f9f;
+}
+
+.detalle-labels-modal__button--primary {
+    background: var(--ugda-success);
+    border: 1px solid var(--ugda-success);
+    color: var(--ugda-text-inverse);
+}
+
+.detalle-labels-modal__button--primary:hover:not(:disabled) {
+    background: var(--ugda-success-text);
+    border-color: var(--ugda-success-text);
+    color: var(--ugda-text-inverse);
+}
+
+.detalle-labels-modal__close {
+    background: transparent;
+    border: none;
+    color: #64748b;
+    font-size: 1rem;
+    height: 2.6rem;
+    width: 2.6rem;
+}
+
+.detalle-labels-modal__body {
+    margin-bottom: 1.5rem;
+    padding: 0 1.5rem 1.5rem;
+}
+
+.detalle-labels-preview {
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    max-height: calc(100vh - 12.5rem);
+    overflow-x: auto;
+    overflow-y: auto;
+    padding: 0.25rem 0 1rem;
+}
+
+.transfer-label {
+    background: #ffffff;
+    border: 2px solid #1f2937;
+    border-radius: 0.5cm;
+    display: flex;
+    flex-direction: column;
+    height: 18cm;
+    margin-bottom: 0;
+    max-width: none;
+    min-height: 18cm;
+    overflow: hidden;
+    width: 10cm;
+}
+
+.transfer-label--export {
+    height: 18cm !important;
+    margin-bottom: 0 !important;
+    max-width: none !important;
+    min-height: 18cm !important;
+    width: 10cm !important;
+}
+
+.transfer-label--export .transfer-label__footer {
+    margin-top: auto;
+}
+
+.transfer-label__header,
+.transfer-label__hero,
+.transfer-label__details {
+    display: grid;
+    gap: 0.35cm;
+}
+
+.transfer-label__header {
+    align-items: flex-start;
+    border-bottom: 1px solid #dbe5ee;
+    grid-template-columns: 1fr auto;
+    padding: 0.58cm 0.55cm 0.36cm;
+}
+
+.transfer-label__university {
+    color: #0f172a;
+    font-size: 0.44cm;
+    font-weight: 700;
+    line-height: 1.15;
+}
+
+.transfer-label__faculty {
+    color: #64748b;
+    font-size: 0.28cm;
+    line-height: 1.25;
+    margin-top: 0.12cm;
+}
+
+.transfer-label__date {
+    min-width: 2.25cm;
+    text-align: right;
+}
+
+.transfer-label__date span,
+.transfer-label__box span,
+.transfer-label__details span,
+.transfer-label__assigned,
+.transfer-label__qr span {
+    color: #64748b;
+    font-size: 0.25cm;
+    line-height: 1.25;
+}
+
+.transfer-label__date strong {
+    color: #0f172a;
+    display: block;
+    font-size: 0.34cm;
+    line-height: 1.2;
+    margin-top: 0.12cm;
+}
+
+.transfer-label__hero {
+    align-items: center;
+    border-bottom: 1px solid #dbe5ee;
+    grid-template-columns: 1fr;
+    padding: 0.42cm 0.55cm;
+}
+
+.transfer-label__qr {
+    text-align: center;
+}
+
+.transfer-label__qr img {
+    display: block;
+    height: 2.8cm;
+    margin: 0 auto 0.12cm;
+    width: 2.8cm;
+}
+
+.transfer-label__hero-main {
+    min-width: 0;
+}
+
+.transfer-label__location {
+    background: #2f6f9f;
+    border-radius: 0.32cm;
+    color: #ffffff;
+    padding: 0.34cm 0.36cm;
+    text-align: center;
+}
+
+.transfer-label__location span {
+    display: block;
+    font-size: 0.25cm;
+    font-weight: 700;
+}
+
+.transfer-label__location strong {
+    display: block;
+    font-size: 0.7cm;
+    font-weight: 700;
+    letter-spacing: 0;
+    line-height: 1.05;
+    margin-top: 0.14cm;
+}
+
+.transfer-label__box {
+    background: #edf3fa;
+    border-radius: 0.28cm;
+    margin-top: 0.28cm;
+    padding: 0.3cm 0.36cm;
+}
+
+.transfer-label__box strong {
+    color: #0f172a;
+    display: block;
+    font-size: 0.58cm;
+    line-height: 1.1;
+    margin-top: 0.1cm;
+}
+
+.transfer-label__details {
+    grid-template-columns: 1fr;
+    padding: 0.42cm 0.55cm 0.24cm;
+}
+
+.transfer-label__details strong {
+    color: #0f172a;
+    display: block;
+    font-size: 0.33cm;
+    line-height: 1.25;
+    margin-top: 0.08cm;
+}
+
+.transfer-label__assigned {
+    border-top: 1px solid #dbe5ee;
+    margin: 0 0.55cm;
+    padding: 0.3cm 0;
+}
+
+.transfer-label__footer {
+    background: #fff7db;
+    color: #b45309;
+    font-size: 0.24cm;
+    font-weight: 700;
+    line-height: 1.3;
+    margin-top: auto;
+    padding: 0.28cm 0.55cm;
+}
+
 @media (max-width: 991px) {
     .create-box-page {
         margin: -1rem;
@@ -1143,6 +2057,60 @@ onMounted(fetchCatalog);
     .create-box-footer,
     .create-box-footer button {
         width: 100%;
+    }
+
+    .detalle-labels-modal__header,
+    .detalle-labels-modal__body {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    .detalle-labels-modal__header {
+        flex-direction: column;
+    }
+
+    .detalle-labels-modal__actions {
+        width: 100%;
+    }
+
+    .detalle-labels-modal__button {
+        flex: 1 1 13rem;
+    }
+
+    .transfer-label {
+        height: 18cm;
+        min-height: 18cm;
+        width: 10cm;
+    }
+}
+
+@media (max-width: 540px) {
+    .detalle-labels-modal__title {
+        font-size: 1.5rem;
+    }
+
+    .detalle-labels-modal__subtitle {
+        font-size: 0.92rem;
+    }
+
+    .detalle-labels-modal__actions {
+        gap: 0.6rem;
+    }
+
+    .detalle-labels-modal__button {
+        width: 100%;
+    }
+
+    .transfer-label__university {
+        font-size: 1.08rem;
+    }
+
+    .transfer-label__location strong {
+        font-size: 1.5rem;
+    }
+
+    .transfer-label__box strong {
+        font-size: 1.35rem;
     }
 }
 </style>

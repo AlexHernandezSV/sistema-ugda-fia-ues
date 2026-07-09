@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Throwable;
 
@@ -150,6 +151,8 @@ class ArchiveController extends Controller
             'documents.*.year' => ['nullable', 'string', 'max:50'],
             'documents.*.support' => ['nullable', 'string', 'max:30'],
             'documents.*.pages' => ['nullable', 'string', 'max:50'],
+            'documents.*.digital_file_name' => ['nullable', 'string', 'max:255'],
+            'documents.*.digital_file_base64' => ['nullable', 'string'],
             'existing_document_ids' => ['nullable', 'array'],
             'existing_document_ids.*' => ['integer', 'exists:transfer_box_documents,id'],
         ], [
@@ -168,6 +171,31 @@ class ArchiveController extends Controller
                 'message' => 'Los datos de la caja no son validos.',
                 'errors' => $validator->errors(),
             ], 422);
+        }
+
+        $allowedSeriesNames = DocumentarySeries::query()
+            ->where('is_active', true)
+            ->pluck('name')
+            ->map(fn ($name) => mb_strtolower(trim((string) $name)))
+            ->filter()
+            ->values()
+            ->all();
+
+        foreach ((array) $request->input('documents', []) as $documentPayload) {
+            $documentSeries = trim((string) ($documentPayload['series'] ?? ''));
+
+            if ($documentSeries === '') {
+                continue;
+            }
+
+            if (!in_array(mb_strtolower($documentSeries), $allowedSeriesNames, true)) {
+                return response()->json([
+                    'message' => 'Los datos de la caja no son validos.',
+                    'errors' => [
+                        'documents' => ['La serie documental "' . $documentSeries . '" no existe o no esta habilitada.'],
+                    ],
+                ], 422);
+            }
         }
 
         $selectedShelf = $this->findValidShelf(
@@ -250,13 +278,19 @@ class ArchiveController extends Controller
                 }
 
                 foreach ($request->input('documents', []) as $documentPayload) {
+                    $documentSeries = trim((string) ($documentPayload['series'] ?? ''));
+                    $resolvedSeries = $documentSeries !== '' ? $documentSeries : $series->name;
+                    $digitalDocument = $this->storeDigitalDocumentPayload($documentPayload, $transfer->code . '-' . str_pad((string) $sortOrder, 3, '0', STR_PAD_LEFT));
+
                     $box->documents()->create([
                         'code' => $documentPayload['code'] ?? 'DOC-' . $transfer->code . '-' . str_pad((string) $sortOrder, 3, '0', STR_PAD_LEFT),
                         'name' => $documentPayload['name'],
-                        'series_label' => $documentPayload['series'] ?? $series->name,
+                        'series_label' => $resolvedSeries,
                         'support_type' => $documentPayload['support'] ?? 'Fisico',
                         'year_label' => $documentPayload['year'] ?? null,
                         'pages_label' => $documentPayload['pages'] ?? null,
+                        'digital_file_name' => $digitalDocument['name'] ?? null,
+                        'digital_file_path' => $digitalDocument['path'] ?? null,
                         'sort_order' => $sortOrder++,
                     ]);
                 }
@@ -441,6 +475,41 @@ class ArchiveController extends Controller
         }
     }
 
+    private function storeDigitalDocumentPayload(array $documentPayload, string $fallbackName): ?array
+    {
+        $base64Content = trim((string) ($documentPayload['digital_file_base64'] ?? ''));
+
+        if ($base64Content === '') {
+            return null;
+        }
+
+        $originalName = trim((string) ($documentPayload['digital_file_name'] ?? ''));
+        $fileName = $originalName !== '' ? $this->sanitizeFileName($originalName) : $this->sanitizeFileName($fallbackName . '.pdf');
+        $decodedContent = base64_decode($base64Content, true);
+
+        if ($decodedContent === false) {
+            return null;
+        }
+
+        $storagePath = 'uploads/' . $fileName;
+        Storage::disk('local')->put($storagePath, $decodedContent);
+
+        return [
+            'name' => $fileName,
+            'path' => $storagePath,
+        ];
+    }
+
+    private function sanitizeFileName(string $fileName): string
+    {
+        $name = pathinfo($fileName, PATHINFO_FILENAME) ?: 'documento';
+        $extension = pathinfo($fileName, PATHINFO_EXTENSION) ?: 'pdf';
+        $safeName = preg_replace('/[^A-Za-z0-9._-]+/', '-', $name) ?? 'documento';
+        $safeExtension = preg_replace('/[^A-Za-z0-9]+/', '', $extension) ?: 'pdf';
+
+        return $safeName . '.' . $safeExtension;
+    }
+
     private function parseSearchDate(string $term): ?string
     {
         foreach (['d/m/Y', 'd-m-Y', 'd.m.Y', 'Y-m-d'] as $format) {
@@ -511,9 +580,9 @@ class ArchiveController extends Controller
             'transfer' => [
                 'id' => $transfer?->id,
                 'code' => $transfer?->code,
-                'request_date_label' => $transfer?->request_date?->format('d/m/Y'),
-                'completed_at' => $transfer?->completed_at?->toDateTimeString(),
-                'completed_at_label' => $transfer?->completed_at?->format('d/m/Y'),
+                'request_date_label' => optional($transfer?->request_date)->format('d/m/Y'),
+                'completed_at' => optional($transfer?->completed_at)->toDateTimeString(),
+                'completed_at_label' => optional($transfer?->completed_at)->format('d/m/Y'),
                 'responsible' => $this->formatUserName($transfer?->completedBy) ?: $this->formatUserName($transfer?->requester),
             ],
         ];
