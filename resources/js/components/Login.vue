@@ -10,6 +10,7 @@ const route = useRoute();
 
 const step = ref(1);
 const loading = ref(false);
+const showHelpModal = ref(false); // Estado para controlar el modal de ayuda
 const showPassword = ref(false);
 const showTemporaryPassword = ref(false);
 const showNewPassword = ref(false);
@@ -453,10 +454,9 @@ onBeforeUnmount(() => {
                         <span class="login-brand__title">Sistema de Gestión Documental</span>
                         <span class="login-brand__subtitle">Universidad de El Salvador</span>
                     </div>
-
                 </div>
 
-                <button type="button" class="login-help-button">Ayuda</button>
+                <button type="button" class="login-help-button" @click="showHelpModal = true">Ayuda</button>
             </div>
         </header>
 
@@ -576,9 +576,9 @@ onBeforeUnmount(() => {
                         </p>
 
                         <div class="login-step__footer">
-                            © 2025 Universidad de El Salvador
-                            <br />
-                            Facultad de Ingeniería y Arquitectura - Todos los derechos reservados
+                            © 2025 Universidad de El Salvador<br />
+                            Facultad de Ingeniería y Arquitectura<br />
+                            Todos los derechos reservados
                         </div>
                     </div>
 
@@ -632,9 +632,9 @@ onBeforeUnmount(() => {
                             severity="secondary" outlined @click="goBack" />
 
                         <div class="login-step__footer">
-                            © 2025 Universidad de El Salvador
-                            <br />
-                            Facultad de Ingeniería y Arquitectura - Todos los derechos reservados
+                            © 2025 Universidad de El Salvador<br />
+                            Facultad de Ingeniería y Arquitectura<br />
+                            Todos los derechos reservados
                         </div>
                     </div>
 
@@ -712,10 +712,47 @@ onBeforeUnmount(() => {
 
                         <Button label="Volver" class="login-secondary-button w-full justify-content-center"
                             severity="secondary" outlined @click="goBack" />
+                            
+                        <div class="login-step__footer">
+                            © 2025 Universidad de El Salvador<br />
+                            Facultad de Ingeniería y Arquitectura<br />
+                            Todos los derechos reservados
+                        </div>
                     </div>
                 </div>
             </section>
         </main>
+
+        <div v-if="showHelpModal" class="login-modal-overlay" @click.self="showHelpModal = false">
+            <div class="login-modal">
+                <header class="login-modal__header">
+                    <h3 class="login-modal__title">Centro de Ayuda</h3>
+                    <button type="button" class="login-modal__close" @click="showHelpModal = false" aria-label="Cerrar modal">
+                        <i class="pi pi-times"></i>
+                    </button>
+                </header>
+                
+                <div class="login-modal__body">
+                    <div class="login-modal__section">
+                        <h4 class="login-modal__subtitle">¿Necesitas ayuda con los procesos?</h4>
+                        <p class="login-modal__text">Para mayor información o asistencia con los procedimientos institucionales, contáctanos al correo:</p>
+                        <a href="mailto:procesos-ugda@fia.ues.edu.sv" class="login-modal__link">
+                            <i class="pi pi-envelope"></i> procesos-ugda@fia.ues.edu.sv
+                        </a>
+                    </div>
+                    
+                    <div class="login-modal__section">
+                        <h4 class="login-modal__subtitle">¿Problemas de acceso?</h4>
+                        <p class="login-modal__text">Si necesitas recuperar tus credenciales o reportar problemas técnicos para ingresar, comunícate a:</p>
+                        <a href="mailto:admin-ugda@fia.ues.edu.sv" class="login-modal__link login-modal__link--secondary">
+                            <i class="pi pi-user-edit"></i> admin-ugda@fia.ues.edu.sv
+                        </a>
+                    </div>
+                </div>
+
+                
+            </div>
+        </div>
     </div>
 </template>
 
@@ -742,7 +779,10 @@ onBeforeUnmount(() => {
 
 .login-shell {
     position: relative;
-    min-height: 100vh;
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
     background: linear-gradient(180deg, #f5f9ff 0%, #edf5ff 100%);
 }
@@ -774,6 +814,7 @@ onBeforeUnmount(() => {
 .login-header {
     position: relative;
     z-index: 2;
+    flex-shrink: 0;
     background: #296cba;
     box-shadow: 0 2px 16px rgba(17, 59, 115, 0.18);
 }
@@ -846,13 +887,15 @@ onBeforeUnmount(() => {
 .login-main {
     position: relative;
     z-index: 1;
+    flex: 1;
+    width: 100%;
     max-width: 1320px;
     margin: 0 auto;
-    padding: 28px 24px 18px;
+    padding: 0 24px;
     display: grid;
     grid-template-columns: minmax(0, 1fr) 416px;
     gap: 64px;
-    align-items: start;
+    align-content: center;
 }
 
 .login-hero {
@@ -874,7 +917,7 @@ onBeforeUnmount(() => {
 }
 
 .login-hero__title {
-    margin: 18px 0 10px;
+    margin: clamp(10px, 2vh, 18px) 0 clamp(6px, 1vh, 10px);
     color: #2f6fae;
     font-size: var(--ugda-font-h1);
     font-weight: 800;
@@ -883,8 +926,8 @@ onBeforeUnmount(() => {
 }
 
 .login-hero__description {
-    max-width: 760px;
-    margin: 0 0 18px;
+    max-width: 610px;
+    margin: 0 0 clamp(10px, 2vh, 18px);
     color: #516f95;
     font-size: var(--ugda-font-body);
     font-weight: 400;
@@ -894,8 +937,8 @@ onBeforeUnmount(() => {
 .login-hero__image-card {
     width: 100%;
     max-width: 610px;
-    height: 200px;
-    margin-bottom: 18px;
+    height: clamp(140px, 24vh, 260px);
+    margin-bottom: clamp(10px, 2vh, 18px);
     border-radius: 16px;
     overflow: hidden;
     background: #ffffff;
@@ -911,7 +954,7 @@ onBeforeUnmount(() => {
 
 .login-hero__image-fallback {
     display: none;
-    min-height: 200px;
+    min-height: 100%;
     align-items: center;
     justify-content: center;
     background: #dfe8f6;
@@ -927,8 +970,8 @@ onBeforeUnmount(() => {
 }
 
 .login-feature-card {
-    min-height: 124px;
-    padding: 12px 14px;
+    min-height: auto;
+    padding: clamp(10px, 1.5vh, 12px) 14px;
     border-radius: 14px;
     background: rgba(255, 255, 255, 0.95);
     border: 1px solid rgba(170, 197, 232, 0.52);
@@ -942,7 +985,7 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: 8px;
+    margin-bottom: clamp(4px, 1vh, 8px);
 }
 
 .login-feature-card__icon--blue {
@@ -979,13 +1022,12 @@ onBeforeUnmount(() => {
 .login-auth {
     display: flex;
     justify-content: flex-end;
-    padding-top: 22px;
 }
 
 .login-auth__card {
     width: 100%;
     max-width: 416px;
-    padding: 22px 32px 20px;
+    padding: clamp(24px, 4vh, 32px) 32px clamp(20px, 3vh, 28px);
     border-radius: 18px;
     background: rgba(255, 255, 255, 0.97);
     border: 1px solid rgba(204, 220, 239, 0.65);
@@ -995,19 +1037,20 @@ onBeforeUnmount(() => {
 .login-step {
     display: flex;
     flex-direction: column;
+    height: 100%;
 }
 
 .login-step__brand {
     text-align: center;
-    margin-bottom: 18px;
+    margin-bottom: clamp(16px, 3vh, 24px); 
 }
 
 .login-step__logo {
-    width: 76px;
-    height: 98px;
+    width: clamp(60px, 8vh, 76px);
+    height: auto;
     object-fit: contain;
     display: block;
-    margin: 0 auto 10px;
+    margin: 0 auto clamp(8px, 1.5vh, 12px);
 }
 
 .login-step__title {
@@ -1027,12 +1070,12 @@ onBeforeUnmount(() => {
 }
 
 .login-field {
-    margin-bottom: 16px;
+    margin-bottom: clamp(16px, 2vh, 20px); 
 }
 
 .login-field__label {
     display: block;
-    margin-bottom: 8px;
+    margin-bottom: clamp(6px, 1vh, 8px); 
     color: #2e6fad;
     font-size: var(--ugda-font-body);
     font-weight: 700;
@@ -1118,7 +1161,7 @@ onBeforeUnmount(() => {
 
 .login-primary-button {
     min-height: 48px;
-    margin-top: 4px;
+    margin-top: 8px;
     border: none !important;
     border-radius: 12px !important;
     background: linear-gradient(180deg, #3879b6 0%, #2f6fad 100%) !important;
@@ -1236,12 +1279,159 @@ onBeforeUnmount(() => {
 }
 
 .login-step__footer {
-    margin-top: 16px;
+    margin-top: auto; 
+    padding-top: clamp(24px, 4vh, 32px); 
     color: #6b819f;
-    font-size: var(--ugda-font-helper);
+    font-size: 11.5px; 
     font-weight: 500;
-    line-height: 1.7;
+    line-height: 1.6;
     text-align: center;
+}
+
+/* ------------------------------------- */
+/* ESTILOS DEL MODAL DE AYUDA            */
+/* ------------------------------------- */
+.login-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(14, 32, 59, 0.45);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 24px;
+    animation: loginFadeIn 0.2s ease-out forwards;
+}
+
+.login-modal {
+    width: 100%;
+    max-width: 460px;
+    background: #ffffff;
+    border-radius: 18px;
+    box-shadow: 0 24px 50px rgba(18, 43, 80, 0.2);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: loginSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.login-modal__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    border-bottom: 1px solid rgba(204, 220, 239, 0.5);
+    background: rgba(245, 249, 255, 0.5);
+}
+
+.login-modal__title {
+    margin: 0;
+    color: #296cba;
+    font-size: 18px;
+    font-weight: 800;
+}
+
+.login-modal__close {
+    background: transparent;
+    border: none;
+    color: #7a8fa9;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s, background 0.2s;
+}
+
+.login-modal__close:hover {
+    color: #296cba;
+    background: #eaf3ff;
+}
+
+.login-modal__body {
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.login-modal__section {
+    background: #f8fafc;
+    padding: 20px;
+    border-radius: 14px;
+    border: 1px solid rgba(204, 220, 239, 0.4);
+}
+
+.login-modal__subtitle {
+    margin: 0 0 8px;
+    color: #2f6fae;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.login-modal__text {
+    margin: 0 0 14px;
+    color: #607a9c;
+    font-size: 14px;
+    line-height: 1.55;
+    font-weight: 500;
+}
+
+.login-modal__link {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: #296cba;
+    font-size: 14.5px;
+    font-weight: 700;
+    text-decoration: none;
+    background: #eaf3ff;
+    padding: 10px 16px;
+    border-radius: 10px;
+    transition: background 0.2s, color 0.2s, transform 0.1s;
+}
+
+.login-modal__link:hover {
+    background: #296cba;
+    color: #ffffff;
+    transform: translateY(-1px);
+}
+
+.login-modal__link--secondary {
+    background: #fff4e7;
+    color: #e39a2d;
+}
+
+.login-modal__link--secondary:hover {
+    background: #e39a2d;
+    color: #ffffff;
+}
+
+.login-modal__footer {
+    padding: 16px 24px 24px;
+    background: #ffffff;
+}
+
+@keyframes loginFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes loginSlideUp {
+    from { 
+        transform: translateY(20px) scale(0.98); 
+        opacity: 0; 
+    }
+    to { 
+        transform: translateY(0) scale(1); 
+        opacity: 1; 
+    }
 }
 
 @media (max-width: 1200px) {
@@ -1256,11 +1446,17 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 991px) {
+    .login-shell {
+        overflow-y: auto;
+    }
+
     .login-main {
         padding-top: 38px;
+        padding-bottom: 38px;
         grid-template-columns: 1fr;
         gap: 28px;
         justify-items: center;
+        align-content: start;
     }
 
     .login-auth {
@@ -1280,10 +1476,6 @@ onBeforeUnmount(() => {
     .login-feature-grid {
         max-width: 610px;
         width: 100%;
-    }
-
-    .login-hero__description {
-        max-width: 610px;
     }
 }
 
@@ -1336,6 +1528,11 @@ onBeforeUnmount(() => {
     .login-code-input {
         height: 50px;
         font-size: 21px;
+    }
+    
+    .login-modal__link {
+        font-size: 13px;
+        padding: 10px 12px;
     }
 }
 </style>
