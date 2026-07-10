@@ -310,7 +310,22 @@ const openNotification = async (notification) => {
         closeMobileMenu();
 
         if (notification.action_url) {
-            router.push(notification.action_url);
+            const target = String(notification.action_url);
+
+            // External/full URLs: navigate the browser
+            if (/^https?:\/\//.test(target)) {
+                window.location.href = target;
+                return;
+            }
+
+            // Internal routes: if already on the same route, force a full reload
+            const current = router.currentRoute.value.fullPath || router.currentRoute.value.path || window.location.pathname;
+            if (current === target) {
+                window.location.reload();
+                return;
+            }
+
+            router.push(target);
         } else {
             router.push('/notificaciones');
         }

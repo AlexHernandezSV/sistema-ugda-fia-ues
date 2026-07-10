@@ -304,11 +304,11 @@ class RequestCatalog
                     'notesLabel' => 'Aclaraciones del solicitante:',
                     'notes' => $latestApplicantClarification->context['correction_notes'] ?? 'Sin aclaraciones registradas.',
                     'description' => $isPhysicalClarification
-                        ? 'El solicitante ha corregido las observaciones y reenviado la solicitud para nueva validaciÃ³n'
-                        : 'El solicitante ha atendido las observaciones de UGDA y reenviado la solicitud para nueva validaciÃ³n',
+                        ? 'El solicitante ha corregido las observaciones y reenviado la solicitud para nueva validación'
+                        : 'El solicitante ha atendido las observaciones de UGDA y reenviado la solicitud para nueva validación',
                     'message' => $isPhysicalClarification
-                        ? 'Se ha recibido la documentaciÃ³n corregida. Revise las aclaraciones del solicitante e inicie una nueva revisiÃ³n fÃ­sica para validar los cambios realizados.'
-                        : 'Se han recibido las aclaraciones del solicitante. Revise la respuesta antes de continuar con la autorizaciÃ³n o gestiÃ³n de la solicitud.',
+                        ? 'Se ha recibido la documentación corregida. Revise las aclaraciones del solicitante e inicie una nueva revisión fÃ­sica para validar los cambios realizados.'
+                        : 'Se han recibido las aclaraciones del solicitante. Revise la respuesta antes de continuar con la autorización o gestión de la solicitud.',
                 ]
                 : null,
             'observationsRegistered' => $workflowCode === 'transfer_status_observed' && $initialReviewObservations->isNotEmpty()
