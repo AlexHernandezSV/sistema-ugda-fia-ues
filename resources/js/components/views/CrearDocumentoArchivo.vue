@@ -367,7 +367,7 @@ onMounted(async () => {
                             <i class="pi pi-search"></i>
                             <InputText
                                 v-model="boxSearch"
-                                placeholder="Buscar por numero de caja, serie o ubicacion..."
+                                placeholder="Buscar por numero de caja, serie o ubicación..."
                                 :disabled="isSearchingBoxes"
                             />
                             <button type="submit" :disabled="isSearchingBoxes">
@@ -390,12 +390,12 @@ onMounted(async () => {
                     <template #option="{ option }">
                         <div class="create-document-box-option">
                             <strong>Caja #{{ option.number }}</strong>
-                            <span>{{ option.series }} - {{ option.unit?.name ?? 'Sin unidad' }} - {{ option.location ?? 'Sin ubicacion' }}</span>
+                            <span>{{ option.series }} - {{ option.unit?.name ?? 'Sin unidad' }} - {{ option.location ?? 'Sin ubicación' }}</span>
                         </div>
                     </template>
                     <template #value="{ value, placeholder }">
                         <span v-if="selectedBox">
-                            Caja #{{ selectedBox.number }} - {{ selectedBox.series }} - {{ selectedBox.location ?? 'Sin ubicacion' }}
+                            Caja #{{ selectedBox.number }} - {{ selectedBox.series }} - {{ selectedBox.location ?? 'Sin ubicación' }}
                         </span>
                         <span v-else>{{ placeholder }}</span>
                     </template>

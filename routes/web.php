@@ -172,8 +172,12 @@ Route::middleware('auth')->group(function () {
     Route::get('/api/transfers/{number}/boxes/{boxNumber}/label', [RequestCatalogController::class, 'showTransferBoxLabel']);
     Route::get('/api/transfers/{number}/edit-data', [TransferController::class, 'editData']);
     Route::put('/api/transfers/{number}/resubmit-correction', [TransferController::class, 'resubmitCorrection']);
-    Route::get('/api/transfers/{number}/summary-sheet', [RequestCatalogController::class, 'downloadTransferSummarySheet']);
-    Route::get('/api/transfers/{number}/documents/{code}/download', [RequestCatalogController::class, 'downloadTransferDocument']);
+    Route::get('/api/transfers/{number}/summary-sheet', [RequestCatalogController::class, 'downloadTransferSummarySheet'])
+        ->middleware('signed:relative')
+        ->name('transfers.summary-sheet');
+    Route::get('/api/transfers/{number}/documents/{code}/download', [RequestCatalogController::class, 'downloadTransferDocument'])
+        ->middleware('signed:relative')
+        ->name('transfers.documents.download');
     Route::post('/api/transfers/{number}/unit-authorize', [TransferController::class, 'authorizeByUnit']);
     Route::post('/api/transfers/{number}/unit-deny', [TransferController::class, 'denyByUnit']);
     Route::post('/api/transfers/{number}/schedule', [TransferController::class, 'schedule']);

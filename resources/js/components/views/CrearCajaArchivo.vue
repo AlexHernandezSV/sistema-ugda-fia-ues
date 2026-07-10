@@ -525,7 +525,7 @@ const addExistingDocument = (document) => {
 
 const previewLabel = async () => {
     if (!generatedLocationCode.value) {
-        showError('Complete la ubicacion fisica de la caja.');
+        showError('Complete la ubicación física de la caja.');
         return;
     }
 
@@ -597,7 +597,7 @@ const buildLabelsDocument = () => {
                         </div>
                         <div class="print-label-card__hero-main">
                             <div class="print-label-card__location">
-                                <span>CODIGO DE UBICACION</span>
+                                <span>CÓDIGO DE UBICACIÓN</span>
                                 <strong>${escapeHtml(label.locationCode)}</strong>
                             </div>
                             <div class="print-label-card__box">
@@ -621,10 +621,10 @@ const buildLabelsDocument = () => {
                         </div>
                     </div>
                     <div class="print-label-card__assigned">
-                        Ubicacion asignada por ${escapeHtml(label.assignedBy)} el ${escapeHtml(label.assignedAt)}
+                        Ubicación asignada por ${escapeHtml(label.assignedBy)} el ${escapeHtml(label.assignedAt)}
                     </div>
                     <div class="print-label-card__footer">
-                        Instrucciones: Adherir esta etiqueta en la parte frontal de la caja de forma visible. Mantener limpia y legible para facilitar su ubicacion.
+                        Instrucciones: Adherir esta etiqueta en la parte frontal de la caja de forma visible. Mantener limpia y legible para facilitar su ubicación.
                     </div>
                 </article>
             </body>
@@ -867,7 +867,7 @@ onMounted(fetchCatalog);
             </section>
 
             <section class="create-box-section">
-                <h2>Ubicacion Fisica</h2>
+                <h2>Ubicación Física</h2>
 
                 <div class="create-box-grid create-box-grid--three">
                     <label>
@@ -909,7 +909,7 @@ onMounted(fetchCatalog);
 
                 <div v-if="generatedLocationCode" class="create-box-location">
                     <div>
-                        <span>Código de Ubicacion Generado:</span>
+                        <span>Código de Ubicación Generado:</span>
                         <strong>{{ generatedLocationCode }}</strong>
                     </div>
                     <button type="button" @click="previewLabel">
@@ -1195,7 +1195,7 @@ onMounted(fetchCatalog);
 
         <Dialog v-model:visible="searchDialogVisible" modal :draggable="false" header="Buscar documentos existentes" :style="{ width: 'min(900px, 94vw)' }">
             <form class="archive-existing-search" @submit.prevent="searchExistingDocuments">
-                <InputText v-model="documentSearch" placeholder="Buscar por código, nombre, serie, caja o ubicacion" class="w-full" />
+                <InputText v-model="documentSearch" placeholder="Buscar por código, nombre, serie, caja o ubicación" class="w-full" />
                 <button type="submit" class="create-box-primary" :disabled="isSearchingDocuments">
                     {{ isSearchingDocuments ? 'Buscando...' : 'Buscar' }}
                 </button>
@@ -1207,10 +1207,10 @@ onMounted(fetchCatalog);
                 <Column field="title" header="Nombre" />
                 <Column header="Caja Actual">
                     <template #body="{ data }">
-                        #{{ data.box?.number ?? 'N/D' }} - {{ data.box?.location ?? 'Sin ubicacion' }}
+                        #{{ data.box?.number ?? 'N/D' }} - {{ data.box?.location ?? 'Sin ubicación' }}
                     </template>
                 </Column>
-                <Column header="Accion">
+                <Column header="Acción">
                     <template #body="{ data }">
                         <button type="button" class="create-box-outline" @click="addExistingDocument(data)">
                             Mover
@@ -1287,7 +1287,7 @@ onMounted(fetchCatalog);
 
                                 <div class="transfer-label__hero-main">
                                     <div class="transfer-label__location">
-                                        <span>CODIGO DE UBICACION</span>
+                                        <span>CÓDIGO DE UBICACIÓN</span>
                                         <strong>{{ labelPreviewItem.locationCode }}</strong>
                                     </div>
 
@@ -1314,11 +1314,11 @@ onMounted(fetchCatalog);
                             </div>
 
                             <div class="transfer-label__assigned">
-                                Ubicacion asignada por {{ labelPreviewItem.assignedBy }} el {{ labelPreviewItem.assignedAt }}
+                                Ubicación asignada por {{ labelPreviewItem.assignedBy }} el {{ labelPreviewItem.assignedAt }}
                             </div>
 
                             <div class="transfer-label__footer">
-                                Instrucciones: Adherir esta etiqueta en la parte frontal de la caja de forma visible. Mantener limpia y legible para facilitar su ubicacion.
+                                Instrucciones: Adherir esta etiqueta en la parte frontal de la caja de forma visible. Mantener limpia y legible para facilitar su ubicación.
                             </div>
                         </article>
                     </div>

@@ -246,7 +246,7 @@ class RequestCatalog
                     'title' => 'Hojas resumen obligatorias',
                     'description' => 'Para que toda la documentacion sea recibida es obligatorio llevar todas las hojas resumen de la transferencia firmadas y selladas por el jefe de la unidad.',
                     'buttonLabel' => 'Visualizar PDF',
-                    'url' => '/api/transfers/' . $transfer->code . '/summary-sheet',
+                    'url' => SignedPdfUrl::transferSummarySheet($transfer->code),
                 ]
                 : null,
             'processCard' => ($isScheduled || $workflowCode === 'transfer_status_subsanated') && self::viewerCanManageUgda($viewer)
@@ -836,7 +836,7 @@ class RequestCatalog
                     'digitalFile' => $hideDigitalSupport ? null : $document->digital_file_name,
                     'digitalAvailable' => !$hideDigitalSupport && !empty($document->digital_file_name),
                     'digitalRestricted' => $hideDigitalSupport && !empty($document->digital_file_name),
-                    'digitalUrl' => !$hideDigitalSupport && $document->digital_file_name ? '/api/transfers/' . $transfer->code . '/documents/' . $document->code . '/download' : null,
+                    'digitalUrl' => !$hideDigitalSupport && $document->digital_file_name ? SignedPdfUrl::transferDocument($transfer->code, $document->code) : null,
                 ];
             })->values()->all(),
         ];

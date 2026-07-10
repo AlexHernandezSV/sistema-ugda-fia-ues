@@ -18,7 +18,7 @@ const boxesCount = computed(() => boxes.value.length);
 const cards = [
     {
         title: 'Crear Nueva Caja',
-        description: 'Crea nuevas cajas y asigna documentos con ubicacion fisica',
+        description: 'Crea nuevas cajas y asigna documentos con ubicación física',
         icon: 'pi pi-box',
         action: () => router.push('/archivo-general/cajas/crear'),
     },
@@ -101,7 +101,7 @@ const printLabel = (box) => {
                     <p>Serie <strong>${box.series ?? 'Sin serie'}</strong></p>
                     <p>Unidad <strong>${box.unit?.name ?? 'Sin unidad'}</strong></p>
                     <p>Periodo <strong>${box.period ?? 'N/D'}</strong></p>
-                    <p>Ubicacion <strong>${box.location ?? 'Pendiente'}</strong></p>
+                    <p>Ubicación <strong>${box.location ?? 'Pendiente'}</strong></p>
                 </section>
                 <script>window.print();<\/script>
             </body>
@@ -185,7 +185,7 @@ onMounted(fetchBoxes);
                         <InputText
                             v-model="query"
                             type="text"
-                            placeholder="Buscar por numero, serie, unidad o ubicacion..."
+                            placeholder="Buscar por numero, serie, unidad o ubicación..."
                             :disabled="loading"
                         />
                     </form>
@@ -210,7 +210,7 @@ onMounted(fetchBoxes);
                         </template>
                     </Column>
                     <Column field="period" header="Periodo" />
-                    <Column field="location" header="Ubicacion" />
+                    <Column field="location" header="Ubicación" />
                     <Column field="documents_count" header="Documentos" />
                     <Column header="Acciones">
                         <template #body="{ data }">

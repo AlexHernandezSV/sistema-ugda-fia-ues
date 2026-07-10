@@ -512,11 +512,11 @@ const buildLabelsDocument = () => {
             </div>
 
             <div class="print-label-card__assigned">
-                Ubicacion asignada por ${escapeHtml(label.assignedBy)} el ${escapeHtml(label.assignedAt)}
+                Ubicación asignada por ${escapeHtml(label.assignedBy)} el ${escapeHtml(label.assignedAt)}
             </div>
 
             <div class="print-label-card__footer">
-                Instrucciones: Adherir esta etiqueta en la parte frontal de la caja de forma visible. Mantener limpia y legible para facilitar su ubicacion.
+                Instrucciones: Adherir esta etiqueta en la parte frontal de la caja de forma visible. Mantener limpia y legible para facilitar su ubicación.
             </div>
         </article>
     `).join('');
@@ -2802,11 +2802,11 @@ watch(
                         </div>
 
                         <div class="transfer-label__assigned">
-                            Ubicacion asignada por {{ label.assignedBy }} el {{ label.assignedAt }}
+                            Ubicación asignada por {{ label.assignedBy }} el {{ label.assignedAt }}
                         </div>
 
                         <div class="transfer-label__footer">
-                            Instrucciones: Adherir esta etiqueta en la parte frontal de la caja de forma visible. Mantener limpia y legible para facilitar su ubicacion.
+                            Instrucciones: Adherir esta etiqueta en la parte frontal de la caja de forma visible. Mantener limpia y legible para facilitar su ubicación.
                         </div>
                     </article>
                 </div>

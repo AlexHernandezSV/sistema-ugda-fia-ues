@@ -259,7 +259,7 @@ const saveLocation = async () => {
         toast.add({
             severity: "success",
             summary: "Guardado",
-            detail: data.message ?? "Ubicacion fisica guardada correctamente.",
+            detail: data.message ?? "Ubicación física guardada correctamente.",
             life: 3000,
         });
         dialogVisible.value = false;
@@ -267,7 +267,7 @@ const saveLocation = async () => {
     } catch (error) {
         showError(
             error.response?.data?.message ??
-                "No se pudo guardar la ubicacion fisica.",
+                "No se pudo guardar la ubicación física.",
         );
     } finally {
         saving.value = false;
@@ -629,7 +629,7 @@ const goBack = () => {
                         v-model="form.code"
                         class="w-full"
                         :maxlength="textFieldMaxLength"
-                        placeholder="Código para ubicacion"
+                        placeholder="Código para ubicación"
                     />
                     <small class="locations-field-counter">
                         {{ characterCounter(form.code) }}/{{ textFieldMaxLength }}

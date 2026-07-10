@@ -532,7 +532,7 @@ class PhysicalLocationController extends Controller
     private function validationResponse($validator): JsonResponse
     {
         return response()->json([
-            'message' => 'Los datos de la ubicacion fisica no son validos.',
+            'message' => 'Los datos de la ubicación física no son válidos.',
             'errors' => $validator->errors(),
         ], 422);
     }
@@ -540,7 +540,7 @@ class PhysicalLocationController extends Controller
     private function adminOnlyResponse(): JsonResponse
     {
         return response()->json([
-            'message' => 'Solo el administrador UGDA puede gestionar ubicaciones fisicas.',
+            'message' => 'Solo el administrador UGDA puede gestionar ubicaciones físicas.',
         ], 403);
     }
 

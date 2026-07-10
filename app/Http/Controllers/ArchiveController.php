@@ -10,6 +10,7 @@ use App\Models\TransferBox;
 use App\Models\TransferDocument;
 use App\Models\Unit;
 use App\Models\User;
+use App\Support\SignedPdfUrl;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -206,7 +207,7 @@ class ArchiveController extends Controller
 
         if ($selectedShelf === null) {
             return response()->json([
-                'message' => 'La ubicacion fisica seleccionada no respeta la relacion oficina, pasillo y estante.',
+                'message' => 'La ubicación fisica seleccionada no respeta la relacion oficina, pasillo y estante.',
             ], 422);
         }
 
@@ -375,7 +376,7 @@ class ArchiveController extends Controller
 
         if ($validator->fails()) {
             return response()->json([
-                'message' => 'Los datos de la nueva ubicacion no son validos.',
+                'message' => 'Los datos de la nueva ubicación no son válidos.',
                 'errors' => $validator->errors(),
             ], 422);
         }
@@ -388,7 +389,7 @@ class ArchiveController extends Controller
 
         if ($selectedShelf === null) {
             return response()->json([
-                'message' => 'La ubicacion fisica seleccionada no respeta la relacion oficina, pasillo y estante.',
+                'message' => 'La ubicación física seleccionada no respeta la relación oficina, pasillo y estante.',
             ], 422);
         }
 
@@ -414,7 +415,7 @@ class ArchiveController extends Controller
                     'actor_user_id' => $request->user()->id,
                     'event_type' => 'status',
                     'title' => 'Caja reasignada',
-                    'description' => 'La caja #' . $box->formattedBoxNumber() . ' fue reasignada a una nueva ubicacion fisica.',
+                    'description' => 'La caja #' . $box->formattedBoxNumber() . ' fue reasignada a una nueva ubicación física.',
                     'context' => [
                         'box_number' => $box->box_number,
                         'previous_location_code' => $previousLocation,
@@ -427,14 +428,14 @@ class ArchiveController extends Controller
             });
 
             return response()->json([
-                'message' => 'Ubicacion de caja reasignada correctamente.',
+                'message' => 'Ubicación de caja reasignada correctamente.',
                 'box' => $this->mapBox($box),
             ]);
         } catch (Throwable $exception) {
             report($exception);
 
             return response()->json([
-                'message' => 'No se pudo reasignar la ubicacion de la caja.',
+                'message' => 'No se pudo reasignar la ubicación de la caja.',
             ], 500);
         }
     }
@@ -1073,7 +1074,7 @@ class ArchiveController extends Controller
             'digital_available' => !empty($document->digital_file_name),
             'digital_file' => $document->digital_file_name,
             'digital_url' => !empty($document->digital_file_name) && $transfer?->code && $document->code
-                ? '/api/transfers/' . $transfer->code . '/documents/' . $document->code . '/download'
+                ? SignedPdfUrl::transferDocument($transfer->code, $document->code)
                 : null,
             'box' => [
                 'id' => $box?->id,

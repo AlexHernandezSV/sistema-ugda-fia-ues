@@ -63,13 +63,13 @@ onMounted(fetchLabel);
                 <div>
                     <p class="label-access-kicker">Consulta de etiqueta</p>
                     <h1>Etiqueta {{ label.labelCode }}</h1>
-                    <span>Informacion de ubicacion fisica para UGDA</span>
+                    <span>Informacion de ubicación física para UGDA</span>
                 </div>
             </header>
 
             <div class="label-access-location">
-                <span>Codigo de ubicacion</span>
-                <strong>{{ label.locationCode || 'Sin ubicacion asignada' }}</strong>
+                <span>Codigo de ubicación</span>
+                <strong>{{ label.locationCode || 'Sin ubicación asignada' }}</strong>
             </div>
 
             <div class="label-access-grid">
@@ -102,7 +102,7 @@ onMounted(fetchLabel);
             <section class="label-access-content">
                 <span>Contenido de la caja</span>
                 <strong>{{ label.content }}</strong>
-                <p>Ubicacion asignada por {{ label.assignedBy }} el {{ label.assignedAt || 'sin fecha registrada' }}.</p>
+                <p>Ubicación asignada por {{ label.assignedBy }} el {{ label.assignedAt || 'sin fecha registrada' }}.</p>
             </section>
 
             <section class="label-access-documents">
@@ -192,6 +192,7 @@ onMounted(fetchLabel);
 }
 
 .label-access-header h1 {
+    color: #ffffff;
     font-size: 2rem;
     font-weight: 600;
 }

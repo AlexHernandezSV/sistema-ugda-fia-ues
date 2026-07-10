@@ -195,7 +195,7 @@ const printReassignedLabel = () => {
                     <div class="transfer-label__hero">
                         <div class="transfer-label__qr"><img src="${label.qrDataUrl}" alt="Codigo QR ${escapeHtml(label.labelCode)}" /><span>Codigo: ${escapeHtml(label.labelCode)}</span></div>
                         <div>
-                            <div class="transfer-label__location"><span>CODIGO DE UBICACION</span><strong>${escapeHtml(label.locationCode)}</strong></div>
+                            <div class="transfer-label__location"><span>CÓDIGO DE UBICACIÓN</span><strong>${escapeHtml(label.locationCode)}</strong></div>
                             <div class="transfer-label__box"><span>N de caja</span><strong>${escapeHtml(label.boxLabel)}</strong></div>
                         </div>
                     </div>
@@ -204,8 +204,8 @@ const printReassignedLabel = () => {
                         <div><span>Unidad productora</span><strong>${escapeHtml(label.unit)}</strong></div>
                         <div><span>Contenido de la caja</span><strong>${escapeHtml(label.content)}</strong></div>
                     </div>
-                    <div class="transfer-label__assigned">Ubicacion reasignada por ${escapeHtml(label.assignedBy)} el ${escapeHtml(label.assignedAt)}</div>
-                    <div class="transfer-label__footer">Instrucciones: Adherir esta etiqueta en la parte frontal de la caja de forma visible. Mantener limpia y legible para facilitar su ubicacion.</div>
+                    <div class="transfer-label__assigned">Ubicación reasignada por ${escapeHtml(label.assignedBy)} el ${escapeHtml(label.assignedAt)}</div>
+                    <div class="transfer-label__footer">Instrucciones: Adherir esta etiqueta en la parte frontal de la caja de forma visible. Mantener limpia y legible para facilitar su ubicación.</div>
                 </article>
                 <script>window.onload = () => { window.focus(); window.print(); };<\/script>
             </body>
@@ -387,7 +387,7 @@ const requestBoxLocationConfirmation = () => {
     }
 
     if (!locationForm.value.office_id || !locationForm.value.aisle_id || !locationForm.value.shelf_id) {
-        showToast('error', 'Error', 'Complete la nueva ubicacion fisica de la caja.');
+        showToast('error', 'Error', 'Complete la nueva ubicación física de la caja.');
         return;
     }
 
@@ -401,7 +401,7 @@ const submitBoxLocation = async () => {
     }
 
     if (!locationForm.value.office_id || !locationForm.value.aisle_id || !locationForm.value.shelf_id) {
-        showToast('error', 'Error', 'Complete la nueva ubicacion fisica de la caja.');
+        showToast('error', 'Error', 'Complete la nueva ubicación física de la caja.');
         return;
     }
 
@@ -420,7 +420,7 @@ const submitBoxLocation = async () => {
         showToast('success', 'Caja movida', `Se movio la caja #${movedBox} correctamente.`);
         resetBoxReassignment();
     } catch (error) {
-        showToast('error', 'Error', error.response?.data?.message ?? 'No se pudo reasignar la ubicacion.');
+        showToast('error', 'Error', error.response?.data?.message ?? 'No se pudo reasignar la ubicación.');
     } finally {
         isSaving.value = false;
     }
@@ -498,7 +498,7 @@ onMounted(async () => {
                         <span class="reassign-type__icon"><i class="pi pi-box"></i></span>
                         <span>
                             <strong>Reasignar Caja</strong>
-                            <small>Cambiar ubicacion fisica de una caja</small>
+                            <small>Cambiar ubicación física de una caja</small>
                         </span>
                     </button>
 
@@ -541,7 +541,7 @@ onMounted(async () => {
                         >
                             <strong>Caja #{{ box.number }}</strong>
                             <span>Serie: {{ box.series }}</span>
-                            <span>Ubicacion Actual: {{ box.location ?? 'Pendiente' }}</span>
+                            <span>Ubicación Actual: {{ box.location ?? 'Pendiente' }}</span>
                             <span>Unidad: {{ box.unit?.name ?? 'Sin unidad' }}</span>
                         </button>
                     </div>
@@ -551,14 +551,14 @@ onMounted(async () => {
                 </section>
 
                 <section v-if="selectedBox" class="reassign-section">
-                    <h2>Nueva Ubicacion</h2>
+                    <h2>Nueva Ubicación</h2>
 
                     <div class="reassign-current">
                         <strong>Informacion Actual</strong>
                         <span>Caja: #{{ selectedBox?.number ?? '---' }}</span>
                         <span>Serie: {{ selectedBox?.series ?? 'Seleccione una caja' }}</span>
                         <span>Unidad productora: {{ selectedBox?.unit?.name ?? '---' }}</span>
-                        <span>Ubicacion Actual: {{ selectedBox?.location ?? 'Pendiente' }}</span>
+                        <span>Ubicación Actual: {{ selectedBox?.location ?? 'Pendiente' }}</span>
                     </div>
 
                     <div class="reassign-grid">
@@ -601,7 +601,7 @@ onMounted(async () => {
                     </div>
 
                     <div v-if="generatedLocationCode" class="reassign-location-preview">
-                        <span>Nuevo codigo de ubicacion</span>
+                        <span>Nuevo código de ubicación</span>
                         <strong>{{ generatedLocationCode }}</strong>
                     </div>
 
@@ -610,7 +610,7 @@ onMounted(async () => {
                             Cancelar
                         </button>
                         <button type="button" class="reassign-primary" :disabled="isSaving" @click="requestBoxLocationConfirmation">
-                            Reasignar Ubicacion
+                            Reasignar Ubicación
                         </button>
                     </footer>
                 </section>
@@ -641,7 +641,7 @@ onMounted(async () => {
                             <strong>{{ document.title }}</strong>
                             <span>Codigo: {{ document.code }}</span>
                             <span>Caja Actual: #{{ document.box?.number ?? '---' }} - {{ document.box?.series ?? 'Sin serie' }}</span>
-                            <span>Ubicacion: {{ document.box?.location ?? 'Pendiente' }}</span>
+                            <span>Ubicación: {{ document.box?.location ?? 'Pendiente' }}</span>
                         </button>
                     </div>
                     <div v-else-if="documentSearch.trim() && !selectedDocument" class="reassign-results-state">
@@ -680,7 +680,7 @@ onMounted(async () => {
                         >
                             <strong>Caja #{{ box.number }}</strong>
                             <span>Serie: {{ box.series }}</span>
-                            <span>Ubicacion: {{ box.location ?? 'Pendiente' }}</span>
+                            <span>Ubicación: {{ box.location ?? 'Pendiente' }}</span>
                         </button>
                     </div>
                     <div v-else-if="destinationBoxSearch.trim() && !selectedDestinationBox" class="reassign-results-state">
@@ -691,7 +691,7 @@ onMounted(async () => {
                         <strong>Caja de Destino Seleccionada</strong>
                         <span>Caja: #{{ selectedDestinationBox.number }}</span>
                         <span>Serie: {{ selectedDestinationBox.series }}</span>
-                        <span>Ubicacion: {{ selectedDestinationBox.location ?? 'Sin ubicacion' }}</span>
+                        <span>Ubicación: {{ selectedDestinationBox.location ?? 'Sin ubicación' }}</span>
                     </div>
 
                     <footer class="reassign-footer">
@@ -765,7 +765,7 @@ onMounted(async () => {
         >
             <template #header>
                 <div>
-                    <h2 class="reassign-label-title">Etiqueta de nueva ubicacion</h2>
+                    <h2 class="reassign-label-title">Etiqueta de nueva ubicación</h2>
                     <p class="reassign-label-subtitle">Imprima esta etiqueta y adhierala a la caja reasignada.</p>
                 </div>
             </template>
@@ -784,7 +784,7 @@ onMounted(async () => {
                 <div class="reassign-label-card__body">
                     <img :src="reassignedLabel.qrDataUrl" :alt="`Codigo QR ${reassignedLabel.labelCode}`" />
                     <div>
-                        <span>CODIGO DE UBICACION</span>
+                        <span>CÓDIGO DE UBICACIÓN</span>
                         <strong>{{ reassignedLabel.locationCode }}</strong>
                     </div>
                     <div>

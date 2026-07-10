@@ -193,7 +193,7 @@ const routes = [
 
     { path: '/etiquetas/transferencias/:number/cajas/:boxNumber',
         name: 'etiqueta-transferencia',
-        meta: { title: 'Etiqueta de Ubicacion', allowedProfiles: ['Administrador', 'Usuario UGDA'] },
+        meta: { title: 'Etiqueta de Ubicación', allowedProfiles: ['Administrador', 'Usuario UGDA'] },
         component: EtiquetaTransferencia
     },
 

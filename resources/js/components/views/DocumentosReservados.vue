@@ -50,7 +50,7 @@ const boxLabel = (document) => {
     return number ? `#${number}` : 'Sin caja';
 };
 
-const locationLabel = (document) => document?.box?.location ?? 'Ubicacion pendiente';
+const locationLabel = (document) => document?.box?.location ?? 'Ubicación pendiente';
 
 const documentMetadata = (document) => [
     document.series ? `Serie: ${document.series}` : null,
@@ -285,7 +285,7 @@ onBeforeUnmount(() => {
                                 <span v-for="item in documentMetadata(document)" :key="item">{{ item }}</span>
                             </div>
                             <small>
-                                Ubicacion: {{ locationLabel(document) }}
+                                Ubicación: {{ locationLabel(document) }}
                                 <template v-if="document.reserved_at_label">
                                     · Reservado: {{ document.reserved_at_label }}
                                 </template>

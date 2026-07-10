@@ -8,6 +8,7 @@ use App\Models\PhysicalLocationShelf;
 use App\Models\Transfer;
 use App\Services\SystemNotificationService;
 use App\Support\RequestNumberGenerator;
+use App\Support\SignedPdfUrl;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -375,7 +376,7 @@ class TransferController extends Controller
                         'support' => $document->support_type,
                         'file_name' => $document->digital_file_name,
                         'file_url' => $document->digital_file_name
-                            ? '/api/transfers/' . $transfer->code . '/documents/' . $document->code . '/download'
+                            ? SignedPdfUrl::transferDocument($transfer->code, $document->code)
                             : null,
                     ])->values()->all(),
                 ])->values()->all(),
@@ -1258,7 +1259,7 @@ class TransferController extends Controller
 
         if ($validator->fails()) {
             return response()->json([
-                'message' => 'Debe asignar ubicacion fisica a todas las cajas.',
+                'message' => 'Debe asignar ubicación física a todas las cajas.',
                 'errors' => $validator->errors(),
             ], 422);
         }
@@ -1293,7 +1294,7 @@ class TransferController extends Controller
 
             if ($missingBoxes->isNotEmpty()) {
                 return response()->json([
-                    'message' => 'Debe asignar ubicacion fisica a todas las cajas.',
+                    'message' => 'Debe asignar ubicación física a todas las cajas.',
                     'missing_boxes' => $missingBoxes,
                 ], 422);
             }
@@ -1309,7 +1310,7 @@ class TransferController extends Controller
 
                 if ($shelf === null) {
                     return response()->json([
-                        'message' => 'La ubicacion fisica de la caja #' . $boxNumber . ' no respeta la relacion oficina, pasillo y estante.',
+                        'message' => 'La ubicación física de la caja #' . $boxNumber . ' no respeta la relación oficina, pasillo y estante.',
                     ], 422);
                 }
 
