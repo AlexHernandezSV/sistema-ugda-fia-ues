@@ -31,6 +31,7 @@ class LoanController extends Controller
 
         $documents = TransferDocument::query()
             ->with(['box.transfer.unit', 'box.transfer.workflowStatus'])
+            ->where('is_reserved', false)
             ->whereHas('box.transfer', function ($query) use ($user) {
                 $query->where('user_id', $user->id)
                     ->whereHas('workflowStatus', fn ($statusQuery) => $statusQuery->where('code', 'transfer_status_transferred'));
@@ -130,6 +131,7 @@ class LoanController extends Controller
             $transferDocuments = TransferDocument::query()
                 ->with(['box.transfer.unit'])
                 ->whereIn('id', $selectedIds)
+                ->where('is_reserved', false)
                 ->whereHas('box.transfer', function ($query) use ($user) {
                     $query->where('user_id', $user->id)
                         ->whereHas('workflowStatus', fn ($statusQuery) => $statusQuery->where('code', 'transfer_status_transferred'));

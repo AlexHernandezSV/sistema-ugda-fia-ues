@@ -253,9 +253,9 @@ const previewDocumentFile = async (document) => {
     }
 
     pdfPreviewTitle.value = document?.file_name || document?.file?.name || 'Documento PDF';
-    pdfPreviewSource.value = document?.file
+    pdfPreviewSource.value = isPdfFile(document?.file)
         ? { file: document.file }
-        : { url: document?.file_url };
+        : { url: document?.file_url, fileName: document?.file_name };
     isPdfPreviewOpen.value = true;
 };
 
@@ -431,10 +431,15 @@ const removeBox = (index) => {
     boxesList.value.splice(index, 1);
 };
 
+const cloneDocumentForModal = (document) => ({
+    ...document,
+    file: isPdfFile(document?.file) ? document.file : null,
+});
+
 const openDocsModal = (index) => {
     currentBoxIndex.value = index;
     currentBoxData.value = boxesList.value[index];
-    tempDocuments.value = JSON.parse(JSON.stringify(boxesList.value[index].documents_list || []));
+    tempDocuments.value = (boxesList.value[index].documents_list || []).map(cloneDocumentForModal);
     const firstSeries = getBoxSeriesLabels(currentBoxData.value)[0] ?? currentBoxData.value.series;
     const defaultSeries = seriesOptions.value.find((option) => option.label === firstSeries) ?? null;
     resetDocumentForm(defaultSeries);
@@ -933,6 +938,34 @@ const openSubmitConfirmation = () => {
     isConfirmModalOpen.value = true;
 };
 
+const buildTransferFormData = () => {
+    const formData = new FormData();
+    const boxesPayload = boxesList.value.map((box, boxIndex) => ({
+        ...box,
+        documents_list: (box.documents_list ?? []).map((document, documentIndex) => {
+            if (document.file instanceof File) {
+                formData.append(`document_files[${boxIndex}][${documentIndex}]`, document.file);
+            }
+
+            const { file, ...documentPayload } = document;
+            return documentPayload;
+        }),
+    }));
+
+    formData.append('code', headerForm.value.code);
+    formData.append('request_date', formatDateForApi(headerForm.value.request_date));
+    formData.append('unit_id', headerForm.value.unit_id ?? '');
+    formData.append('description', String(headerForm.value.description ?? '').trim() || '');
+    formData.append('boxes', JSON.stringify(boxesPayload));
+
+    if (isEditMode.value) {
+        formData.append('correction_notes', String(correctionNotes.value ?? '').trim());
+        formData.append('_method', 'PUT');
+    }
+
+    return formData;
+};
+
 const submitTransfer = async () => {
     if (!validateTransferDraft()) {
         return;
@@ -941,17 +974,10 @@ const submitTransfer = async () => {
     isSubmitting.value = true;
 
     try {
-        const payload = {
-            code: headerForm.value.code,
-            request_date: formatDateForApi(headerForm.value.request_date),
-            unit_id: headerForm.value.unit_id,
-            description: String(headerForm.value.description ?? '').trim() || null,
-            boxes: boxesList.value,
-            correction_notes: isEditMode.value ? String(correctionNotes.value ?? '').trim() : null,
-        };
+        const payload = buildTransferFormData();
 
         const { data } = isEditMode.value
-            ? await axios.put(`/api/transfers/${editNumber.value}/resubmit-correction`, payload)
+            ? await axios.post(`/api/transfers/${editNumber.value}/resubmit-correction`, payload)
             : await axios.post('/api/transfers', payload);
 
         toast.add({

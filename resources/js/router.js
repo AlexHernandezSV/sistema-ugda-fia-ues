@@ -10,6 +10,9 @@ import Usuarios from './components/views/Usuarios.vue'; // <--- NUEVO IMPORT
 import ArchivoGeneral from './components/views/ArchivoGeneral.vue';
 import ArchivoGestion from './components/views/ArchivoGestion.vue';
 import CrearCajaArchivo from './components/views/CrearCajaArchivo.vue';
+import CrearDocumentoArchivo from './components/views/CrearDocumentoArchivo.vue';
+import DocumentosReservados from './components/views/DocumentosReservados.vue';
+import ReasignacionArchivo from './components/views/ReasignacionArchivo.vue';
 import UbicacionesFisicas from './components/views/UbicacionesFisicas.vue';
 import SeriesDocumentales from './components/views/SeriesDocumentales.vue';
 import Solicitudes from './components/views/Solicitudes.vue';
@@ -89,6 +92,27 @@ const routes = [
         name: 'archivo-general-cajas-crear',
         meta: { title: 'Crear Nueva Caja', allowedProfiles: ['Administrador'] },
         component: CrearCajaArchivo
+    },
+
+    {
+        path: '/archivo-general/documentos/crear',
+        name: 'archivo-general-documentos-crear',
+        meta: { title: 'Crear Nuevo Documento', allowedProfiles: ['Administrador'] },
+        component: CrearDocumentoArchivo
+    },
+
+    {
+        path: '/archivo-general/documentos-reservados',
+        name: 'archivo-general-documentos-reservados',
+        meta: { title: 'Documentos Reservados', allowedProfiles: ['Administrador'] },
+        component: DocumentosReservados
+    },
+
+    {
+        path: '/archivo-general/reasignacion',
+        name: 'archivo-general-reasignacion',
+        meta: { title: 'Reasignacion de Archivo', allowedProfiles: ['Administrador'] },
+        component: ReasignacionArchivo
     },
 
     {

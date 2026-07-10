@@ -24,21 +24,21 @@ const cards = [
     },
     {
         title: 'Crear Nuevo Documento',
-        description: 'Agrega documentos desde el formulario de nueva caja',
+        description: 'Crea documentos y asigna a cajas existentes',
         icon: 'pi pi-file-plus',
-        action: () => router.push('/archivo-general/cajas/crear'),
+        action: () => router.push('/archivo-general/documentos/crear'),
     },
     {
         title: 'Reasignacion',
-        description: 'Mueve documentos existentes al crear una nueva caja',
+        description: 'Cambia ubicaciones de cajas o documentos',
         icon: 'pi pi-refresh',
-        action: () => router.push('/archivo-general/cajas/crear'),
+        action: () => router.push('/archivo-general/reasignacion'),
     },
     {
         title: 'Documentos Reservados',
         description: 'Gestiona documentos reservados para uso especifico',
         icon: 'pi pi-shield',
-        action: () => router.push('/solicitudes/prestamos/crear'),
+        action: () => router.push('/archivo-general/documentos-reservados'),
     },
 ];
 

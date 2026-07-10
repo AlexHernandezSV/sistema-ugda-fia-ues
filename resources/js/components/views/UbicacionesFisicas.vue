@@ -17,6 +17,7 @@ const dialogVisible = ref(false);
 const activeType = ref("office");
 const editingId = ref(null);
 const rowsPerPageOptions = ref([5, 10, 25, 50]);
+const textFieldMaxLength = 100;
 const createTableFilters = () => ({
     global: { value: null, matchMode: "contains" },
 });
@@ -106,6 +107,9 @@ watch(
 const showError = (detail) => {
     toast.add({ severity: "error", summary: "Error", detail, life: 4200 });
 };
+
+const characterCounter = (value) =>
+    String(value ?? "").length.toString().padStart(2, "0");
 
 const searchForType = (type) => {
     const filters = {
@@ -612,21 +616,39 @@ const goBack = () => {
                     <InputText
                         v-model="form.name"
                         class="w-full"
+                        :maxlength="textFieldMaxLength"
                         placeholder="Nombre visible"
                     />
+                    <small class="locations-field-counter">
+                        {{ characterCounter(form.name) }}/{{ textFieldMaxLength }}
+                    </small>
                 </label>
                 <label>
                     <span>Código</span>
                     <InputText
                         v-model="form.code"
                         class="w-full"
+                        :maxlength="textFieldMaxLength"
                         placeholder="Código para ubicacion"
                     />
+                    <small class="locations-field-counter">
+                        {{ characterCounter(form.code) }}/{{ textFieldMaxLength }}
+                    </small>
                 </label>
-                <label class="locations-check">
-                    <Checkbox v-model="form.is_active" binary />
-                    <span>Activo</span>
-                </label>
+                <div class="locations-status-field">
+                    <span class="locations-status-field__label">Estado</span>
+                    <div
+                        :class="[
+                            'locations-status-toggle',
+                            form.is_active ? 'is-active' : 'is-inactive',
+                        ]"
+                    >
+                        <ToggleSwitch v-model="form.is_active" />
+                        <span class="locations-status-toggle__text">
+                            {{ form.is_active ? "Activo" : "Inactivo" }}
+                        </span>
+                    </div>
+                </div>
             </div>
 
             <template #footer>
@@ -762,10 +784,12 @@ const goBack = () => {
     color: #047857;
 }
 
-.locations-actions {
-    display: inline-flex;
-    gap: 10px;
+:deep(.locations-actions) {
     white-space: nowrap;
+}
+
+:deep(.locations-actions .p-button + .p-button) {
+    margin-left: 0.65rem;
 }
 
 .locations-delete-button,
@@ -802,10 +826,56 @@ const goBack = () => {
     font-weight: 700;
 }
 
-.locations-check {
+.locations-field-counter {
+    color: #64748b;
+    font-size: 0.78rem;
+    font-weight: 600;
+    justify-self: end;
+    line-height: 1;
+}
+
+.locations-status-field {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.locations-status-field__label {
+    color: #1f2937;
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.locations-status-toggle {
     align-items: center;
-    display: flex !important;
-    gap: 0.6rem !important;
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    display: flex;
+    gap: 0.75rem;
+    min-height: 2.75rem;
+    padding: 0.65rem 0.85rem;
+}
+
+.locations-status-toggle__text {
+    color: #475569;
+    font-size: 0.92rem;
+    font-weight: 700;
+}
+
+.locations-status-toggle.is-active .locations-status-toggle__text {
+    color: #047857;
+}
+
+.locations-status-toggle.is-inactive .locations-status-toggle__text {
+    color: #b91c1c;
+}
+
+:deep(.locations-status-toggle.is-active .p-toggleswitch-slider) {
+    background: #10b981;
+}
+
+:deep(.locations-status-toggle.is-inactive .p-toggleswitch-slider) {
+    background: #cbd5e1;
 }
 
 @media (max-width: 768px) {

@@ -355,6 +355,335 @@ class ArchiveController extends Controller
         }
     }
 
+    public function updateBoxLocation(Request $request, int $id): JsonResponse
+    {
+        if (!$this->canManageArchive($request)) {
+            return response()->json([
+                'message' => 'Solo el administrador puede reasignar cajas del archivo general.',
+            ], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'office_id' => ['required', 'integer', 'exists:physical_location_offices,id'],
+            'aisle_id' => ['required', 'integer', 'exists:physical_location_aisles,id'],
+            'shelf_id' => ['required', 'integer', 'exists:physical_location_shelves,id'],
+        ], [
+            'office_id.required' => 'Debe seleccionar la oficina.',
+            'aisle_id.required' => 'Debe seleccionar el pasillo.',
+            'shelf_id.required' => 'Debe seleccionar el estante.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Los datos de la nueva ubicacion no son validos.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $selectedShelf = $this->findValidShelf(
+            (int) $request->input('office_id'),
+            (int) $request->input('aisle_id'),
+            (int) $request->input('shelf_id')
+        );
+
+        if ($selectedShelf === null) {
+            return response()->json([
+                'message' => 'La ubicacion fisica seleccionada no respeta la relacion oficina, pasillo y estante.',
+            ], 422);
+        }
+
+        try {
+            $box = DB::transaction(function () use ($id, $request, $selectedShelf) {
+                $box = TransferBox::query()
+                    ->with(['transfer', 'documents', 'assignedBy.person'])
+                    ->whereHas('transfer', fn (Builder $query) => $query->whereNotNull('completed_at'))
+                    ->lockForUpdate()
+                    ->findOrFail($id);
+
+                $previousLocation = $box->location_code;
+                $locationCode = $this->buildLocationCode($selectedShelf);
+
+                $box->update([
+                    'location_code' => $locationCode,
+                    'assigned_by_user_id' => $request->user()->id,
+                    'assigned_at' => now(),
+                ]);
+
+                $box->transfer?->events()->create([
+                    'status_catalog_id' => $box->transfer?->workflow_status_id,
+                    'actor_user_id' => $request->user()->id,
+                    'event_type' => 'status',
+                    'title' => 'Caja reasignada',
+                    'description' => 'La caja #' . $box->formattedBoxNumber() . ' fue reasignada a una nueva ubicacion fisica.',
+                    'context' => [
+                        'box_number' => $box->box_number,
+                        'previous_location_code' => $previousLocation,
+                        'new_location_code' => $locationCode,
+                    ],
+                    'occurred_at' => now(),
+                ]);
+
+                return $box->fresh(['documents', 'transfer.unit', 'assignedBy.person']);
+            });
+
+            return response()->json([
+                'message' => 'Ubicacion de caja reasignada correctamente.',
+                'box' => $this->mapBox($box),
+            ]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudo reasignar la ubicacion de la caja.',
+            ], 500);
+        }
+    }
+
+    public function storeDocument(Request $request): JsonResponse
+    {
+        if (!$this->canManageArchive($request)) {
+            return response()->json([
+                'message' => 'Solo el administrador puede crear documentos en el archivo general.',
+            ], 403);
+        }
+
+        $currentYear = (int) now()->format('Y');
+        $validator = Validator::make($request->all(), [
+            'box_id' => ['required', 'integer', 'exists:transfer_boxes,id'],
+            'series_id' => ['required', 'integer', 'exists:documentary_series,id'],
+            'code' => ['required', 'string', 'max:120'],
+            'name' => ['required', 'string', 'max:255'],
+            'year' => ['required', 'integer', 'min:1900', 'max:' . $currentYear],
+            'support' => ['required', 'string', 'in:Fisico,Digital,Mixto'],
+            'pages' => ['required', 'integer', 'min:1', 'max:99999'],
+            'digital_file_name' => ['nullable', 'string', 'max:255'],
+            'digital_file_base64' => ['nullable', 'string'],
+        ], [
+            'box_id.required' => 'Debe seleccionar la caja donde se asignara el documento.',
+            'series_id.required' => 'Debe seleccionar la serie documental.',
+            'code.required' => 'El codigo del documento es obligatorio.',
+            'name.required' => 'El nombre del documento es obligatorio.',
+            'year.required' => 'El ano del documento es obligatorio.',
+            'year.min' => 'El ano del documento debe ser mayor o igual a 1900.',
+            'year.max' => 'El ano del documento no puede ser mayor al ano actual.',
+            'support.required' => 'Debe seleccionar el tipo de soporte.',
+            'support.in' => 'El tipo de soporte seleccionado no es valido.',
+            'pages.required' => 'Debe indicar el numero de paginas.',
+            'pages.min' => 'El numero de paginas debe ser mayor que 0.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Los datos del documento no son validos.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $support = (string) $request->input('support');
+        $hasDigitalPayload = trim((string) $request->input('digital_file_base64', '')) !== '';
+
+        if (in_array($support, ['Digital', 'Mixto'], true)) {
+            $fileName = trim((string) $request->input('digital_file_name', ''));
+
+            if (!$hasDigitalPayload || $fileName === '') {
+                return response()->json([
+                    'message' => 'Los datos del documento no son validos.',
+                    'errors' => [
+                        'digital_file' => ['Debe adjuntar un archivo PDF para documentos digitales o mixtos.'],
+                    ],
+                ], 422);
+            }
+
+            if (!str_ends_with(mb_strtolower($fileName), '.pdf')) {
+                return response()->json([
+                    'message' => 'Los datos del documento no son validos.',
+                    'errors' => [
+                        'digital_file' => ['El archivo digital debe estar en formato PDF.'],
+                    ],
+                ], 422);
+            }
+        }
+
+        try {
+            $document = DB::transaction(function () use ($request, $support, $hasDigitalPayload) {
+                $box = TransferBox::query()
+                    ->with('transfer')
+                    ->whereHas('transfer', fn (Builder $query) => $query->whereNotNull('completed_at'))
+                    ->lockForUpdate()
+                    ->find((int) $request->input('box_id'));
+
+                if ($box === null) {
+                    throw new \RuntimeException('La caja seleccionada no esta disponible para asignar documentos.', 422);
+                }
+
+                $series = DocumentarySeries::query()
+                    ->where('is_active', true)
+                    ->find((int) $request->input('series_id'));
+
+                if ($series === null) {
+                    throw new \RuntimeException('La serie documental seleccionada no esta habilitada.', 422);
+                }
+
+                if (mb_strtolower(trim((string) $series->name)) !== mb_strtolower(trim((string) $box->series_name))) {
+                    throw new \RuntimeException('La serie documental debe coincidir con la serie asignada a la caja.', 422);
+                }
+
+                $documentYear = (int) $request->input('year');
+
+                if ($box->start_year && $box->end_year && ($documentYear < (int) $box->start_year || $documentYear > (int) $box->end_year)) {
+                    throw new \RuntimeException('El ano del documento debe estar dentro del periodo de la caja (' . $box->start_year . ' - ' . $box->end_year . ').', 422);
+                }
+
+                $code = trim((string) $request->input('code'));
+                $codeExists = $box->documents()
+                    ->whereRaw('LOWER(code) = ?', [mb_strtolower($code)])
+                    ->exists();
+
+                if ($codeExists) {
+                    throw new \RuntimeException('Ya existe un documento con ese codigo en la caja seleccionada.', 422);
+                }
+
+                $sortOrder = ((int) $box->documents()->max('sort_order')) + 1;
+                $digitalDocument = null;
+
+                if ($support !== 'Fisico' && $hasDigitalPayload) {
+                    $fallbackName = ($box->transfer?->code ?? 'archivo-general') . '-' . str_pad((string) $sortOrder, 3, '0', STR_PAD_LEFT);
+                    $digitalDocument = $this->storeDigitalDocumentPayload($request->only([
+                        'digital_file_name',
+                        'digital_file_base64',
+                    ]), $fallbackName);
+                }
+
+                return $box->documents()->create([
+                    'code' => $code,
+                    'name' => trim((string) $request->input('name')),
+                    'series_label' => $series->name,
+                    'support_type' => $support,
+                    'year_label' => (string) $documentYear,
+                    'pages_label' => (string) ((int) $request->input('pages')),
+                    'digital_file_name' => $digitalDocument['name'] ?? null,
+                    'digital_file_path' => $digitalDocument['path'] ?? null,
+                    'sort_order' => $sortOrder,
+                ]);
+            });
+
+            return response()->json([
+                'message' => 'Documento creado correctamente.',
+                'document' => $this->mapDocument($document->fresh(['box.transfer.unit', 'box.assignedBy.person'])),
+            ], 201);
+        } catch (\RuntimeException $exception) {
+            if ((int) $exception->getCode() === 422) {
+                return response()->json([
+                    'message' => $exception->getMessage(),
+                ], 422);
+            }
+
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudo crear el documento. Intente nuevamente.',
+            ], 500);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudo crear el documento. Intente nuevamente.',
+            ], 500);
+        }
+    }
+
+    public function updateDocumentBox(Request $request, int $id): JsonResponse
+    {
+        if (!$this->canManageArchive($request)) {
+            return response()->json([
+                'message' => 'Solo el administrador puede reasignar documentos del archivo general.',
+            ], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'box_id' => ['required', 'integer', 'exists:transfer_boxes,id'],
+        ], [
+            'box_id.required' => 'Debe seleccionar la caja de destino.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Los datos de la caja de destino no son validos.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $document = DB::transaction(function () use ($id, $request) {
+                $document = TransferDocument::query()
+                    ->with('box.transfer')
+                    ->whereHas('box.transfer', fn (Builder $query) => $query->whereNotNull('completed_at'))
+                    ->lockForUpdate()
+                    ->findOrFail($id);
+
+                $destinationBox = TransferBox::query()
+                    ->with('transfer')
+                    ->whereHas('transfer', fn (Builder $query) => $query->whereNotNull('completed_at'))
+                    ->lockForUpdate()
+                    ->findOrFail((int) $request->input('box_id'));
+
+                if ((int) $document->transfer_box_id === (int) $destinationBox->id) {
+                    throw new \RuntimeException('El documento ya pertenece a la caja seleccionada.', 422);
+                }
+
+                $previousBox = $document->box;
+                $sortOrder = ((int) $destinationBox->documents()->max('sort_order')) + 1;
+
+                $document->update([
+                    'transfer_box_id' => $destinationBox->id,
+                    'sort_order' => $sortOrder,
+                ]);
+
+                $destinationBox->transfer?->events()->create([
+                    'status_catalog_id' => $destinationBox->transfer?->workflow_status_id,
+                    'actor_user_id' => $request->user()->id,
+                    'event_type' => 'status',
+                    'title' => 'Documento reasignado',
+                    'description' => 'El documento "' . $document->name . '" fue movido a la caja #' . $destinationBox->formattedBoxNumber() . '.',
+                    'context' => [
+                        'document_id' => $document->id,
+                        'document_code' => $document->code,
+                        'previous_box_id' => $previousBox?->id,
+                        'previous_box_number' => $previousBox?->box_number,
+                        'destination_box_id' => $destinationBox->id,
+                        'destination_box_number' => $destinationBox->box_number,
+                    ],
+                    'occurred_at' => now(),
+                ]);
+
+                return $document->fresh(['box.transfer.unit', 'box.assignedBy.person']);
+            });
+
+            return response()->json([
+                'message' => 'Documento reasignado correctamente.',
+                'document' => $this->mapDocument($document),
+            ]);
+        } catch (\RuntimeException $exception) {
+            if ((int) $exception->getCode() === 422) {
+                return response()->json([
+                    'message' => $exception->getMessage(),
+                ], 422);
+            }
+
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudo reasignar el documento.',
+            ], 500);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudo reasignar el documento.',
+            ], 500);
+        }
+    }
+
     public function documents(Request $request): JsonResponse
     {
         if (!$this->canManageArchive($request)) {
@@ -380,7 +709,7 @@ class ArchiveController extends Controller
                     ->count(),
             ];
 
-            if ($term === '') {
+            if ($term === '' && !$request->boolean('all')) {
                 return response()->json([
                     'totals' => $totals,
                     'query' => $term,
@@ -395,8 +724,11 @@ class ArchiveController extends Controller
                     'box.transfer.unit',
                     'box.transfer.requester.person',
                     'box.transfer.completedBy.person',
-                ])
-                ->where(function (Builder $query) use ($term, $searchDate) {
+                    'reservedBy.person',
+                ]);
+
+            if ($term !== '') {
+                $resultsQuery->where(function (Builder $query) use ($term, $searchDate) {
                     $this->addSearchClauses($query, [
                         'transfer_box_documents.code',
                         'transfer_box_documents.name',
@@ -450,6 +782,7 @@ class ArchiveController extends Controller
                         ], $term);
                     });
                 });
+            }
 
             $resultsCount = (clone $resultsQuery)->count();
             $results = $resultsQuery
@@ -471,6 +804,185 @@ class ArchiveController extends Controller
 
             return response()->json([
                 'message' => 'No se pudo consultar el archivo general.',
+            ], 500);
+        }
+    }
+
+    public function reservedDocuments(Request $request): JsonResponse
+    {
+        if (!$this->canManageArchive($request)) {
+            return response()->json([
+                'message' => 'Solo el administrador puede consultar documentos reservados.',
+            ], 403);
+        }
+
+        try {
+            $term = trim((string) $request->query('q', ''));
+            $query = TransferDocument::query()
+                ->with([
+                    'reservedBy.person',
+                    'box.assignedBy.person',
+                    'box.transfer.unit',
+                    'box.transfer.requester.person',
+                    'box.transfer.completedBy.person',
+                ])
+                ->where('is_reserved', true)
+                ->whereHas('box.transfer', fn (Builder $transferQuery) => $transferQuery->whereNotNull('completed_at'));
+
+            if ($term !== '') {
+                $query->where(function (Builder $searchQuery) use ($term) {
+                    $this->addSearchClauses($searchQuery, [
+                        'transfer_box_documents.code',
+                        'transfer_box_documents.name',
+                        'transfer_box_documents.series_label',
+                        'transfer_box_documents.support_type',
+                        'transfer_box_documents.year_label',
+                    ], $term);
+
+                    $searchQuery->orWhereHas('box', function (Builder $boxQuery) use ($term) {
+                        $this->addSearchClauses($boxQuery, [
+                            'transfer_boxes.box_number',
+                            'transfer_boxes.series_name',
+                            'transfer_boxes.location_code',
+                            'transfer_boxes.title',
+                        ], $term);
+                    });
+
+                    $searchQuery->orWhereHas('box.transfer.unit', function (Builder $unitQuery) use ($term) {
+                        $this->addSearchClauses($unitQuery, [
+                            'units.code',
+                            'units.name',
+                        ], $term);
+                    });
+                });
+            }
+
+            $documents = $query
+                ->orderByDesc('reserved_at')
+                ->orderBy('transfer_box_documents.name')
+                ->get()
+                ->map(fn (TransferDocument $document) => $this->mapDocument($document))
+                ->values();
+
+            return response()->json([
+                'documents' => $documents,
+                'count' => $documents->count(),
+            ]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudieron consultar los documentos reservados.',
+            ], 500);
+        }
+    }
+
+    public function storeReservedDocument(Request $request): JsonResponse
+    {
+        if (!$this->canManageArchive($request)) {
+            return response()->json([
+                'message' => 'Solo el administrador puede marcar documentos reservados.',
+            ], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'document_id' => ['required', 'integer', 'exists:transfer_box_documents,id'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Seleccione un documento valido para reservar.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $document = TransferDocument::query()
+                ->with([
+                    'reservedBy.person',
+                    'box.assignedBy.person',
+                    'box.transfer.unit',
+                    'box.transfer.requester.person',
+                    'box.transfer.completedBy.person',
+                ])
+                ->whereKey($request->integer('document_id'))
+                ->whereHas('box.transfer', fn (Builder $query) => $query->whereNotNull('completed_at'))
+                ->first();
+
+            if ($document === null) {
+                return response()->json([
+                    'message' => 'El documento seleccionado no esta disponible en el archivo general.',
+                ], 422);
+            }
+
+            if ($document->is_reserved) {
+                return response()->json([
+                    'message' => 'El documento ya esta marcado como reservado.',
+                ], 422);
+            }
+
+            $document->forceFill([
+                'is_reserved' => true,
+                'reserved_by_user_id' => $request->user()->id,
+                'reserved_at' => now(),
+            ])->save();
+
+            $document->refresh()->load([
+                'reservedBy.person',
+                'box.assignedBy.person',
+                'box.transfer.unit',
+                'box.transfer.requester.person',
+                'box.transfer.completedBy.person',
+            ]);
+
+            return response()->json([
+                'message' => 'El documento "' . $document->name . '" fue agregado a reservados.',
+                'document' => $this->mapDocument($document),
+            ], 201);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudo agregar el documento a reservados.',
+            ], 500);
+        }
+    }
+
+    public function destroyReservedDocument(Request $request, int $id): JsonResponse
+    {
+        if (!$this->canManageArchive($request)) {
+            return response()->json([
+                'message' => 'Solo el administrador puede quitar documentos reservados.',
+            ], 403);
+        }
+
+        try {
+            $document = TransferDocument::query()
+                ->whereKey($id)
+                ->where('is_reserved', true)
+                ->first();
+
+            if ($document === null) {
+                return response()->json([
+                    'message' => 'El documento reservado no fue encontrado.',
+                ], 404);
+            }
+
+            $documentName = $document->name;
+            $document->forceFill([
+                'is_reserved' => false,
+                'reserved_by_user_id' => null,
+                'reserved_at' => null,
+            ])->save();
+
+            return response()->json([
+                'message' => 'El documento "' . $documentName . '" fue removido de reservados.',
+            ]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudo remover el documento de reservados.',
             ], 500);
         }
     }
@@ -554,6 +1066,10 @@ class ArchiveController extends Controller
             'support' => $document->support_type,
             'year' => $document->year_label,
             'pages' => $document->pages_label,
+            'is_reserved' => (bool) $document->is_reserved,
+            'reserved_at' => optional($document->reserved_at)->toDateTimeString(),
+            'reserved_at_label' => optional($document->reserved_at)->format('d/m/Y'),
+            'reserved_by' => $this->formatUserName($document->reservedBy),
             'digital_available' => !empty($document->digital_file_name),
             'digital_file' => $document->digital_file_name,
             'digital_url' => !empty($document->digital_file_name) && $transfer?->code && $document->code

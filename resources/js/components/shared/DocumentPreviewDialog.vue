@@ -22,6 +22,7 @@ const emit = defineEmits(['hide']);
 
 const pdfCanvas = ref(null);
 const loading = ref(false);
+const downloading = ref(false);
 const errorMessage = ref('');
 const currentPage = ref(1);
 const totalPages = ref(0);
@@ -173,6 +174,67 @@ const goToPage = async (direction) => {
     }
 };
 
+const sanitizeDownloadName = (name) => {
+    const baseName = String(name || 'documento.pdf')
+        .trim()
+        .replace(/[\\/:*?"<>|]+/g, '-')
+        .replace(/\s+/g, ' ');
+
+    return baseName.toLowerCase().endsWith('.pdf') ? baseName : `${baseName}.pdf`;
+};
+
+const triggerBrowserDownload = (url, fileName) => {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = sanitizeDownloadName(fileName);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+};
+
+const downloadPreview = async () => {
+    if (!props.source || downloading.value) {
+        return;
+    }
+
+    downloading.value = true;
+    const fileName = props.source.file?.name || props.source.fileName || props.source.name || props.title;
+    let objectUrl = '';
+
+    try {
+        if (props.source.file) {
+            objectUrl = URL.createObjectURL(props.source.file);
+            triggerBrowserDownload(objectUrl, fileName);
+            return;
+        }
+
+        if (props.source.url) {
+            const response = await fetch(props.source.url, {
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/pdf',
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error('No se pudo descargar el PDF.');
+            }
+
+            const blob = await response.blob();
+            objectUrl = URL.createObjectURL(blob);
+            triggerBrowserDownload(objectUrl, fileName);
+        }
+    } catch (error) {
+        errorMessage.value = error.message || 'No se pudo descargar el PDF.';
+    } finally {
+        if (objectUrl) {
+            window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+        }
+
+        downloading.value = false;
+    }
+};
+
 const closePreview = () => {
     visible.value = false;
 };
@@ -205,8 +267,19 @@ watch(
     >
         <template #header>
             <div class="document-preview__header">
-                <h2>Vista previa del documento</h2>
-                <p>{{ title }}</p>
+                <div class="document-preview__header-text">
+                    <h2>Vista previa del documento</h2>
+                    <p>{{ title }}</p>
+                </div>
+                <Button
+                    label="Descargar"
+                    icon="pi pi-download"
+                    iconPos="right"
+                    class="document-preview__download"
+                    :loading="downloading"
+                    :disabled="downloading || !source"
+                    @click="downloadPreview"
+                />
             </div>
         </template>
 
@@ -254,9 +327,11 @@ watch(
 }
 
 :global(.transfer-pdf-preview-dialog .p-dialog-header) {
+    align-items: center;
     background: #2d6f9f;
     border-bottom: 0;
     color: #ffffff;
+    gap: 0.75rem;
     padding: 1.35rem 1.5rem;
 }
 
@@ -271,6 +346,18 @@ watch(
 :global(.transfer-pdf-preview-dialog .p-dialog-footer) {
     border-top: 1px solid #dbe3ed;
     padding: 1rem 1.5rem;
+}
+
+.document-preview__header {
+    align-items: center;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.document-preview__header-text {
+    min-width: 0;
 }
 
 .document-preview__header h2 {
@@ -343,6 +430,24 @@ watch(
     min-width: 2.75rem;
 }
 
+.document-preview__download {
+    background: #ffffff !important;
+    border-color: #ffffff !important;
+    border-radius: var(--ugda-radius-md) !important;
+    color: #245d88 !important;
+    flex-shrink: 0;
+    font-weight: var(--ugda-weight-medium) !important;
+    min-height: var(--ugda-control-height);
+    padding: 0 var(--ugda-space-md) !important;
+}
+
+.document-preview__download:hover,
+.document-preview__download:focus {
+    background: var(--ugda-brand-soft) !important;
+    border-color: var(--ugda-brand-soft) !important;
+    color: #245d88 !important;
+}
+
 .document-preview__close {
     background: #2f6f9f;
     border-color: #2f6f9f;
@@ -356,6 +461,15 @@ watch(
 }
 
 @media (max-width: 640px) {
+    .document-preview__header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .document-preview__download {
+        width: 100%;
+    }
+
     .transfer-pdf-preview__footer {
         align-items: stretch;
         flex-direction: column;

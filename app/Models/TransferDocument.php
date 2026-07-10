@@ -19,10 +19,23 @@ class TransferDocument extends Model
         'digital_file_name',
         'digital_file_path',
         'sort_order',
+        'is_reserved',
+        'reserved_by_user_id',
+        'reserved_at',
+    ];
+
+    protected $casts = [
+        'is_reserved' => 'boolean',
+        'reserved_at' => 'datetime',
     ];
 
     public function box()
     {
         return $this->belongsTo(TransferBox::class, 'transfer_box_id');
+    }
+
+    public function reservedBy()
+    {
+        return $this->belongsTo(User::class, 'reserved_by_user_id');
     }
 }

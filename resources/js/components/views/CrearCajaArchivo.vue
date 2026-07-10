@@ -1069,19 +1069,20 @@ onMounted(fetchCatalog);
                     />
                     <button
                         type="button"
-                        class="archive-doc-form__file-name"
+                        class="archive-doc-form__file-button"
                         @click="documentFileInputRef?.click()"
                     >
-                        {{ documentDigitalFileName || 'Seleccionar PDF' }}
+                        <i class="pi pi-upload"></i>
+                        <span>{{ documentDigitalFileName || 'Seleccionar PDF' }}</span>
                     </button>
                     <button
                         v-if="documentDigitalFile"
                         type="button"
-                        class="create-box-outline"
+                        class="archive-doc-form__file-button"
                         @click="previewDocumentFile"
                     >
                         <i class="pi pi-eye"></i>
-                        Ver PDF
+                        <span>Ver PDF</span>
                     </button>
                 </div>
 
@@ -1606,19 +1607,31 @@ onMounted(fetchCatalog);
     display: none;
 }
 
-.archive-doc-form__file-name {
-    background: none;
-    border: none;
-    padding: 0;
+.archive-doc-form__file-button {
+    align-items: center;
+    background: #ffffff;
+    border: 1px solid #d8e1ec;
+    border-radius: var(--ugda-radius-md);
+    color: #0f172a;
     cursor: pointer;
-    color: #0f4c8f;
+    display: inline-flex;
     font-size: 0.95rem;
-    text-align: left;
-    text-decoration: underline;
+    gap: 0.5rem;
+    justify-content: center;
+    min-height: 2.7rem;
+    max-width: 100%;
+    padding: 0 1rem;
 }
 
-.archive-doc-form__file-name:hover {
-    opacity: 0.8;
+.archive-doc-form__file-button span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.archive-doc-form__file-button:hover {
+    border-color: #0f4c8f;
+    color: #0f4c8f;
 }
 
 .archive-doc-form__actions {

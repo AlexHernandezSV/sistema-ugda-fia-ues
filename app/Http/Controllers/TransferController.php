@@ -404,6 +404,8 @@ class TransferController extends Controller
 
     public function resubmitCorrection(Request $request, string $number): JsonResponse
     {
+        $this->normalizeTransferPayload($request);
+
         $validator = Validator::make($request->all(), [
             'code' => ['required', 'string', 'max:60'],
             'request_date' => ['required', 'date'],
@@ -422,6 +424,8 @@ class TransferController extends Controller
             'boxes.*.documents_list.*.pages' => ['nullable', 'string', 'max:50'],
             'boxes.*.documents_list.*.support' => ['required', 'string', 'max:30'],
             'boxes.*.documents_list.*.file_name' => ['nullable', 'string', 'max:255'],
+            'document_files' => ['nullable', 'array'],
+            'document_files.*.*' => ['nullable', 'file', 'mimes:pdf', 'max:20480'],
             'correction_notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
@@ -506,11 +510,13 @@ class TransferController extends Controller
                     'description' => $request->input('description'),
                 ]);
 
+                $existingDigitalFiles = $this->existingDigitalFilesByDocumentCode($transfer);
+
                 $transfer->boxes->each(function ($box) {
                     $box->documents()->delete();
                 });
                 $transfer->boxes()->delete();
-                $this->syncTransferBoxes($transfer, $request->input('boxes', []));
+                $this->syncTransferBoxes($transfer, $request->input('boxes', []), $request, $existingDigitalFiles);
 
                 $transfer->events()->create([
                     'status_catalog_id' => $workflowStatus,
@@ -551,6 +557,8 @@ class TransferController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        $this->normalizeTransferPayload($request);
+
         $validator = Validator::make($request->all(), [
             'code' => ['nullable', 'string', 'max:60'],
             'request_date' => ['required', 'date'],
@@ -569,6 +577,8 @@ class TransferController extends Controller
             'boxes.*.documents_list.*.pages' => ['nullable', 'string', 'max:50'],
             'boxes.*.documents_list.*.support' => ['required', 'string', 'max:30'],
             'boxes.*.documents_list.*.file_name' => ['nullable', 'string', 'max:255'],
+            'document_files' => ['nullable', 'array'],
+            'document_files.*.*' => ['nullable', 'file', 'mimes:pdf', 'max:20480'],
         ]);
 
         if ($validator->fails()) {
@@ -614,7 +624,7 @@ class TransferController extends Controller
                     'description' => $request->input('description'),
                 ]);
 
-                $this->syncTransferBoxes($transfer, $request->input('boxes', []));
+                $this->syncTransferBoxes($transfer, $request->input('boxes', []), $request);
 
                 $transfer->events()->create([
                     'status_catalog_id' => null,
@@ -644,9 +654,9 @@ class TransferController extends Controller
         }
     }
 
-    private function syncTransferBoxes(Transfer $transfer, array $boxesPayload): void
+    private function syncTransferBoxes(Transfer $transfer, array $boxesPayload, ?Request $request = null, array $existingDigitalFiles = []): void
     {
-        foreach ($boxesPayload as $boxPayload) {
+        foreach ($boxesPayload as $boxIndex => $boxPayload) {
             $boxNumber = (int) $boxPayload['box_number'];
 
             $box = $transfer->boxes()->create([
@@ -662,7 +672,7 @@ class TransferController extends Controller
             $seenDocuments = [];
             $sortOrder = 1;
 
-            foreach ($boxPayload['documents_list'] as $documentPayload) {
+            foreach ($boxPayload['documents_list'] as $documentIndex => $documentPayload) {
                 $fingerprint = $this->documentFingerprint($documentPayload, $boxPayload['series']);
 
                 if (isset($seenDocuments[$fingerprint])) {
@@ -670,7 +680,13 @@ class TransferController extends Controller
                 }
 
                 $seenDocuments[$fingerprint] = true;
-                $fileName = $documentPayload['file_name'] ?? null;
+                $uploadedFile = $request?->file("document_files.$boxIndex.$documentIndex");
+                $storedFile = $uploadedFile
+                    ? $this->storeTransferDocumentFile($uploadedFile, $transfer->code, (string) ($documentPayload['code'] ?? $sortOrder))
+                    : null;
+                $existingFile = $this->resolveExistingDigitalFile($documentPayload, $existingDigitalFiles);
+                $fileName = $storedFile['name'] ?? $existingFile['name'] ?? ($documentPayload['file_name'] ?? null);
+                $filePath = $storedFile['path'] ?? $existingFile['path'] ?? null;
 
                 $box->documents()->create([
                     'code' => $documentPayload['code'] ?? 'DOC-' . $transfer->code . '-' . str_pad((string) $sortOrder, 3, '0', STR_PAD_LEFT),
@@ -680,13 +696,88 @@ class TransferController extends Controller
                     'year_label' => $documentPayload['date'] ?? null,
                     'pages_label' => $documentPayload['pages'] ?? null,
                     'digital_file_name' => $fileName,
-                    'digital_file_path' => $fileName ? 'uploads/' . $fileName : null,
+                    'digital_file_path' => $filePath,
                     'sort_order' => $sortOrder,
                 ]);
 
                 $sortOrder++;
             }
         }
+    }
+
+    private function normalizeTransferPayload(Request $request): void
+    {
+        $boxes = $request->input('boxes');
+
+        if (!is_string($boxes)) {
+            return;
+        }
+
+        $decodedBoxes = json_decode($boxes, true);
+
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decodedBoxes)) {
+            $request->merge(['boxes' => $decodedBoxes]);
+        }
+    }
+
+    private function storeTransferDocumentFile($file, string $transferCode, string $documentCode): array
+    {
+        $safeTransferCode = preg_replace('/[^A-Za-z0-9._-]+/', '-', $transferCode) ?: 'transferencia';
+        $safeDocumentCode = preg_replace('/[^A-Za-z0-9._-]+/', '-', $documentCode) ?: 'documento';
+        $originalName = $this->sanitizeFileName($file->getClientOriginalName() ?: ($safeDocumentCode . '.pdf'));
+        $storedName = now()->format('YmdHis') . '-' . uniqid('', true) . '-' . $originalName;
+        $path = $file->storeAs('uploads/transfer-documents/' . $safeTransferCode, $storedName, 'local');
+
+        return [
+            'name' => $originalName,
+            'path' => $path,
+        ];
+    }
+
+    private function sanitizeFileName(string $fileName): string
+    {
+        $name = pathinfo($fileName, PATHINFO_FILENAME) ?: 'documento';
+        $extension = pathinfo($fileName, PATHINFO_EXTENSION) ?: 'pdf';
+        $safeName = preg_replace('/[^A-Za-z0-9._-]+/', '-', $name) ?? 'documento';
+        $safeExtension = preg_replace('/[^A-Za-z0-9]+/', '', $extension) ?: 'pdf';
+
+        return $safeName . '.' . $safeExtension;
+    }
+
+    private function existingDigitalFilesByDocumentCode(Transfer $transfer): array
+    {
+        return $transfer->boxes
+            ->flatMap(fn ($box) => $box->documents)
+            ->filter(fn ($document) => !empty($document->digital_file_name) && !empty($document->digital_file_path))
+            ->mapWithKeys(fn ($document) => [
+                (string) $document->code => [
+                    'name' => $document->digital_file_name,
+                    'path' => $document->digital_file_path,
+                ],
+            ])
+            ->all();
+    }
+
+    private function resolveExistingDigitalFile(array $documentPayload, array $existingDigitalFiles): ?array
+    {
+        if (!empty($documentPayload['file_removed'])) {
+            return null;
+        }
+
+        $documentCode = (string) ($documentPayload['code'] ?? '');
+
+        if ($documentCode === '' || empty($existingDigitalFiles[$documentCode])) {
+            return null;
+        }
+
+        $existingFile = $existingDigitalFiles[$documentCode];
+        $payloadFileName = (string) ($documentPayload['file_name'] ?? '');
+
+        if ($payloadFileName !== '' && $payloadFileName !== (string) ($existingFile['name'] ?? '')) {
+            return null;
+        }
+
+        return $existingFile;
     }
 
     private function documentFingerprint(array $documentPayload, string $defaultSeries): string

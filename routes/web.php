@@ -145,8 +145,14 @@ Route::middleware('auth')->group(function () {
     Route::get('/api/archive/catalog', [ArchiveController::class, 'catalog']);
     Route::get('/api/archive/boxes', [ArchiveController::class, 'boxes']);
     Route::post('/api/archive/boxes', [ArchiveController::class, 'storeBox']);
+    Route::put('/api/archive/boxes/{id}/location', [ArchiveController::class, 'updateBoxLocation']);
     Route::delete('/api/archive/boxes/{id}', [ArchiveController::class, 'destroyBox']);
     Route::get('/api/archive/documents', [ArchiveController::class, 'documents']);
+    Route::post('/api/archive/documents', [ArchiveController::class, 'storeDocument']);
+    Route::get('/api/archive/reserved-documents', [ArchiveController::class, 'reservedDocuments']);
+    Route::post('/api/archive/reserved-documents', [ArchiveController::class, 'storeReservedDocument']);
+    Route::delete('/api/archive/reserved-documents/{id}', [ArchiveController::class, 'destroyReservedDocument']);
+    Route::put('/api/archive/documents/{id}/box', [ArchiveController::class, 'updateDocumentBox']);
     Route::get('/api/physical-locations/options', [PhysicalLocationController::class, 'options']);
     Route::get('/api/physical-locations', [PhysicalLocationController::class, 'index']);
     Route::post('/api/physical-location-offices', [PhysicalLocationController::class, 'storeOffice']);
@@ -166,6 +172,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/api/transfers/{number}/boxes/{boxNumber}/label', [RequestCatalogController::class, 'showTransferBoxLabel']);
     Route::get('/api/transfers/{number}/edit-data', [TransferController::class, 'editData']);
     Route::put('/api/transfers/{number}/resubmit-correction', [TransferController::class, 'resubmitCorrection']);
+    Route::get('/api/transfers/{number}/summary-sheet', [RequestCatalogController::class, 'downloadTransferSummarySheet']);
     Route::get('/api/transfers/{number}/documents/{code}/download', [RequestCatalogController::class, 'downloadTransferDocument']);
     Route::post('/api/transfers/{number}/unit-authorize', [TransferController::class, 'authorizeByUnit']);
     Route::post('/api/transfers/{number}/unit-deny', [TransferController::class, 'denyByUnit']);

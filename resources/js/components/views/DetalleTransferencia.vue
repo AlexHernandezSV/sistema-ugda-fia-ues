@@ -96,6 +96,16 @@ const openDocumentPreview = (document) => {
     documentPreviewVisible.value = true;
 };
 
+const openSummarySheetPreview = () => {
+    if (!transfer.value?.summarySheetCard?.url) {
+        return;
+    }
+
+    documentPreviewTitle.value = `Hoja resumen transferencia #${transfer.value.number}`;
+    documentPreviewSource.value = { url: transfer.value.summarySheetCard.url };
+    documentPreviewVisible.value = true;
+};
+
 const clearDocumentPreview = () => {
     documentPreviewSource.value = null;
 };
@@ -1493,6 +1503,26 @@ watch(
                     <i class="pi pi-calendar mr-2"></i>
                     Programado por {{ transfer.scheduledSummary.scheduledBy }} el {{ transfer.scheduledSummary.scheduledAt }}
                 </div>
+            </div>
+        </div>
+
+        <div v-if="transfer.summarySheetCard" class="surface-card shadow-1 detalle-summary-sheet-card">
+            <div class="detalle-summary-sheet-card__content">
+                <div class="detalle-summary-sheet-card__main">
+                    <div class="detalle-summary-sheet-card__icon">
+                        <i class="pi pi-file-pdf"></i>
+                    </div>
+                    <div>
+                        <h3>{{ transfer.summarySheetCard.title }}</h3>
+                        <p>{{ transfer.summarySheetCard.description }}</p>
+                    </div>
+                </div>
+                <Button
+                    :label="transfer.summarySheetCard.buttonLabel"
+                    icon="pi pi-eye"
+                    class="detalle-summary-sheet-card__button"
+                    @click="openSummarySheetPreview"
+                />
             </div>
         </div>
 
@@ -3163,6 +3193,72 @@ watch(
 
 .detalle-print-card {
     border: 2px solid #10b981;
+}
+
+.detalle-summary-sheet-card {
+    background: #fff7d6;
+    border: 2px solid #e0a619;
+    border-radius: 8px;
+    box-shadow: none;
+    overflow: hidden;
+}
+
+.detalle-summary-sheet-card__content {
+    align-items: center;
+    display: flex;
+    gap: 1.5rem;
+    justify-content: space-between;
+    padding: 1.35rem 1.5rem;
+}
+
+.detalle-summary-sheet-card__main {
+    align-items: center;
+    display: flex;
+    gap: 1rem;
+    min-width: 0;
+}
+
+.detalle-summary-sheet-card__icon {
+    align-items: center;
+    background: #d89614;
+    border-radius: 8px;
+    color: #ffffff;
+    display: inline-flex;
+    flex-shrink: 0;
+    font-size: 1.35rem;
+    height: 3rem;
+    justify-content: center;
+    width: 3rem;
+}
+
+.detalle-summary-sheet-card h3 {
+    color: #3d2a05;
+    font-size: 1.12rem;
+    font-weight: 800;
+    margin: 0;
+}
+
+.detalle-summary-sheet-card p {
+    color: #5d480f;
+    font-size: 0.95rem;
+    line-height: 1.45;
+    margin: 0.35rem 0 0;
+}
+
+.detalle-summary-sheet-card__button {
+    background: #b7790b !important;
+    border: 1px solid #b7790b !important;
+    border-radius: 8px;
+    color: #ffffff !important;
+    flex-shrink: 0;
+    font-weight: 800;
+    min-height: 2.8rem;
+    min-width: 10.5rem;
+}
+
+.detalle-summary-sheet-card__button:hover:not(:disabled) {
+    background: #8f5c06 !important;
+    border-color: #8f5c06 !important;
 }
 
 .detalle-process-card {
@@ -5078,7 +5174,8 @@ watch(
     .detalle-box-card__header,
     .detalle-box-card__content,
     .detalle-banner,
-    .detalle-print-card {
+    .detalle-print-card,
+    .detalle-summary-sheet-card__content {
         padding-left: 1rem;
         padding-right: 1rem;
     }
@@ -5107,9 +5204,15 @@ watch(
         min-height: auto;
     }
 
-    .detalle-process-card__button {
+    .detalle-process-card__button,
+    .detalle-summary-sheet-card__button {
         min-width: 0;
         width: 100%;
+    }
+
+    .detalle-summary-sheet-card__content {
+        align-items: stretch;
+        flex-direction: column;
     }
 
     .detalle-process-modal__grid,

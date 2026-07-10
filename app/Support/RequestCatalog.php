@@ -241,6 +241,14 @@ class RequestCatalog
                     'scheduledAt' => self::formatDateTime($latestSchedule->occurred_at),
                 ]
                 : null,
+            'summarySheetCard' => self::viewerCanViewTransferSummarySheet($viewer, $transfer)
+                ? [
+                    'title' => 'Hojas resumen obligatorias',
+                    'description' => 'Para que toda la documentacion sea recibida es obligatorio llevar todas las hojas resumen de la transferencia firmadas y selladas por el jefe de la unidad.',
+                    'buttonLabel' => 'Visualizar PDF',
+                    'url' => '/api/transfers/' . $transfer->code . '/summary-sheet',
+                ]
+                : null,
             'processCard' => ($isScheduled || $workflowCode === 'transfer_status_subsanated') && self::viewerCanManageUgda($viewer)
                 ? [
                     'action' => 'startPhysicalReview',
@@ -340,6 +348,58 @@ class RequestCatalog
                 ? self::transferUnitAuthorizationActions()
                 : ($isUgdaReview ? self::transferReviewActions($workflowCode) : []),
             'history' => self::mapHistory($transfer->events),
+        ];
+    }
+
+    public static function transferSummarySheet(string $number, ?User $viewer = null): ?array
+    {
+        $transfer = Transfer::query()
+            ->with([
+                'requester.person',
+                'unit',
+                'authorizationStatus',
+                'workflowStatus',
+                'authorizedBy.person',
+                'boxes.documents',
+            ])
+            ->where('code', $number)
+            ->first();
+
+        if ($transfer === null || !self::viewerCanViewTransferSummarySheet($viewer, $transfer)) {
+            return null;
+        }
+
+        return [
+            'number' => $transfer->code,
+            'unit' => $transfer->unit?->name ?: 'N/D',
+            'responsible' => self::userDisplayName($transfer->requester) ?: 'N/D',
+            'authorizedBy' => self::userDisplayName($transfer->authorizedBy) ?: 'N/D',
+            'authorizedAt' => self::formatDateTime($transfer->authorized_at) ?: 'N/D',
+            'requestedAt' => self::formatDate($transfer->requested_at) ?: 'N/D',
+            'scheduledFor' => self::formatDateTime($transfer->scheduled_for) ?: 'N/D',
+            'totalBoxes' => $transfer->boxes->count(),
+            'totalDocuments' => $transfer->boxes->sum(fn ($box) => $box->documents->count()),
+            'boxes' => $transfer->boxes
+                ->sortBy('box_number')
+                ->map(function ($box) use ($transfer) {
+                    return [
+                        'number' => str_pad((string) $box->box_number, 3, '0', STR_PAD_LEFT),
+                        'code' => $box->boxCode($transfer->code),
+                        'title' => $box->title ?: 'Caja ' . $box->boxCode($transfer->code),
+                        'period' => $box->period_label ?: self::buildPeriodLabel($box->start_year, $box->end_year),
+                        'series' => $box->series_name,
+                        'documents' => $box->documents->map(fn ($document) => [
+                            'code' => $document->code,
+                            'name' => $document->name,
+                            'series' => $document->series_label ?: 'N/D',
+                            'year' => $document->year_label ?: 'N/D',
+                            'pages' => $document->pages_label ?: 'N/D',
+                            'support' => $document->support_type ?: 'N/D',
+                        ])->values()->all(),
+                    ];
+                })
+                ->values()
+                ->all(),
         ];
     }
 
@@ -1247,6 +1307,24 @@ class RequestCatalog
     private static function viewerCanViewBoxLocationLabels(?User $viewer): bool
     {
         return self::viewerCanManageUgda($viewer);
+    }
+
+    private static function viewerCanViewTransferSummarySheet(?User $viewer, ?Transfer $transfer): bool
+    {
+        if ($viewer === null || $transfer === null) {
+            return false;
+        }
+
+        if ($transfer->authorizationStatus?->code !== 'transfer_auth_authorized'
+            || $transfer->workflowStatus?->code !== 'transfer_status_scheduled') {
+            return false;
+        }
+
+        if (!self::viewerCanAccessRequestUnit($viewer, $transfer->unit_id)) {
+            return false;
+        }
+
+        return in_array($viewer->activeProfile()?->name, ['Unidad Solicitante', 'Director/Jefe de Unidad'], true);
     }
 
     private static function viewerUnitIds(?User $viewer): array

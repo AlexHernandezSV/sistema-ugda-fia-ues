@@ -41,8 +41,8 @@ class PhysicalLocationController extends Controller
         $request->merge(['code' => $this->normalizeCode((string) $request->input('code'))]);
 
         $validator = Validator::make($request->all(), [
-            'name' => ['required', 'string', 'max:120'],
-            'code' => ['required', 'string', 'max:20', 'unique:physical_location_offices,code'],
+            'name' => ['required', 'string', 'max:100'],
+            'code' => ['required', 'string', 'max:100', 'unique:physical_location_offices,code'],
             'is_active' => ['boolean'],
         ], $this->messages());
 
@@ -79,8 +79,8 @@ class PhysicalLocationController extends Controller
         $office = PhysicalLocationOffice::query()->findOrFail($id);
         $request->merge(['code' => $this->normalizeCode((string) $request->input('code'))]);
         $validator = Validator::make($request->all(), [
-            'name' => ['required', 'string', 'max:120'],
-            'code' => ['required', 'string', 'max:20', Rule::unique('physical_location_offices', 'code')->ignore($office->id)],
+            'name' => ['required', 'string', 'max:100'],
+            'code' => ['required', 'string', 'max:100', Rule::unique('physical_location_offices', 'code')->ignore($office->id)],
             'is_active' => ['boolean'],
         ], $this->messages());
 
@@ -132,11 +132,11 @@ class PhysicalLocationController extends Controller
 
         $validator = Validator::make($request->all(), [
             'office_id' => ['required', 'exists:physical_location_offices,id'],
-            'name' => ['required', 'string', 'max:120'],
+            'name' => ['required', 'string', 'max:100'],
             'code' => [
                 'required',
                 'string',
-                'max:20',
+                'max:100',
                 Rule::unique('physical_location_aisles', 'code')
                     ->where(fn ($query) => $query->where('physical_location_office_id', (int) $request->input('office_id'))),
             ],
@@ -173,11 +173,11 @@ class PhysicalLocationController extends Controller
         $request->merge(['code' => $this->normalizeCode((string) $request->input('code'))]);
         $validator = Validator::make($request->all(), [
             'office_id' => ['required', 'exists:physical_location_offices,id'],
-            'name' => ['required', 'string', 'max:120'],
+            'name' => ['required', 'string', 'max:100'],
             'code' => [
                 'required',
                 'string',
-                'max:20',
+                'max:100',
                 Rule::unique('physical_location_aisles', 'code')
                     ->ignore($aisle->id)
                     ->where(fn ($query) => $query->where('physical_location_office_id', $officeId)),
@@ -234,11 +234,11 @@ class PhysicalLocationController extends Controller
 
         $validator = Validator::make($request->all(), [
             'aisle_id' => ['required', 'exists:physical_location_aisles,id'],
-            'name' => ['required', 'string', 'max:120'],
+            'name' => ['required', 'string', 'max:100'],
             'code' => [
                 'required',
                 'string',
-                'max:20',
+                'max:100',
                 Rule::unique('physical_location_shelves', 'code')
                     ->where(fn ($query) => $query->where('physical_location_aisle_id', (int) $request->input('aisle_id'))),
             ],
@@ -275,11 +275,11 @@ class PhysicalLocationController extends Controller
         $request->merge(['code' => $this->normalizeCode((string) $request->input('code'))]);
         $validator = Validator::make($request->all(), [
             'aisle_id' => ['required', 'exists:physical_location_aisles,id'],
-            'name' => ['required', 'string', 'max:120'],
+            'name' => ['required', 'string', 'max:100'],
             'code' => [
                 'required',
                 'string',
-                'max:20',
+                'max:100',
                 Rule::unique('physical_location_shelves', 'code')
                     ->ignore($shelf->id)
                     ->where(fn ($query) => $query->where('physical_location_aisle_id', $aisleId)),
@@ -553,6 +553,8 @@ class PhysicalLocationController extends Controller
     {
         return [
             'name.required' => 'El nombre es obligatorio.',
+            'name.max' => 'El nombre no puede superar los 100 caracteres.',
+            'code.max' => 'El código no puede superar los 100 caracteres.',
             'code.required' => 'El código es obligatorio.',
             'code.unique' => 'Ya existe un registro con este código en el mismo nivel.',
             'office_id.required' => 'Debe seleccionar la oficina.',
