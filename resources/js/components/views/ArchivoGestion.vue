@@ -12,6 +12,9 @@ const query = ref('');
 const loading = ref(false);
 const selectedBox = ref(null);
 const documentsDialogVisible = ref(false);
+const deleteDialogVisible = ref(false);
+const deletingBox = ref(false);
+const boxPendingDelete = ref(null);
 
 const boxesCount = computed(() => boxes.value.length);
 
@@ -110,7 +113,7 @@ const printLabel = (box) => {
     popup.document.close();
 };
 
-const deleteBox = async (box) => {
+const deleteBox = (box) => {
     if (!box.can_delete) {
         toast.add({
             severity: 'warn',
@@ -121,11 +124,28 @@ const deleteBox = async (box) => {
         return;
     }
 
-    if (!window.confirm(`Desea eliminar la caja #${box.number}?`)) {
+    boxPendingDelete.value = box;
+    deleteDialogVisible.value = true;
+};
+
+const closeDeleteDialog = () => {
+    if (deletingBox.value) {
         return;
     }
 
+    deleteDialogVisible.value = false;
+    boxPendingDelete.value = null;
+};
+
+const confirmDeleteBox = async () => {
+    if (!boxPendingDelete.value) {
+        return;
+    }
+
+    deletingBox.value = true;
+
     try {
+        const box = boxPendingDelete.value;
         await axios.delete(`/api/archive/boxes/${box.id}`);
         toast.add({
             severity: 'success',
@@ -133,6 +153,8 @@ const deleteBox = async (box) => {
             detail: 'La caja fue eliminada correctamente.',
             life: 3000,
         });
+        deleteDialogVisible.value = false;
+        boxPendingDelete.value = null;
         await fetchBoxes();
     } catch (error) {
         toast.add({
@@ -141,6 +163,8 @@ const deleteBox = async (box) => {
             detail: error.response?.data?.message ?? 'No se pudo eliminar la caja.',
             life: 4200,
         });
+    } finally {
+        deletingBox.value = false;
     }
 };
 
@@ -266,6 +290,48 @@ onMounted(fetchBoxes);
                     <div class="archive-boxes-empty">Esta caja no tiene documentos registrados.</div>
                 </template>
             </DataTable>
+        </Dialog>
+
+        <Dialog
+            v-model:visible="deleteDialogVisible"
+            modal
+            :closable="!deletingBox"
+            :dismissableMask="!deletingBox"
+            :style="{ width: '440px', maxWidth: '92vw' }"
+            class="archive-delete-dialog"
+        >
+            <template #header>
+                <div class="archive-delete-dialog__header">
+                    <span class="archive-delete-dialog__icon">
+                        <i class="pi pi-exclamation-triangle"></i>
+                    </span>
+                    <span>Confirmar eliminacion</span>
+                </div>
+            </template>
+
+            <div class="archive-delete-dialog__body" v-if="boxPendingDelete">
+                <p>
+                    Se eliminara la caja
+                    <strong>#{{ boxPendingDelete.number }}</strong>.
+                </p>
+                <p>Esta accion no se puede revertir.</p>
+            </div>
+
+            <template #footer>
+                <Button
+                    label="Cancelar"
+                    severity="secondary"
+                    outlined
+                    :disabled="deletingBox"
+                    @click="closeDeleteDialog"
+                />
+                <Button
+                    label="Aceptar"
+                    severity="danger"
+                    :loading="deletingBox"
+                    @click="confirmDeleteBox"
+                />
+            </template>
         </Dialog>
     </div>
 </template>
@@ -463,6 +529,41 @@ onMounted(fetchBoxes);
 .archive-documents-subtitle {
     color: #526477;
     margin: -0.5rem 0 1rem;
+}
+
+.archive-delete-dialog__header {
+    align-items: center;
+    color: #111827;
+    display: flex;
+    font-weight: 700;
+    gap: 0.75rem;
+}
+
+.archive-delete-dialog__icon {
+    align-items: center;
+    background: #fee2e2;
+    border-radius: 999px;
+    color: #dc2626;
+    display: inline-flex;
+    height: 2.25rem;
+    justify-content: center;
+    width: 2.25rem;
+}
+
+.archive-delete-dialog__body {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.archive-delete-dialog__body p {
+    color: #475569;
+    line-height: 1.5;
+    margin: 0;
+}
+
+.archive-delete-dialog__body strong {
+    color: #111827;
+    font-weight: 700;
 }
 
 @media (max-width: 991px) {

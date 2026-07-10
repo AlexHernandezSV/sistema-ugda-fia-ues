@@ -14,8 +14,11 @@ const shelves = ref([]);
 const optionOffices = ref([]);
 const optionAisles = ref([]);
 const dialogVisible = ref(false);
+const deleteDialogVisible = ref(false);
 const activeType = ref("office");
 const editingId = ref(null);
+const deleting = ref(false);
+const pendingDelete = ref(null);
 const rowsPerPageOptions = ref([5, 10, 25, 50]);
 const textFieldMaxLength = 100;
 const createTableFilters = () => ({
@@ -65,6 +68,14 @@ const dialogTitle = computed(() =>
         ? typeConfig[activeType.value].editTitle
         : typeConfig[activeType.value].createTitle,
 );
+
+const deleteTargetTitle = computed(() => {
+    if (!pendingDelete.value) {
+        return "";
+    }
+
+    return typeConfig[pendingDelete.value.type].title;
+});
 
 const officeOptions = computed(() =>
     optionOffices.value.map((office) => ({
@@ -274,12 +285,29 @@ const saveLocation = async () => {
     }
 };
 
-const deleteLocation = async (type, item) => {
-    if (!window.confirm(`Eliminar ${item.name}?`)) {
+const deleteLocation = (type, item) => {
+    pendingDelete.value = { type, item };
+    deleteDialogVisible.value = true;
+};
+
+const closeDeleteDialog = () => {
+    if (deleting.value) {
         return;
     }
 
+    deleteDialogVisible.value = false;
+    pendingDelete.value = null;
+};
+
+const confirmDeleteLocation = async () => {
+    if (!pendingDelete.value) {
+        return;
+    }
+
+    deleting.value = true;
+
     try {
+        const { type, item } = pendingDelete.value;
         await axios.delete(`${typeConfig[type].endpoint}/${item.id}`);
         toast.add({
             severity: "success",
@@ -287,11 +315,15 @@ const deleteLocation = async (type, item) => {
             detail: "Registro eliminado correctamente.",
             life: 2600,
         });
+        deleteDialogVisible.value = false;
+        pendingDelete.value = null;
         await Promise.all([fetchCatalog(), fetchLocationOptions()]);
     } catch (error) {
         showError(
             error.response?.data?.message ?? "No se pudo eliminar el registro.",
         );
+    } finally {
+        deleting.value = false;
     }
 };
 
@@ -667,6 +699,48 @@ const goBack = () => {
                 />
             </template>
         </Dialog>
+
+        <Dialog
+            v-model:visible="deleteDialogVisible"
+            modal
+            :closable="!deleting"
+            :dismissableMask="!deleting"
+            :style="{ width: '440px', maxWidth: '92vw' }"
+            class="locations-delete-dialog"
+        >
+            <template #header>
+                <div class="locations-delete-dialog__header">
+                    <span class="locations-delete-dialog__icon">
+                        <i class="pi pi-exclamation-triangle"></i>
+                    </span>
+                    <span>Confirmar eliminacion</span>
+                </div>
+            </template>
+
+            <div class="locations-delete-dialog__body" v-if="pendingDelete">
+                <p>
+                    Se eliminara la {{ deleteTargetTitle }}
+                    <strong>"{{ pendingDelete.item.name }}"</strong>.
+                </p>
+                <p>Esta accion no se puede revertir.</p>
+            </div>
+
+            <template #footer>
+                <Button
+                    label="Cancelar"
+                    severity="secondary"
+                    outlined
+                    :disabled="deleting"
+                    @click="closeDeleteDialog"
+                />
+                <Button
+                    label="Aceptar"
+                    severity="danger"
+                    :loading="deleting"
+                    @click="confirmDeleteLocation"
+                />
+            </template>
+        </Dialog>
     </div>
 </template>
 
@@ -868,6 +942,41 @@ const goBack = () => {
 
 .locations-status-toggle.is-inactive .locations-status-toggle__text {
     color: #b91c1c;
+}
+
+.locations-delete-dialog__header {
+    align-items: center;
+    color: #111827;
+    display: flex;
+    font-weight: 700;
+    gap: 0.75rem;
+}
+
+.locations-delete-dialog__icon {
+    align-items: center;
+    background: #fee2e2;
+    border-radius: 999px;
+    color: #dc2626;
+    display: inline-flex;
+    height: 2.25rem;
+    justify-content: center;
+    width: 2.25rem;
+}
+
+.locations-delete-dialog__body {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.locations-delete-dialog__body p {
+    color: #475569;
+    line-height: 1.5;
+    margin: 0;
+}
+
+.locations-delete-dialog__body strong {
+    color: #111827;
+    font-weight: 700;
 }
 
 :deep(.locations-status-toggle.is-active .p-toggleswitch-slider) {

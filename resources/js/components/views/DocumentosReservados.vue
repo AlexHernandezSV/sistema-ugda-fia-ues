@@ -17,6 +17,8 @@ const loadingAvailable = ref(false);
 const selectedDocument = ref(null);
 const submitting = ref(false);
 const removingId = ref(null);
+const removeDialogVisible = ref(false);
+const documentPendingRemoval = ref(null);
 let availableSearchTimer = null;
 let reservedSearchTimer = null;
 
@@ -159,11 +161,26 @@ const addReservedDocument = async () => {
     }
 };
 
-const removeReservedDocument = async (document) => {
-    if (!window.confirm(`Desea quitar "${document.title}" de documentos reservados?`)) {
+const removeReservedDocument = (document) => {
+    documentPendingRemoval.value = document;
+    removeDialogVisible.value = true;
+};
+
+const closeRemoveDialog = () => {
+    if (removingId.value) {
         return;
     }
 
+    removeDialogVisible.value = false;
+    documentPendingRemoval.value = null;
+};
+
+const confirmRemoveReservedDocument = async () => {
+    if (!documentPendingRemoval.value) {
+        return;
+    }
+
+    const document = documentPendingRemoval.value;
     removingId.value = document.id;
 
     try {
@@ -174,6 +191,8 @@ const removeReservedDocument = async (document) => {
             detail: data.message ?? `El documento "${document.title}" fue removido de reservados.`,
             life: 3200,
         });
+        removeDialogVisible.value = false;
+        documentPendingRemoval.value = null;
         await fetchReservedDocuments();
     } catch (error) {
         toast.add({
@@ -405,6 +424,49 @@ onBeforeUnmount(() => {
                         />
                     </footer>
                 </div>
+            </template>
+        </Dialog>
+
+        <Dialog
+            v-model:visible="removeDialogVisible"
+            modal
+            :closable="!removingId"
+            :dismissableMask="!removingId"
+            :style="{ width: '440px', maxWidth: '92vw' }"
+            class="reserved-remove-dialog"
+        >
+            <template #header>
+                <div class="reserved-remove-dialog__header">
+                    <span class="reserved-remove-dialog__icon">
+                        <i class="pi pi-exclamation-triangle"></i>
+                    </span>
+                    <span>Confirmar accion</span>
+                </div>
+            </template>
+
+            <div class="reserved-remove-dialog__body" v-if="documentPendingRemoval">
+                <p>
+                    Se quitara el documento
+                    <strong>"{{ documentPendingRemoval.title }}"</strong>
+                    de documentos reservados.
+                </p>
+                <p>Esta accion no se puede revertir.</p>
+            </div>
+
+            <template #footer>
+                <Button
+                    label="Cancelar"
+                    severity="secondary"
+                    outlined
+                    :disabled="!!removingId"
+                    @click="closeRemoveDialog"
+                />
+                <Button
+                    label="Aceptar"
+                    severity="danger"
+                    :loading="!!removingId"
+                    @click="confirmRemoveReservedDocument"
+                />
             </template>
         </Dialog>
     </div>
@@ -758,6 +820,41 @@ onBeforeUnmount(() => {
     gap: 0.75rem;
     justify-content: flex-end;
     padding: 0.85rem 1.4rem;
+}
+
+.reserved-remove-dialog__header {
+    align-items: center;
+    color: #111827;
+    display: flex;
+    font-weight: 700;
+    gap: 0.75rem;
+}
+
+.reserved-remove-dialog__icon {
+    align-items: center;
+    background: #fee2e2;
+    border-radius: 999px;
+    color: #dc2626;
+    display: inline-flex;
+    height: 2.25rem;
+    justify-content: center;
+    width: 2.25rem;
+}
+
+.reserved-remove-dialog__body {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.reserved-remove-dialog__body p {
+    color: #475569;
+    line-height: 1.5;
+    margin: 0;
+}
+
+.reserved-remove-dialog__body strong {
+    color: #111827;
+    font-weight: 700;
 }
 
 @media (max-width: 768px) {
