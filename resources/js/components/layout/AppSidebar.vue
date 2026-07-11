@@ -41,6 +41,7 @@ const userData = ref({
 const hasPermission = (permission) => userData.value.permissions.includes(permission);
 const normalizedRole = computed(() => String(userData.value.role ?? '').trim().toLowerCase());
 const isAdminProfile = computed(() => normalizedRole.value === ADMIN_PROFILE);
+const isUgdaProfile = computed(() => normalizedRole.value === UGDA_PROFILE);
 const canAccessReports = computed(() => hasPermission(REPORTS_PERMISSION) || normalizedRole.value === UGDA_PROFILE);
 const isRequesterProfile = computed(() => normalizedRole.value === REQUESTER_PROFILE);
 const isUnitDirectorProfile = computed(() => normalizedRole.value === UNIT_DIRECTOR_PROFILE);
@@ -84,7 +85,7 @@ const menuItems = computed(() => {
         });
     }
 
-    if (isAdminProfile.value) {
+    if (isAdminProfile.value || isUgdaProfile.value) {
         items.push({
             label: 'Archivo General',
             icon: 'pi pi-box',

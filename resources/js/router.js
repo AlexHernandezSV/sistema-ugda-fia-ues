@@ -76,42 +76,42 @@ const routes = [
     {
         path: '/archivo-general',
         name: 'archivo-general',
-        meta: { title: 'Archivo General', allowedProfiles: ['Administrador'] },
+        meta: { title: 'Archivo General', allowedProfiles: ['Administrador', 'Usuario UGDA'] },
         component: ArchivoGeneral
     },
 
     {
         path: '/archivo-general/gestion',
         name: 'archivo-general-gestion',
-        meta: { title: 'Gestión de Archivo', allowedProfiles: ['Administrador'] },
+        meta: { title: 'Gestión de Archivo', allowedProfiles: ['Administrador', 'Usuario UGDA'] },
         component: ArchivoGestion
     },
 
     {
         path: '/archivo-general/cajas/crear',
         name: 'archivo-general-cajas-crear',
-        meta: { title: 'Crear Nueva Caja', allowedProfiles: ['Administrador'] },
+        meta: { title: 'Crear Nueva Caja', allowedProfiles: ['Administrador', 'Usuario UGDA'] },
         component: CrearCajaArchivo
     },
 
     {
         path: '/archivo-general/documentos/crear',
         name: 'archivo-general-documentos-crear',
-        meta: { title: 'Crear Nuevo Documento', allowedProfiles: ['Administrador'] },
+        meta: { title: 'Crear Nuevo Documento', allowedProfiles: ['Administrador', 'Usuario UGDA'] },
         component: CrearDocumentoArchivo
     },
 
     {
         path: '/archivo-general/documentos-reservados',
         name: 'archivo-general-documentos-reservados',
-        meta: { title: 'Documentos Reservados', allowedProfiles: ['Administrador'] },
+        meta: { title: 'Documentos Reservados', allowedProfiles: ['Administrador', 'Usuario UGDA'] },
         component: DocumentosReservados
     },
 
     {
         path: '/archivo-general/reasignacion',
         name: 'archivo-general-reasignacion',
-        meta: { title: 'Reasignacion de Archivo', allowedProfiles: ['Administrador'] },
+        meta: { title: 'Reasignacion de Archivo', allowedProfiles: ['Administrador', 'Usuario UGDA'] },
         component: ReasignacionArchivo
     },
 
@@ -126,7 +126,7 @@ const routes = [
         path: '/reportes',
         name: 'reportes',
         meta: {
-            title: 'Reportes Dinamicos',
+            title: 'Reportes Dinámicos',
             permission: 'endpoint.ui.reports.read',
             allowedProfiles: ['Usuario UGDA'],
         },

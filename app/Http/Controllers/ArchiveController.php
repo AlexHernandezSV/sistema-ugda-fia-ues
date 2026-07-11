@@ -26,7 +26,7 @@ class ArchiveController extends Controller
     {
         if (!$this->canManageArchive($request)) {
             return response()->json([
-                'message' => 'Solo el administrador puede gestionar el archivo general.',
+                'message' => 'Solo el personal UGDA puede gestionar el archivo general.',
             ], 403);
         }
 
@@ -71,7 +71,7 @@ class ArchiveController extends Controller
     {
         if (!$this->canManageArchive($request)) {
             return response()->json([
-                'message' => 'Solo el administrador puede consultar las cajas del archivo general.',
+                'message' => 'Solo el personal UGDA puede consultar las cajas del archivo general.',
             ], 403);
         }
 
@@ -132,7 +132,7 @@ class ArchiveController extends Controller
     {
         if (!$this->canManageArchive($request)) {
             return response()->json([
-                'message' => 'Solo el administrador puede crear cajas en el archivo general.',
+                'message' => 'Solo el personal UGDA puede crear cajas en el archivo general.',
             ], 403);
         }
 
@@ -329,7 +329,7 @@ class ArchiveController extends Controller
     {
         if (!$this->canManageArchive($request)) {
             return response()->json([
-                'message' => 'Solo el administrador puede eliminar cajas del archivo general.',
+                'message' => 'Solo el personal UGDA puede eliminar cajas del archivo general.',
             ], 403);
         }
 
@@ -360,7 +360,7 @@ class ArchiveController extends Controller
     {
         if (!$this->canManageArchive($request)) {
             return response()->json([
-                'message' => 'Solo el administrador puede reasignar cajas del archivo general.',
+                'message' => 'Solo el personal UGDA puede reasignar cajas del archivo general.',
             ], 403);
         }
 
@@ -444,7 +444,7 @@ class ArchiveController extends Controller
     {
         if (!$this->canManageArchive($request)) {
             return response()->json([
-                'message' => 'Solo el administrador puede crear documentos en el archivo general.',
+                'message' => 'Solo el personal UGDA puede crear documentos en el archivo general.',
             ], 403);
         }
 
@@ -597,7 +597,7 @@ class ArchiveController extends Controller
     {
         if (!$this->canManageArchive($request)) {
             return response()->json([
-                'message' => 'Solo el administrador puede reasignar documentos del archivo general.',
+                'message' => 'Solo el personal UGDA puede reasignar documentos del archivo general.',
             ], 403);
         }
 
@@ -687,9 +687,9 @@ class ArchiveController extends Controller
 
     public function documents(Request $request): JsonResponse
     {
-        if (!$this->canManageArchive($request)) {
+        if (!$this->canSearchArchive($request)) {
             return response()->json([
-                'message' => 'Solo el administrador puede consultar el archivo general.',
+                'message' => 'Solo el personal UGDA puede consultar el archivo general.',
             ], 403);
         }
 
@@ -813,7 +813,7 @@ class ArchiveController extends Controller
     {
         if (!$this->canManageArchive($request)) {
             return response()->json([
-                'message' => 'Solo el administrador puede consultar documentos reservados.',
+                'message' => 'Solo el personal UGDA puede consultar documentos reservados.',
             ], 403);
         }
 
@@ -882,7 +882,7 @@ class ArchiveController extends Controller
     {
         if (!$this->canManageArchive($request)) {
             return response()->json([
-                'message' => 'Solo el administrador puede marcar documentos reservados.',
+                'message' => 'Solo el personal UGDA puede marcar documentos reservados.',
             ], 403);
         }
 
@@ -953,7 +953,7 @@ class ArchiveController extends Controller
     {
         if (!$this->canManageArchive($request)) {
             return response()->json([
-                'message' => 'Solo el administrador puede quitar documentos reservados.',
+                'message' => 'Solo el personal UGDA puede quitar documentos reservados.',
             ], 403);
         }
 
@@ -1173,7 +1173,12 @@ class ArchiveController extends Controller
 
     private function canManageArchive(Request $request): bool
     {
-        return $request->user()?->activeProfile()?->name === 'Administrador';
+        return in_array($request->user()?->activeProfile()?->name, ['Administrador', 'Usuario UGDA'], true);
+    }
+
+    private function canSearchArchive(Request $request): bool
+    {
+        return in_array($request->user()?->activeProfile()?->name, ['Administrador', 'Usuario UGDA'], true);
     }
 
     private function nextArchiveTransferCode(): string
