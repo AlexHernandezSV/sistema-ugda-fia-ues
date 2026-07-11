@@ -144,6 +144,12 @@ Route::middleware('auth')->group(function () {
         ->middleware('permission:endpoint.ui.reports.read');
     Route::get('/api/reports/entry-registry', [ReportController::class, 'entryRegistry'])
         ->middleware('permission:endpoint.ui.reports.read');
+    Route::get('/api/reports/access-consultation/history', [ReportController::class, 'accessConsultationHistory'])
+        ->middleware('permission:endpoint.ui.reports.read');
+    Route::get('/api/reports/access-consultation/documents', [ReportController::class, 'accessConsultationDocuments'])
+        ->middleware('permission:endpoint.ui.reports.read');
+    Route::get('/api/reports/access-consultation/response-times', [ReportController::class, 'accessConsultationResponseTimes'])
+        ->middleware('permission:endpoint.ui.reports.read');
     Route::get('/api/archive/catalog', [ArchiveController::class, 'catalog']);
     Route::get('/api/archive/boxes', [ArchiveController::class, 'boxes']);
     Route::post('/api/archive/boxes', [ArchiveController::class, 'storeBox']);

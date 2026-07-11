@@ -47,12 +47,71 @@ const registryReport = ref({
     documents: [],
 });
 
+const accessHistoryReport = ref({
+    filters: {
+        statuses: [],
+        units: [],
+        users: [],
+    },
+    summary: {
+        filtered_loans: 0,
+        total_loans: 0,
+        users: 0,
+        units: 0,
+    },
+    loans: [],
+});
+
+const accessDocumentsReport = ref({
+    summary: {
+        total_documents: 0,
+        total_consultations: 0,
+    },
+    documents: [],
+});
+
+const accessResponseTimeReport = ref({
+    summary: {
+        total_rows: 0,
+        average_minutes: 0,
+        minimum_minutes: 0,
+        maximum_minutes: 0,
+    },
+    rows: [],
+});
+
 const filters = reactive({
     unit: null,
     series: null,
     support: null,
     search: "",
 });
+
+const accessFilters = reactive({
+    status: null,
+    unit: null,
+    user: null,
+    startDate: null,
+    endDate: null,
+});
+
+const accessDocumentFilters = reactive({
+    analysisType: "most",
+    startDate: null,
+    endDate: null,
+});
+
+const accessResponseTimeFilters = reactive({
+    startDate: null,
+    endDate: null,
+});
+
+const accessDocumentAnalysisOptions = [
+    { label: "Más Consultados", value: "most" },
+    { label: "Menos Consultados", value: "least" },
+];
+
+const expandedAccessUsers = ref(new Set());
 
 const reportCategories = computed(() => [
     {
@@ -66,8 +125,8 @@ const reportCategories = computed(() => [
         key: "access_and_consultation",
         title: "Reportes de Consulta y Acceso",
         description: "Indicadores sobre préstamos, consultas y atención de usuarios.",
-        availableReports: reportSummary.value.categories.access_and_consultation,
-        reports: [],
+        availableReports: accessReports.value.length,
+        reports: accessReports.value,
     },
     {
         key: "classification_and_organization",
@@ -105,18 +164,68 @@ const entryReports = computed(() => [
     },
 ]);
 
+const accessReports = computed(() => [
+    {
+        key: "consultation-history",
+        title: "Historial de Consultas por Usuario",
+        description: "Solicitudes de préstamo realizadas",
+        icon: "pi pi-chart-bar",
+    },
+    {
+        key: "most-consulted-documents",
+        title: "Documentos Más y Menos Consultados",
+        description: "Análisis de préstamos por documento",
+        icon: "pi pi-chart-bar",
+    },
+    {
+        key: "average-response-times",
+        title: "Tiempos Promedio de Respuesta",
+        description: "Tiempo de localización de documentos",
+        icon: "pi pi-chart-bar",
+    },
+]);
+
 const currentCategory = computed(() =>
     reportCategories.value.find((category) => category.key === selectedCategory.value)
 );
 
 const currentReport = computed(() =>
-    entryReports.value.find((report) => report.key === selectedReport.value) ??
+    [...entryReports.value, ...accessReports.value].find((report) => report.key === selectedReport.value) ??
     entryReports.value[0]
 );
 
+const isEntryReport = computed(() => selectedCategory.value === "entry_and_registry");
+const isAccessHistoryReport = computed(() =>
+    selectedCategory.value === "access_and_consultation" &&
+    selectedReport.value === "consultation-history"
+);
+const isAccessDocumentsReport = computed(() =>
+    selectedCategory.value === "access_and_consultation" &&
+    selectedReport.value === "most-consulted-documents"
+);
+const isAccessResponseTimeReport = computed(() =>
+    selectedCategory.value === "access_and_consultation" &&
+    selectedReport.value === "average-response-times"
+);
 const isUnitsReport = computed(() => currentReport.value.key === "units");
 const hasActiveFilters = computed(() =>
-    Boolean(filters.unit || filters.series || filters.support || filters.search.trim())
+    isAccessResponseTimeReport.value
+        ? Boolean(accessResponseTimeFilters.startDate || accessResponseTimeFilters.endDate)
+        : isAccessDocumentsReport.value
+        ? Boolean(
+            accessDocumentFilters.analysisType !== "most" ||
+            accessDocumentFilters.startDate ||
+            accessDocumentFilters.endDate
+        )
+        : isAccessHistoryReport.value
+        ? Boolean(
+            accessFilters.status ||
+            accessFilters.unit ||
+            accessFilters.user ||
+            accessFilters.startDate ||
+            accessFilters.endDate
+        )
+        : Boolean(filters.unit || filters.series || filters.support || filters.search.trim())
 );
 
 const documents = computed(() => registryReport.value.documents ?? []);
@@ -191,10 +300,113 @@ const visibleDocuments = computed(() => {
     });
 });
 
+const accessLoans = computed(() => accessHistoryReport.value.loans ?? []);
+const accessDocumentConsultations = computed(() => accessDocumentsReport.value.documents ?? []);
+const accessResponseTimeRows = computed(() => accessResponseTimeReport.value.rows ?? []);
+
+const accessStatusOptions = computed(() => accessHistoryReport.value.filters.statuses ?? []);
+const accessUnitOptions = computed(() => accessHistoryReport.value.filters.units ?? []);
+const accessUserOptions = computed(() => accessHistoryReport.value.filters.users ?? []);
+
+const toReportDate = (value) => {
+    if (!value) {
+        return null;
+    }
+
+    if (typeof value === "string") {
+        return value.slice(0, 10);
+    }
+
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+};
+
+const visibleAccessLoans = computed(() => {
+    const startDate = toReportDate(accessFilters.startDate);
+    const endDate = toReportDate(accessFilters.endDate);
+
+    return accessLoans.value.filter((loan) => {
+        const requestedDate = loan.requested_at;
+        const matchesStatus = !accessFilters.status || loan.status_code === accessFilters.status;
+        const matchesUnit = !accessFilters.unit || loan.unit_id === accessFilters.unit;
+        const matchesUser = !accessFilters.user || loan.user_id === accessFilters.user;
+        const matchesStart = !startDate || requestedDate >= startDate;
+        const matchesEnd = !endDate || requestedDate <= endDate;
+
+        return matchesStatus && matchesUnit && matchesUser && matchesStart && matchesEnd;
+    });
+});
+
+const visibleAccessDocumentConsultations = computed(() => {
+    const startDate = toReportDate(accessDocumentFilters.startDate);
+    const endDate = toReportDate(accessDocumentFilters.endDate);
+
+    return accessDocumentConsultations.value.filter((document) => {
+        const consultationDate = document.date;
+        const matchesStart = !startDate || consultationDate >= startDate;
+        const matchesEnd = !endDate || consultationDate <= endDate;
+
+        return matchesStart && matchesEnd;
+    });
+});
+
+const visibleAccessResponseTimeRows = computed(() => {
+    const startDate = toReportDate(accessResponseTimeFilters.startDate);
+    const endDate = toReportDate(accessResponseTimeFilters.endDate);
+
+    return accessResponseTimeRows.value.filter((row) => {
+        const startedAt = row.started_at;
+        const matchesStart = !startDate || startedAt >= startDate;
+        const matchesEnd = !endDate || startedAt <= endDate;
+
+        return matchesStart && matchesEnd;
+    });
+});
+
 const filteredDocumentsCount = computed(() => visibleDocuments.value.length);
+const filteredAccessLoansCount = computed(() => visibleAccessLoans.value.length);
+const accessDocumentRows = computed(() => {
+    const grouped = new Map();
+
+    visibleAccessDocumentConsultations.value.forEach((document) => {
+        const key = document.document_key || document.title;
+
+        if (!grouped.has(key)) {
+            grouped.set(key, {
+                key,
+                title: document.title || "Sin titulo",
+                series: document.series || "Sin serie",
+                total: 0,
+                consultations: [],
+            });
+        }
+
+        const row = grouped.get(key);
+        row.total += 1;
+        row.consultations.push(document);
+    });
+
+    const direction = accessDocumentFilters.analysisType === "least" ? 1 : -1;
+
+    return Array.from(grouped.values())
+        .sort((a, b) => {
+            const totalComparison = (a.total - b.total) * direction;
+
+            return totalComparison || a.title.localeCompare(b.title);
+        })
+        .slice(0, 12);
+});
+const filteredAccessDocumentsCount = computed(() => accessDocumentRows.value.length);
+const filteredAccessResponseTimeCount = computed(() => visibleAccessResponseTimeRows.value.length);
 const reportTotalDocumentsCount = computed(() =>
     isUnitsReport.value ? documents.value.length : registryReport.value.summary.total_documents
 );
+const reportTotalAccessLoansCount = computed(() => accessHistoryReport.value.summary.total_loans);
+const reportTotalAccessDocumentsCount = computed(() => accessDocumentsReport.value.summary.total_documents);
+const reportTotalAccessResponseTimeCount = computed(() => accessResponseTimeReport.value.summary.total_rows);
 const visibleUnitsCount = computed(() =>
     new Set(visibleDocuments.value.map((document) => document.unit).filter(Boolean)).size
 );
@@ -203,6 +415,143 @@ const visibleSeriesCount = computed(() =>
 );
 
 const chartTitle = computed(() => currentReport.value?.title ?? "Documentos por Periodo");
+
+const accessChartRows = computed(() => {
+    const grouped = new Map();
+
+    visibleAccessLoans.value.forEach((loan) => {
+        const unit = loan.unit || "Sin unidad";
+        grouped.set(unit, (grouped.get(unit) ?? 0) + 1);
+    });
+
+    return Array.from(grouped.entries())
+        .map(([label, total]) => ({ label, total }))
+        .sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
+});
+
+const accessChartMax = computed(() => Math.max(...accessChartRows.value.map((row) => row.total), 1));
+
+const accessChartTicks = computed(() => {
+    const roundedMax = Math.max(4, Math.ceil(accessChartMax.value / 4) * 4);
+
+    return [0, 1, 2, 3, 4].map((index) => Math.round((roundedMax / 4) * index));
+});
+
+const accessDocumentChartMax = computed(() =>
+    Math.max(...accessDocumentRows.value.map((row) => row.total), 1)
+);
+
+const accessDocumentChartTicks = computed(() => {
+    const roundedMax = Math.max(3, Math.ceil(accessDocumentChartMax.value / 3) * 3);
+
+    return [0, 1, 2, 3, 4].map((index) => Number(((roundedMax / 4) * index).toFixed(2)));
+});
+
+const accessResponseTimeSummary = computed(() => {
+    const times = visibleAccessResponseTimeRows.value.map((row) => row.minutes);
+
+    if (times.length === 0) {
+        return {
+            average: 0,
+            minimum: 0,
+            maximum: 0,
+        };
+    }
+
+    return {
+        average: Math.round(times.reduce((sum, value) => sum + value, 0) / times.length),
+        minimum: Math.min(...times),
+        maximum: Math.max(...times),
+    };
+});
+
+const accessResponseTimeChartPoints = computed(() => {
+    const rows = visibleAccessResponseTimeRows.value.slice(0, 12);
+    const maxMinutes = Math.max(...rows.map((row) => row.minutes), 1);
+    const width = 1000;
+    const height = 300;
+    const top = 16;
+    const bottom = 40;
+    const left = 54;
+    const right = 18;
+    const graphWidth = width - left - right;
+    const graphHeight = height - top - bottom;
+    const denominator = Math.max(rows.length - 1, 1);
+
+    return rows.map((row, index) => ({
+        ...row,
+        label: `#${index + 1}`,
+        x: left + (index / denominator) * graphWidth,
+        y: top + graphHeight - (row.minutes / maxMinutes) * graphHeight,
+    }));
+});
+
+const accessResponseTimeLinePath = computed(() => {
+    if (accessResponseTimeChartPoints.value.length === 0) {
+        return "";
+    }
+
+    return accessResponseTimeChartPoints.value
+        .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
+        .join(" ");
+});
+
+const accessResponseTimeTicks = computed(() => {
+    const maxMinutes = Math.max(...visibleAccessResponseTimeRows.value.map((row) => row.minutes), 1);
+    const roundedMax = Math.max(60, Math.ceil(maxMinutes / 15) * 15);
+
+    return [0, 1, 2, 3, 4].map((index) => {
+        const value = Math.round((roundedMax / 4) * index);
+        const y = 260 - (value / roundedMax) * 244;
+
+        return { value, y };
+    });
+});
+
+const accessDetailRows = computed(() => {
+    const units = new Map();
+
+    visibleAccessLoans.value.forEach((loan) => {
+        const unitKey = loan.unit_id ?? loan.unit;
+
+        if (!units.has(unitKey)) {
+            units.set(unitKey, {
+                key: unitKey,
+                label: loan.unit || "Sin unidad",
+                users: new Map(),
+            });
+        }
+
+        const unit = units.get(unitKey);
+        const userKey = `${unitKey}-${loan.user_id ?? loan.user}`;
+
+        if (!unit.users.has(userKey)) {
+            unit.users.set(userKey, {
+                key: userKey,
+                name: loan.user || "Sin usuario",
+                initials: loan.user_initials || "SU",
+                unit: loan.unit || "Sin unidad",
+                total: 0,
+                documents: [],
+            });
+        }
+
+        const user = unit.users.get(userKey);
+        user.total += 1;
+        user.documents.push(...(loan.documents ?? []).map((document) => ({
+            ...document,
+            loan_number: loan.number,
+        })));
+    });
+
+    return Array.from(units.values())
+        .map((unit) => ({
+            ...unit,
+            users: Array.from(unit.users.values())
+                .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name)),
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label));
+});
 
 const periodSeries = computed(() => {
     const grouped = new Map();
@@ -277,11 +626,11 @@ const yAxisTicks = computed(() => {
 });
 
 const groupedChartRows = computed(() => {
-    const key = currentReport.value.key === "support" ? "support" : "series";
+    const key = "series";
     const grouped = new Map();
 
     visibleDocuments.value.forEach((document) => {
-        const label = document[key] || (key === "support" ? "Sin soporte" : "Sin serie");
+        const label = document[key] || "Sin serie";
         grouped.set(label, (grouped.get(label) ?? 0) + 1);
     });
 
@@ -294,6 +643,100 @@ const groupedChartRows = computed(() => {
         ...row,
         width: `${Math.max((row.total / maxTotal) * 100, 6)}%`,
     }));
+});
+
+const supportColor = (support, index) => {
+    const normalized = (support ?? "").toLowerCase();
+
+    if (normalized.includes("fisico") || normalized.includes("físico")) {
+        return "#084a8f";
+    }
+
+    if (normalized.includes("digital")) {
+        return "#2167b8";
+    }
+
+    if (normalized.includes("mixto")) {
+        return "#4d93df";
+    }
+
+    return ["#084a8f", "#2167b8", "#4d93df", "#78aee8"][index % 4];
+};
+
+const pointFromAngle = (center, radius, angle) => {
+    const radians = ((angle - 90) * Math.PI) / 180;
+
+    return {
+        x: center + radius * Math.cos(radians),
+        y: center + radius * Math.sin(radians),
+    };
+};
+
+const describePieSlice = (center, radius, startAngle, endAngle) => {
+    const start = pointFromAngle(center, radius, endAngle);
+    const end = pointFromAngle(center, radius, startAngle);
+    const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0;
+
+    if (endAngle - startAngle >= 359.99) {
+        return [
+            `M ${center} ${center}`,
+            `L ${center} ${center - radius}`,
+            `A ${radius} ${radius} 0 1 1 ${center} ${center + radius}`,
+            `A ${radius} ${radius} 0 1 1 ${center} ${center - radius}`,
+            "Z",
+        ].join(" ");
+    }
+
+    return [
+        `M ${center} ${center}`,
+        `L ${start.x} ${start.y}`,
+        `A ${radius} ${radius} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`,
+        "Z",
+    ].join(" ");
+};
+
+const supportChartRows = computed(() => {
+    const grouped = new Map();
+
+    visibleDocuments.value.forEach((document) => {
+        const label = document.support || "Sin soporte";
+        grouped.set(label, (grouped.get(label) ?? 0) + 1);
+    });
+
+    const total = Array.from(grouped.values()).reduce((sum, value) => sum + value, 0);
+
+    return Array.from(grouped.entries())
+        .map(([label, value], index) => ({
+            label,
+            value,
+            color: supportColor(label, index),
+            percentage: total > 0 ? Math.round((value / total) * 100) : 0,
+        }))
+        .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
+});
+
+const supportPieSegments = computed(() => {
+    const total = supportChartRows.value.reduce((sum, row) => sum + row.value, 0);
+    let currentAngle = 90;
+    const center = 190;
+    const radius = 118;
+
+    return supportChartRows.value.map((row) => {
+        const sliceAngle = total > 0 ? (row.value / total) * 360 : 0;
+        const startAngle = currentAngle;
+        const endAngle = currentAngle + sliceAngle;
+        const labelAngle = startAngle + sliceAngle / 2;
+        const labelPoint = pointFromAngle(center, radius + 52, labelAngle);
+        currentAngle = endAngle;
+
+        return {
+            ...row,
+            path: describePieSlice(center, radius, startAngle, endAngle),
+            labelX: labelPoint.x,
+            labelY: labelPoint.y,
+            textAnchor: labelPoint.x >= center ? "start" : "end",
+        };
+    });
 });
 
 const unitChartRows = computed(() => {
@@ -428,6 +871,90 @@ const fetchEntryRegistryReport = async () => {
     }
 };
 
+const fetchAccessConsultationHistory = async () => {
+    loadingRegistry.value = true;
+    registryErrorMessage.value = "";
+
+    try {
+        const { data } = await axios.get("/api/reports/access-consultation/history");
+
+        accessHistoryReport.value = {
+            filters: {
+                statuses: data.filters?.statuses ?? [],
+                units: data.filters?.units ?? [],
+                users: data.filters?.users ?? [],
+            },
+            summary: {
+                filtered_loans: data.summary?.filtered_loans ?? 0,
+                total_loans: data.summary?.total_loans ?? 0,
+                users: data.summary?.users ?? 0,
+                units: data.summary?.units ?? 0,
+            },
+            loans: data.loans ?? [],
+        };
+
+        const firstUser = accessDetailRows.value[0]?.users?.[0]?.key;
+        expandedAccessUsers.value = firstUser ? new Set([firstUser]) : new Set();
+    } catch (error) {
+        console.error("Error al cargar historial de consultas:", error);
+        registryErrorMessage.value =
+            error.response?.data?.message ??
+            "No se pudo cargar el historial de consultas por usuario.";
+    } finally {
+        loadingRegistry.value = false;
+    }
+};
+
+const fetchAccessConsultationDocuments = async () => {
+    loadingRegistry.value = true;
+    registryErrorMessage.value = "";
+
+    try {
+        const { data } = await axios.get("/api/reports/access-consultation/documents");
+
+        accessDocumentsReport.value = {
+            summary: {
+                total_documents: data.summary?.total_documents ?? 0,
+                total_consultations: data.summary?.total_consultations ?? 0,
+            },
+            documents: data.documents ?? [],
+        };
+    } catch (error) {
+        console.error("Error al cargar documentos consultados:", error);
+        registryErrorMessage.value =
+            error.response?.data?.message ??
+            "No se pudo cargar el reporte de documentos consultados.";
+    } finally {
+        loadingRegistry.value = false;
+    }
+};
+
+const fetchAccessConsultationResponseTimes = async () => {
+    loadingRegistry.value = true;
+    registryErrorMessage.value = "";
+
+    try {
+        const { data } = await axios.get("/api/reports/access-consultation/response-times");
+
+        accessResponseTimeReport.value = {
+            summary: {
+                total_rows: data.summary?.total_rows ?? 0,
+                average_minutes: data.summary?.average_minutes ?? 0,
+                minimum_minutes: data.summary?.minimum_minutes ?? 0,
+                maximum_minutes: data.summary?.maximum_minutes ?? 0,
+            },
+            rows: data.rows ?? [],
+        };
+    } catch (error) {
+        console.error("Error al cargar tiempos promedio de respuesta:", error);
+        registryErrorMessage.value =
+            error.response?.data?.message ??
+            "No se pudo cargar el reporte de tiempos promedio de respuesta.";
+    } finally {
+        loadingRegistry.value = false;
+    }
+};
+
 const openCategory = async (categoryKey) => {
     selectedCategory.value = categoryKey;
     selectedReport.value = null;
@@ -442,6 +969,23 @@ const openReport = async (reportKey) => {
 
     if (selectedCategory.value === "entry_and_registry") {
         await fetchEntryRegistryReport();
+        return;
+    }
+
+    if (selectedCategory.value === "access_and_consultation") {
+        if (reportKey === "consultation-history") {
+            await fetchAccessConsultationHistory();
+            return;
+        }
+
+        if (reportKey === "most-consulted-documents") {
+            await fetchAccessConsultationDocuments();
+            return;
+        }
+
+        if (reportKey === "average-response-times") {
+            await fetchAccessConsultationResponseTimes();
+        }
     }
 };
 
@@ -473,11 +1017,47 @@ const goBackToReports = () => {
 };
 
 const clearFilters = () => {
+    if (isAccessResponseTimeReport.value) {
+        accessResponseTimeFilters.startDate = null;
+        accessResponseTimeFilters.endDate = null;
+        return;
+    }
+
+    if (isAccessDocumentsReport.value) {
+        accessDocumentFilters.analysisType = "most";
+        accessDocumentFilters.startDate = null;
+        accessDocumentFilters.endDate = null;
+        return;
+    }
+
+    if (isAccessHistoryReport.value) {
+        accessFilters.status = null;
+        accessFilters.unit = null;
+        accessFilters.user = null;
+        accessFilters.startDate = null;
+        accessFilters.endDate = null;
+        return;
+    }
+
     filters.unit = null;
     filters.series = null;
     filters.support = null;
     filters.search = "";
 };
+
+const toggleAccessUserPanel = (key) => {
+    const nextExpanded = new Set(expandedAccessUsers.value);
+
+    if (nextExpanded.has(key)) {
+        nextExpanded.delete(key);
+    } else {
+        nextExpanded.add(key);
+    }
+
+    expandedAccessUsers.value = nextExpanded;
+};
+
+const isAccessUserExpanded = (key) => expandedAccessUsers.value.has(key);
 
 const escapeHtml = (value) =>
     String(value ?? "")
@@ -487,7 +1067,196 @@ const escapeHtml = (value) =>
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#039;");
 
+const isCurrentExportDisabled = computed(() =>
+    loadingRegistry.value ||
+    (isAccessResponseTimeReport.value
+        ? visibleAccessResponseTimeRows.value.length === 0
+        : isAccessDocumentsReport.value
+        ? accessDocumentRows.value.length === 0
+        : isAccessHistoryReport.value
+        ? visibleAccessLoans.value.length === 0
+        : visibleDocuments.value.length === 0)
+);
+
 const exportCurrentTable = () => {
+    if (isAccessResponseTimeReport.value) {
+        const rows = visibleAccessResponseTimeRows.value
+            .map((row, index) => `
+                <tr>
+                    <td>#${index + 1}</td>
+                    <td>${escapeHtml(row.request)}</td>
+                    <td>${escapeHtml(row.document)}</td>
+                    <td>${escapeHtml(row.started_at_label)}</td>
+                    <td>${escapeHtml(row.completed_at_label)}</td>
+                    <td>${escapeHtml(row.minutes)} min</td>
+                </tr>`)
+            .join("");
+
+        const workbook = `
+            <html>
+                <head>
+                    <meta charset="UTF-8" />
+                    <style>
+                        table { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; }
+                        th { background: #0b4f9c; color: #ffffff; font-weight: 700; }
+                        th, td { border: 1px solid #d9e2ef; padding: 7px 9px; text-align: left; }
+                        h1 { color: #10213d; font-family: Arial, sans-serif; font-size: 18px; }
+                    </style>
+                </head>
+                <body>
+                    <h1>${escapeHtml(chartTitle.value)}</h1>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Solicitud</th>
+                                <th>Código</th>
+                                <th>Documento</th>
+                                <th>Inicio Búsqueda</th>
+                                <th>Fin Búsqueda</th>
+                                <th>Tiempo</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </body>
+            </html>
+        `;
+
+        const blob = new Blob([workbook], {
+            type: "application/vnd.ms-excel;charset=utf-8;",
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+
+        link.href = url;
+        link.download = "tiempos-promedio-de-respuesta.xls";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        return;
+    }
+
+    if (isAccessDocumentsReport.value) {
+        const rows = accessDocumentRows.value
+            .map((document) => `
+                <tr>
+                    <td>${escapeHtml(document.title)}</td>
+                    <td>${escapeHtml(document.series)}</td>
+                    <td>${escapeHtml(document.total)}</td>
+                    <td>${escapeHtml(document.consultations.map((item) => item.loan_number).join(", "))}</td>
+                    <td>${escapeHtml(document.consultations.map((item) => item.date_label).join(", "))}</td>
+                </tr>`)
+            .join("");
+
+        const workbook = `
+            <html>
+                <head>
+                    <meta charset="UTF-8" />
+                    <style>
+                        table { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; }
+                        th { background: #0b4f9c; color: #ffffff; font-weight: 700; }
+                        th, td { border: 1px solid #d9e2ef; padding: 7px 9px; text-align: left; }
+                        h1 { color: #10213d; font-family: Arial, sans-serif; font-size: 18px; }
+                    </style>
+                </head>
+                <body>
+                    <h1>${escapeHtml(chartTitle.value)}</h1>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Documento</th>
+                                <th>Serie</th>
+                                <th>Consultas</th>
+                                <th>Prestamos</th>
+                                <th>Fechas</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </body>
+            </html>
+        `;
+
+        const blob = new Blob([workbook], {
+            type: "application/vnd.ms-excel;charset=utf-8;",
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+
+        link.href = url;
+        link.download = "documentos-mas-y-menos-consultados.xls";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        return;
+    }
+
+    if (isAccessHistoryReport.value) {
+        const rows = visibleAccessLoans.value
+            .flatMap((loan) =>
+                (loan.documents ?? []).map((document) => `
+                    <tr>
+                        <td>${escapeHtml(loan.number)}</td>
+                        <td>${escapeHtml(loan.user)}</td>
+                        <td>${escapeHtml(loan.unit)}</td>
+                        <td>${escapeHtml(loan.status)}</td>
+                        <td>${escapeHtml(loan.requested_at_label)}</td>
+                        <td>${escapeHtml(document.title)}</td>
+                        <td>${escapeHtml(document.date_label)}</td>
+                        <td>${escapeHtml(document.status)}</td>
+                    </tr>`)
+            )
+            .join("");
+
+        const workbook = `
+            <html>
+                <head>
+                    <meta charset="UTF-8" />
+                    <style>
+                        table { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; }
+                        th { background: #0b4f9c; color: #ffffff; font-weight: 700; }
+                        th, td { border: 1px solid #d9e2ef; padding: 7px 9px; text-align: left; }
+                        h1 { color: #10213d; font-family: Arial, sans-serif; font-size: 18px; }
+                    </style>
+                </head>
+                <body>
+                    <h1>${escapeHtml(chartTitle.value)}</h1>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Prestamo</th>
+                                <th>Usuario</th>
+                                <th>Unidad</th>
+                                <th>Estado</th>
+                                <th>Fecha solicitud</th>
+                                <th>Documento</th>
+                                <th>Fecha</th>
+                                <th>Estado documento</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </body>
+            </html>
+        `;
+
+        const blob = new Blob([workbook], {
+            type: "application/vnd.ms-excel;charset=utf-8;",
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+
+        link.href = url;
+        link.download = "historial-de-consultas-por-usuario.xls";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        return;
+    }
+
     const columns = [
         ["Codigo", "code"],
         ["Nombre", "name"],
@@ -684,7 +1453,7 @@ onMounted(fetchReportSummary);
                     label="Exportar Datos"
                     icon="pi pi-download"
                     class="reports-export-button"
-                    :disabled="loadingRegistry || visibleDocuments.length === 0"
+                    :disabled="isCurrentExportDisabled"
                     @click="exportCurrentTable"
                 />
             </div>
@@ -713,7 +1482,133 @@ onMounted(fetchReportSummary);
                     </button>
                 </div>
 
-                <div class="reports-filter-grid reports-filter-grid--dynamic">
+                <div
+                    v-if="isAccessResponseTimeReport"
+                    class="reports-filter-grid reports-filter-grid--response-time"
+                >
+                    <label>
+                        <span>Fecha Inicio</span>
+                        <DatePicker
+                            v-model="accessResponseTimeFilters.startDate"
+                            dateFormat="dd/mm/yy"
+                            placeholder="dd/mm/aaaa"
+                            class="w-full"
+                        />
+                    </label>
+
+                    <label>
+                        <span>Fecha Fin</span>
+                        <DatePicker
+                            v-model="accessResponseTimeFilters.endDate"
+                            dateFormat="dd/mm/yy"
+                            placeholder="dd/mm/aaaa"
+                            class="w-full"
+                        />
+                    </label>
+                </div>
+
+                <div
+                    v-else-if="isAccessDocumentsReport"
+                    class="reports-filter-grid reports-filter-grid--documents"
+                >
+                    <label>
+                        <span>Tipo de Análisis</span>
+                        <Dropdown
+                            v-model="accessDocumentFilters.analysisType"
+                            :options="accessDocumentAnalysisOptions"
+                            optionLabel="label"
+                            optionValue="value"
+                            placeholder="Más Consultados"
+                            class="w-full"
+                        />
+                    </label>
+
+                    <label>
+                        <span>Fecha Inicio</span>
+                        <DatePicker
+                            v-model="accessDocumentFilters.startDate"
+                            dateFormat="dd/mm/yy"
+                            placeholder="dd/mm/aaaa"
+                            class="w-full"
+                        />
+                    </label>
+
+                    <label>
+                        <span>Fecha Fin</span>
+                        <DatePicker
+                            v-model="accessDocumentFilters.endDate"
+                            dateFormat="dd/mm/yy"
+                            placeholder="dd/mm/aaaa"
+                            class="w-full"
+                        />
+                    </label>
+                </div>
+
+                <div
+                    v-else-if="isAccessHistoryReport"
+                    class="reports-filter-grid reports-filter-grid--access"
+                >
+                    <label>
+                        <span>Estado de Solicitud</span>
+                        <Dropdown
+                            v-model="accessFilters.status"
+                            :options="accessStatusOptions"
+                            optionLabel="label"
+                            optionValue="value"
+                            placeholder="Todos los estados"
+                            showClear
+                            class="w-full"
+                        />
+                    </label>
+
+                    <label>
+                        <span>Unidad Productora</span>
+                        <Dropdown
+                            v-model="accessFilters.unit"
+                            :options="accessUnitOptions"
+                            optionLabel="label"
+                            optionValue="value"
+                            placeholder="Todas"
+                            showClear
+                            class="w-full"
+                        />
+                    </label>
+
+                    <label>
+                        <span>Usuario</span>
+                        <Dropdown
+                            v-model="accessFilters.user"
+                            :options="accessUserOptions"
+                            optionLabel="label"
+                            optionValue="value"
+                            placeholder="Todos"
+                            showClear
+                            class="w-full"
+                        />
+                    </label>
+
+                    <label>
+                        <span>Fecha Inicio</span>
+                        <DatePicker
+                            v-model="accessFilters.startDate"
+                            dateFormat="dd/mm/yy"
+                            placeholder="dd/mm/aaaa"
+                            class="w-full"
+                        />
+                    </label>
+
+                    <label>
+                        <span>Fecha Fin</span>
+                        <DatePicker
+                            v-model="accessFilters.endDate"
+                            dateFormat="dd/mm/yy"
+                            placeholder="dd/mm/aaaa"
+                            class="w-full"
+                        />
+                    </label>
+                </div>
+
+                <div v-else class="reports-filter-grid reports-filter-grid--dynamic">
                     <label>
                         <span>Unidad Productora</span>
                         <Dropdown
@@ -768,10 +1663,30 @@ onMounted(fetchReportSummary);
 
                 <div class="reports-filter-panel__footer">
                     Mostrando
-                    <strong>{{ filteredDocumentsCount }}</strong>
+                    <strong>
+                        {{
+                            isAccessResponseTimeReport
+                                ? filteredAccessResponseTimeCount
+                                : isAccessDocumentsReport
+                                ? filteredAccessDocumentsCount
+                                : isAccessHistoryReport
+                                    ? filteredAccessLoansCount
+                                    : filteredDocumentsCount
+                        }}
+                    </strong>
                     de
-                    <strong>{{ reportTotalDocumentsCount }}</strong>
-                    documentos
+                    <strong>
+                        {{
+                            isAccessResponseTimeReport
+                                ? reportTotalAccessResponseTimeCount
+                                : isAccessDocumentsReport
+                                ? reportTotalAccessDocumentsCount
+                                : isAccessHistoryReport
+                                    ? reportTotalAccessLoansCount
+                                    : reportTotalDocumentsCount
+                        }}
+                    </strong>
+                    {{ isAccessHistoryReport ? 'préstamos' : 'documentos' }}
                 </div>
             </article>
 
@@ -784,7 +1699,151 @@ onMounted(fetchReportSummary);
                     </span>
                 </div>
 
-                <div v-if="currentReport.key === 'period'" class="reports-chart">
+                <div v-if="isAccessResponseTimeReport" class="reports-response-time-chart">
+                    <svg viewBox="0 0 1000 300" role="img" aria-label="Tiempos promedio de respuesta">
+                        <line
+                            v-for="tick in accessResponseTimeTicks"
+                            :key="tick.value"
+                            x1="54"
+                            x2="982"
+                            :y1="tick.y"
+                            :y2="tick.y"
+                            class="reports-chart__grid"
+                        />
+                        <text
+                            v-for="tick in accessResponseTimeTicks"
+                            :key="`response-label-${tick.value}`"
+                            x="42"
+                            :y="tick.y + 4"
+                            text-anchor="end"
+                            class="reports-chart__label"
+                        >
+                            {{ tick.value }}
+                        </text>
+                        <text
+                            x="12"
+                            y="150"
+                            transform="rotate(-90 12 150)"
+                            text-anchor="middle"
+                            class="reports-chart__label"
+                        >
+                            Tiempo (min)
+                        </text>
+                        <path :d="accessResponseTimeLinePath" class="reports-response-time-chart__line" />
+                        <g
+                            v-for="point in accessResponseTimeChartPoints"
+                            :key="point.id"
+                        >
+                            <circle
+                                :cx="point.x"
+                                :cy="point.y"
+                                r="4"
+                                class="reports-response-time-chart__point"
+                            />
+                            <text
+                                :x="point.x"
+                                y="286"
+                                text-anchor="middle"
+                                class="reports-chart__label"
+                            >
+                                {{ point.label }}
+                            </text>
+                        </g>
+                    </svg>
+
+                    <p v-if="accessResponseTimeChartPoints.length === 0" class="reports-empty-text m-0">
+                        No hay datos para graficar con los filtros actuales.
+                    </p>
+                </div>
+
+                <div v-else-if="isAccessDocumentsReport" class="reports-document-consultation-chart">
+                    <div class="reports-document-consultation-chart__plot">
+                        <div class="reports-document-consultation-chart__labels">
+                            <span
+                                v-for="row in accessDocumentRows"
+                                :key="`label-${row.key}`"
+                            >
+                                {{ row.title }}
+                            </span>
+                        </div>
+
+                        <div class="reports-document-consultation-chart__body">
+                            <div class="reports-document-consultation-chart__grid">
+                                <span
+                                    v-for="tick in accessDocumentChartTicks"
+                                    :key="`doc-grid-${tick}`"
+                                ></span>
+                            </div>
+
+                            <div
+                                v-for="row in accessDocumentRows"
+                                :key="row.key"
+                                class="reports-document-consultation-chart__row"
+                            >
+                                <span
+                                    class="reports-document-consultation-chart__bar"
+                                    :style="{ width: `${Math.max((row.total / accessDocumentChartMax) * 100, 6)}%` }"
+                                >
+                                    <strong>{{ row.total }}</strong>
+                                </span>
+                            </div>
+
+                            <div class="reports-document-consultation-chart__axis">
+                                <span
+                                    v-for="tick in accessDocumentChartTicks"
+                                    :key="`doc-tick-${tick}`"
+                                >
+                                    {{ tick }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <p v-if="accessDocumentRows.length === 0" class="reports-empty-text m-0">
+                        No hay datos para graficar con los filtros actuales.
+                    </p>
+                </div>
+
+                <div v-else-if="isAccessHistoryReport" class="reports-access-chart">
+                    <div class="reports-access-chart__plot">
+                        <div class="reports-access-chart__axis">
+                            <span
+                                v-for="tick in accessChartTicks.slice().reverse()"
+                                :key="tick"
+                            >
+                                {{ tick }}
+                            </span>
+                        </div>
+
+                        <div class="reports-access-chart__grid">
+                            <span v-for="tick in accessChartTicks" :key="`access-grid-${tick}`"></span>
+                        </div>
+
+                        <div class="reports-access-chart__bars">
+                            <div
+                                v-for="row in accessChartRows"
+                                :key="row.label"
+                                class="reports-access-chart__bar-wrap"
+                            >
+                                <div class="reports-access-chart__bar-shell">
+                                    <span
+                                        class="reports-access-chart__bar"
+                                        :style="{ height: `${Math.max((row.total / accessChartMax) * 100, 8)}%` }"
+                                    >
+                                        <strong>{{ row.total }}</strong>
+                                    </span>
+                                </div>
+                                <small>{{ row.label }}</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <p v-if="accessChartRows.length === 0" class="reports-empty-text m-0">
+                        No hay datos para graficar con los filtros actuales.
+                    </p>
+                </div>
+
+                <div v-else-if="currentReport.key === 'period'" class="reports-chart">
                     <svg viewBox="0 0 1000 300" role="img" aria-label="Documentos por periodo">
                         <line
                             v-for="tick in yAxisTicks"
@@ -875,6 +1934,39 @@ onMounted(fetchReportSummary);
                     </p>
                 </div>
 
+                <div v-else-if="currentReport.key === 'support'" class="reports-support-chart">
+                    <svg
+                        v-if="supportPieSegments.length > 0"
+                        viewBox="0 0 380 380"
+                        role="img"
+                        aria-label="Documentos por soporte"
+                    >
+                        <g>
+                            <path
+                                v-for="segment in supportPieSegments"
+                                :key="segment.label"
+                                :d="segment.path"
+                                :fill="segment.color"
+                                class="reports-support-chart__slice"
+                            />
+                        </g>
+                        <text
+                            v-for="segment in supportPieSegments"
+                            :key="`label-${segment.label}`"
+                            :x="segment.labelX"
+                            :y="segment.labelY"
+                            :text-anchor="segment.textAnchor"
+                            class="reports-support-chart__label"
+                        >
+                            {{ segment.label }}: {{ segment.value }} ({{ segment.percentage }}%)
+                        </text>
+                    </svg>
+
+                    <p v-if="supportPieSegments.length === 0" class="reports-empty-text m-0">
+                        No hay datos para graficar con los filtros actuales.
+                    </p>
+                </div>
+
                 <div v-else class="reports-bars">
                     <div
                         v-for="row in groupedChartRows"
@@ -896,7 +1988,167 @@ onMounted(fetchReportSummary);
                 </div>
             </article>
 
-            <article v-if="isUnitsReport" class="reports-unit-distribution-panel">
+            <template v-if="isAccessResponseTimeReport">
+                <article class="reports-response-summary-panel">
+                    <h2 class="reports-response-summary-panel__title m-0">
+                        Tiempos de Localización de Documentos
+                    </h2>
+
+                    <div class="reports-response-summary-grid">
+                        <div class="reports-response-summary-card reports-response-summary-card--average">
+                            <span>Tiempo Promedio General</span>
+                            <strong>{{ accessResponseTimeSummary.average }} min</strong>
+                        </div>
+                        <div class="reports-response-summary-card reports-response-summary-card--minimum">
+                            <span>Tiempo Mínimo</span>
+                            <strong>{{ accessResponseTimeSummary.minimum }} min</strong>
+                        </div>
+                        <div class="reports-response-summary-card reports-response-summary-card--maximum">
+                            <span>Tiempo Máximo</span>
+                            <strong>{{ accessResponseTimeSummary.maximum }} min</strong>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="reports-table-panel">
+                    <div class="reports-panel-title">
+                        <h2 class="m-0">Detalle de Tiempos de Búsqueda</h2>
+                        <span>{{ visibleAccessResponseTimeRows.length }} registros</span>
+                    </div>
+
+                    <DataTable
+                        :value="visibleAccessResponseTimeRows"
+                        :loading="loadingRegistry"
+                        responsiveLayout="scroll"
+                        stripedRows
+                        class="reports-table"
+                    >
+                        <Column header="Solicitud" style="min-width: 8rem">
+                            <template #body="{ index }">#{{ index + 1 }}</template>
+                        </Column>
+                        <Column field="document" header="Documento" style="min-width: 18rem" />
+                        <Column field="started_at_label" header="Inicio Búsqueda" style="min-width: 11rem" />
+                        <Column field="completed_at_label" header="Fin Búsqueda" style="min-width: 11rem" />
+                        <Column header="Tiempo" style="min-width: 8rem">
+                            <template #body="{ data }">
+                                <span
+                                    class="reports-response-time-tag"
+                                    :class="{
+                                        'reports-response-time-tag--slow': data.minutes >= accessResponseTimeSummary.maximum,
+                                        'reports-response-time-tag--fast': data.minutes <= accessResponseTimeSummary.minimum,
+                                    }"
+                                >
+                                    {{ data.minutes }} min
+                                </span>
+                            </template>
+                        </Column>
+                        <template #empty>
+                            <div class="reports-empty-text">No hay tiempos con los filtros actuales.</div>
+                        </template>
+                    </DataTable>
+                </article>
+            </template>
+
+            <article v-else-if="isAccessDocumentsReport" class="reports-table-panel">
+                <div class="reports-panel-title">
+                    <h2 class="m-0">Listado de Documentos Consultados</h2>
+                    <span>{{ accessDocumentRows.length }} registros</span>
+                </div>
+
+                <DataTable
+                    :value="accessDocumentRows"
+                    :loading="loadingRegistry"
+                    responsiveLayout="scroll"
+                    stripedRows
+                    class="reports-table"
+                >
+                    <Column field="title" header="Documento" style="min-width: 18rem" />
+                    <Column field="series" header="Serie" style="min-width: 16rem" />
+                    <Column field="total" header="Consultas" style="min-width: 8rem" />
+                    <template #empty>
+                        <div class="reports-empty-text">No hay documentos con los filtros actuales.</div>
+                    </template>
+                </DataTable>
+            </article>
+
+            <article v-else-if="isAccessHistoryReport" class="reports-access-detail-panel">
+                <h2 class="reports-access-detail-panel__title m-0">
+                    Detalle de Préstamos por Usuario
+                </h2>
+
+                <div class="reports-access-units">
+                    <section
+                        v-for="unit in accessDetailRows"
+                        :key="unit.key"
+                        class="reports-access-unit"
+                    >
+                        <header class="reports-access-unit__header">
+                            {{ unit.label }}
+                        </header>
+
+                        <div class="reports-access-user-list">
+                            <div
+                                v-for="user in unit.users"
+                                :key="user.key"
+                                class="reports-access-user-panel"
+                            >
+                                <button
+                                    type="button"
+                                    class="reports-access-user-panel__summary"
+                                    @click="toggleAccessUserPanel(user.key)"
+                                >
+                                    <span class="reports-access-user-panel__avatar">
+                                        {{ user.initials }}
+                                    </span>
+                                    <span class="reports-access-user-panel__identity">
+                                        <strong>{{ user.name }}</strong>
+                                        <small>{{ user.unit }}</small>
+                                    </span>
+                                    <span class="reports-access-user-panel__count">
+                                        <strong>{{ user.total }}</strong>
+                                        <small>{{ user.total === 1 ? 'préstamo' : 'préstamos' }}</small>
+                                    </span>
+                                    <i
+                                        class="pi"
+                                        :class="isAccessUserExpanded(user.key) ? 'pi-chevron-up' : 'pi-chevron-down'"
+                                    ></i>
+                                </button>
+
+                                <div
+                                    v-if="isAccessUserExpanded(user.key)"
+                                    class="reports-access-user-panel__content"
+                                >
+                                    <h3 class="m-0">Documentos Prestados</h3>
+
+                                    <div
+                                        v-for="document in user.documents"
+                                        :key="`${user.key}-${document.loan_number}-${document.id}`"
+                                        class="reports-access-document"
+                                    >
+                                        <span>
+                                            <strong>{{ document.title }}</strong>
+                                            <small>Fecha: {{ document.date_label }}</small>
+                                        </span>
+                                        <span class="reports-access-document__status">
+                                            {{ document.status }}
+                                        </span>
+                                    </div>
+
+                                    <p v-if="user.documents.length === 0" class="reports-empty-text m-0">
+                                        No hay documentos prestados registrados para este usuario.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <p v-if="accessDetailRows.length === 0" class="reports-empty-text m-0">
+                        No hay préstamos con los filtros actuales.
+                    </p>
+                </div>
+            </article>
+
+            <article v-else-if="isUnitsReport" class="reports-unit-distribution-panel">
                 <h2 class="reports-unit-distribution-panel__title m-0">
                     Distribución de Documentos por Unidad y Serie
                 </h2>
@@ -1142,6 +2394,8 @@ onMounted(fetchReportSummary);
 .reports-filter-panel,
 .reports-chart-panel,
 .reports-table-panel,
+.reports-access-detail-panel,
+.reports-response-summary-panel,
 .reports-unit-distribution-panel {
     background: #ffffff;
     border: 1px solid #d9e2ef;
@@ -1226,6 +2480,8 @@ onMounted(fetchReportSummary);
 .reports-filter-panel,
 .reports-chart-panel,
 .reports-table-panel,
+.reports-access-detail-panel,
+.reports-response-summary-panel,
 .reports-unit-distribution-panel {
     padding: 1.35rem 1.55rem;
 }
@@ -1271,6 +2527,18 @@ onMounted(fetchReportSummary);
 
 .reports-filter-grid--dynamic {
     grid-template-columns: repeat(4, minmax(12rem, 1fr));
+}
+
+.reports-filter-grid--access {
+    grid-template-columns: repeat(4, minmax(12rem, 1fr));
+}
+
+.reports-filter-grid--documents {
+    grid-template-columns: minmax(12rem, 18rem) minmax(12rem, 18rem) minmax(12rem, 18rem);
+}
+
+.reports-filter-grid--response-time {
+    grid-template-columns: minmax(12rem, 18rem) minmax(12rem, 18rem);
 }
 
 .reports-filter-grid label {
@@ -1382,6 +2650,302 @@ onMounted(fetchReportSummary);
 
 .reports-chart-tooltip span {
     color: #0b4f9c;
+}
+
+.reports-response-time-chart {
+    min-height: 360px;
+    padding: 0.5rem 0 0;
+}
+
+.reports-response-time-chart svg {
+    display: block;
+    height: 330px;
+    width: 100%;
+}
+
+.reports-response-time-chart__line {
+    fill: none;
+    stroke: #0b4f9c;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 2.2;
+}
+
+.reports-response-time-chart__point {
+    fill: #2167b8;
+    stroke: #0b4f9c;
+    stroke-width: 2;
+}
+
+.reports-support-chart {
+    align-items: center;
+    display: flex;
+    justify-content: center;
+    min-height: 390px;
+    padding: 0.5rem 0 1rem;
+}
+
+.reports-support-chart svg {
+    display: block;
+    height: min(390px, 64vw);
+    max-height: 390px;
+    max-width: 44rem;
+    width: 100%;
+}
+
+.reports-support-chart__slice {
+    stroke: #ffffff;
+    stroke-width: 1.2;
+}
+
+.reports-support-chart__label {
+    fill: #0b4f9c;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.reports-access-chart {
+    min-height: 360px;
+    padding: 0.5rem 0 0;
+}
+
+.reports-access-chart__plot {
+    display: grid;
+    grid-template-columns: 3rem 1fr;
+    min-height: 340px;
+    position: relative;
+}
+
+.reports-access-chart__plot::after {
+    border-bottom: 1px solid #94a3b8;
+    bottom: 4.9rem;
+    content: "";
+    left: 3rem;
+    position: absolute;
+    right: 0;
+    z-index: 2;
+}
+
+.reports-access-chart__axis {
+    color: #667085;
+    display: flex;
+    flex-direction: column;
+    font-size: 0.8rem;
+    justify-content: space-between;
+    padding: 0.1rem 0.55rem 4.9rem 0;
+    text-align: right;
+}
+
+.reports-access-chart__grid {
+    bottom: 4.9rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    left: 3rem;
+    pointer-events: none;
+    position: absolute;
+    right: 0;
+    top: 0;
+}
+
+.reports-access-chart__grid span {
+    border-top: 1px dashed #dfe7f1;
+    display: block;
+}
+
+.reports-access-chart__bars {
+    align-items: end;
+    display: grid;
+    gap: 1.15rem;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    min-height: 310px;
+    padding: 0 1rem 0;
+    position: relative;
+    z-index: 1;
+}
+
+.reports-access-chart__bar-wrap {
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    height: 100%;
+    justify-content: flex-end;
+    min-width: 0;
+}
+
+.reports-access-chart__bar-shell {
+    align-items: end;
+    display: flex;
+    height: 235px;
+    justify-content: center;
+    width: 100%;
+}
+
+.reports-access-chart__bar {
+    align-items: flex-start;
+    background: #2167b8;
+    border-radius: 7px 7px 0 0;
+    display: flex;
+    justify-content: flex-end;
+    max-width: 10.5rem;
+    min-height: 1.5rem;
+    padding: 0.55rem;
+    transition: height 0.2s ease;
+    width: 100%;
+}
+
+.reports-access-chart__bar strong {
+    color: #ffffff;
+    font-size: 0.9rem;
+}
+
+.reports-access-chart__bar-wrap small {
+    color: #667085;
+    font-size: 0.78rem;
+    line-height: 1.25;
+    min-height: 4.2rem;
+    overflow-wrap: anywhere;
+    text-align: center;
+    white-space: normal;
+    width: min(100%, 13rem);
+}
+
+.reports-document-consultation-chart {
+    min-height: 350px;
+    overflow-x: auto;
+    padding: 0.7rem 0 0.4rem;
+}
+
+.reports-document-consultation-chart__plot {
+    display: grid;
+    grid-template-columns: minmax(12rem, 14rem) 1fr;
+    min-width: 48rem;
+}
+
+.reports-document-consultation-chart__labels {
+    display: grid;
+    gap: 0.75rem;
+    padding: 0.6rem 0.6rem 2.45rem 0;
+}
+
+.reports-document-consultation-chart__labels span {
+    align-items: center;
+    color: #536173;
+    display: flex;
+    font-size: 0.78rem;
+    justify-content: flex-end;
+    line-height: 1.2;
+    min-height: 3.3rem;
+    overflow-wrap: anywhere;
+    text-align: right;
+}
+
+.reports-document-consultation-chart__body {
+    border-bottom: 1px solid #94a3b8;
+    display: grid;
+    gap: 0.75rem;
+    padding: 0.6rem 0 2.45rem;
+    position: relative;
+}
+
+.reports-document-consultation-chart__grid {
+    bottom: 2.45rem;
+    display: flex;
+    justify-content: space-between;
+    left: 0;
+    pointer-events: none;
+    position: absolute;
+    right: 0;
+    top: 0;
+}
+
+.reports-document-consultation-chart__grid span {
+    border-left: 1px dashed #dfe7f1;
+    display: block;
+}
+
+.reports-document-consultation-chart__row {
+    align-items: center;
+    display: flex;
+    min-height: 3.3rem;
+    position: relative;
+    z-index: 1;
+}
+
+.reports-document-consultation-chart__bar {
+    align-items: center;
+    background: #2167b8;
+    border-radius: 0 7px 7px 0;
+    color: #ffffff;
+    display: flex;
+    height: 3rem;
+    justify-content: flex-end;
+    min-width: 2rem;
+    padding-right: 0.7rem;
+}
+
+.reports-document-consultation-chart__bar strong {
+    color: #ffffff;
+    font-size: 0.86rem;
+}
+
+.reports-document-consultation-chart__axis {
+    bottom: 0;
+    color: #536173;
+    display: flex;
+    font-size: 0.78rem;
+    justify-content: space-between;
+    left: 0;
+    position: absolute;
+    right: 0;
+}
+
+.reports-response-summary-panel__title {
+    color: #061b3a;
+    font-size: 1.08rem;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+}
+
+.reports-response-summary-grid {
+    display: grid;
+    gap: 1.5rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.reports-response-summary-card {
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    min-height: 6.1rem;
+    padding: 1.05rem 1.2rem;
+}
+
+.reports-response-summary-card span {
+    font-size: 0.84rem;
+    font-weight: 500;
+}
+
+.reports-response-summary-card strong {
+    font-size: 2rem;
+    line-height: 1;
+}
+
+.reports-response-summary-card--average {
+    background: #eef5ff;
+    color: #1d4ed8;
+}
+
+.reports-response-summary-card--minimum {
+    background: #ecfdf3;
+    color: #047857;
+}
+
+.reports-response-summary-card--maximum {
+    background: #fffbeb;
+    color: #92400e;
 }
 
 .reports-unit-chart {
@@ -1582,6 +3146,155 @@ onMounted(fetchReportSummary);
     padding: 0.2rem 0.75rem;
 }
 
+.reports-access-detail-panel__title {
+    color: #27364a;
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin-bottom: 1.4rem;
+}
+
+.reports-access-units {
+    display: flex;
+    flex-direction: column;
+    gap: 1.2rem;
+}
+
+.reports-access-unit {
+    border: 1px solid #d9e2ef;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.reports-access-unit__header {
+    background: #074a8f;
+    color: #ffffff;
+    font-size: 0.94rem;
+    font-weight: 700;
+    padding: 1rem 1.35rem;
+}
+
+.reports-access-user-list {
+    background: #ffffff;
+}
+
+.reports-access-user-panel + .reports-access-user-panel {
+    border-top: 1px solid #d9e2ef;
+}
+
+.reports-access-user-panel__summary {
+    align-items: center;
+    background: #ffffff;
+    border: 0;
+    color: #061b3a;
+    cursor: pointer;
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: auto 1fr auto auto;
+    min-height: 4.8rem;
+    padding: 0.95rem 1.35rem;
+    text-align: left;
+    width: 100%;
+}
+
+.reports-access-user-panel__avatar {
+    align-items: center;
+    background: #dbeafe;
+    border-radius: 50%;
+    color: #2563eb;
+    display: inline-flex;
+    font-size: 0.86rem;
+    font-weight: 700;
+    height: 2.7rem;
+    justify-content: center;
+    width: 2.7rem;
+}
+
+.reports-access-user-panel__identity,
+.reports-access-user-panel__count {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.reports-access-user-panel__identity strong {
+    color: #061b3a;
+    font-size: 0.94rem;
+}
+
+.reports-access-user-panel__identity small,
+.reports-access-user-panel__count small {
+    color: #667085;
+    font-size: 0.78rem;
+}
+
+.reports-access-user-panel__count {
+    align-items: flex-end;
+}
+
+.reports-access-user-panel__count strong {
+    color: #074a8f;
+    font-size: 1.35rem;
+    line-height: 1;
+}
+
+.reports-access-user-panel__summary > .pi {
+    color: #7b8798;
+}
+
+.reports-access-user-panel__content {
+    background: #f8fafc;
+    border-top: 1px solid #d9e2ef;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    padding: 1.1rem 1.35rem 1.25rem;
+}
+
+.reports-access-user-panel__content h3 {
+    color: #061b3a;
+    font-size: 0.92rem;
+    font-weight: 700;
+    margin-bottom: 0.35rem;
+}
+
+.reports-access-document {
+    align-items: center;
+    background: #ffffff;
+    border: 1px solid #d9e2ef;
+    border-radius: 8px;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+    min-height: 3.95rem;
+    padding: 0.75rem 1rem;
+}
+
+.reports-access-document span:first-child {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.reports-access-document strong {
+    color: #061b3a;
+    font-size: 0.88rem;
+}
+
+.reports-access-document small {
+    color: #667085;
+    font-size: 0.76rem;
+}
+
+.reports-access-document__status {
+    background: #d1fae5;
+    border-radius: 999px;
+    color: #059669;
+    font-size: 0.76rem;
+    font-weight: 700;
+    padding: 0.28rem 0.7rem;
+    white-space: nowrap;
+}
+
 .reports-bars {
     display: flex;
     flex-direction: column;
@@ -1672,6 +3385,26 @@ onMounted(fetchReportSummary);
     color: #a855f7;
 }
 
+.reports-response-time-tag {
+    background: #fef3c7;
+    border-radius: 999px;
+    color: #92400e;
+    display: inline-flex;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 0.24rem 0.62rem;
+}
+
+.reports-response-time-tag--fast {
+    background: #d1fae5;
+    color: #059669;
+}
+
+.reports-response-time-tag--slow {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
 .reports-table-note,
 .reports-empty-text {
     color: #667085;
@@ -1725,6 +3458,10 @@ onMounted(fetchReportSummary);
     .reports-tile-grid,
     .reports-filter-grid,
     .reports-filter-grid--dynamic,
+    .reports-filter-grid--access,
+    .reports-filter-grid--documents,
+    .reports-filter-grid--response-time,
+    .reports-response-summary-grid,
     .reports-unit-card__series-grid {
         grid-template-columns: 1fr;
     }
@@ -1738,6 +3475,50 @@ onMounted(fetchReportSummary);
 
     .reports-bar-row {
         grid-template-columns: 1fr;
+    }
+
+    .reports-support-chart {
+        min-height: 320px;
+    }
+
+    .reports-support-chart__label {
+        font-size: 12px;
+    }
+
+    .reports-access-chart__plot {
+        grid-template-columns: 2.5rem 1fr;
+    }
+
+    .reports-access-chart__grid,
+    .reports-access-chart__plot::after {
+        left: 2.5rem;
+    }
+
+    .reports-access-chart__bars {
+        gap: 0.75rem;
+        overflow-x: auto;
+    }
+
+    .reports-access-chart__bar-wrap {
+        min-width: 11rem;
+    }
+
+    .reports-access-user-panel__summary {
+        grid-template-columns: auto 1fr auto;
+    }
+
+    .reports-access-user-panel__summary > .pi {
+        grid-column: 3;
+    }
+
+    .reports-access-user-panel__count {
+        align-items: flex-start;
+        grid-column: 2;
+    }
+
+    .reports-access-document {
+        align-items: flex-start;
+        flex-direction: column;
     }
 
     .reports-unit-chart__plot {
