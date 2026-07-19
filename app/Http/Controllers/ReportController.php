@@ -302,11 +302,433 @@ class ReportController extends Controller
         }
     }
 
+    public function classificationSeriesSubseries(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'unit' => ['nullable', 'integer', 'exists:units,id'],
+            'series' => ['nullable', 'string', 'max:2000'],
+            'support' => ['nullable', 'string', 'max:30'],
+            'search' => ['nullable', 'string', 'max:120'],
+            'subseries_page' => ['nullable', 'integer', 'min:1'],
+            'subseries_per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+            'documents_page' => ['nullable', 'integer', 'min:1'],
+            'documents_per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        try {
+            $subseriesPage = (int) ($validated['subseries_page'] ?? 1);
+            $subseriesPerPage = (int) ($validated['subseries_per_page'] ?? 5);
+            $documentsPage = (int) ($validated['documents_page'] ?? 1);
+            $documentsPerPage = (int) ($validated['documents_per_page'] ?? 50);
+            $filteredQuery = $this->applyClassificationFilters(
+                $this->classificationDocumentBaseQuery(),
+                $validated
+            );
+            $filteredDocumentsCount = (clone $filteredQuery)->count();
+            $totalDocumentsCount = $this->classificationDocumentBaseQuery()->count();
+            $seriesExpression = "COALESCE(NULLIF(TRIM(transfer_box_documents.series_label), ''), 'Sin serie')";
+            $seriesCountsQuery = (clone $filteredQuery)
+                ->join('transfer_boxes', 'transfer_box_documents.transfer_box_id', '=', 'transfer_boxes.id')
+                ->join('transfers', 'transfer_boxes.transfer_id', '=', 'transfers.id')
+                ->select([])
+                ->selectRaw("{$seriesExpression} as label")
+                ->selectRaw('COUNT(*) as documents_count')
+                ->selectRaw('COUNT(DISTINCT transfers.unit_id) as units_count')
+                ->groupByRaw($seriesExpression)
+                ->orderByDesc('documents_count')
+                ->orderBy('label');
+            $chartRows = (clone $seriesCountsQuery)
+                ->get()
+                ->map(fn ($row) => $this->mapClassificationSeriesCount($row))
+                ->values();
+            $seriesCountsPaginator = $seriesCountsQuery->paginate(
+                $subseriesPerPage,
+                ['*'],
+                'subseries_page',
+                $subseriesPage
+            );
+            $documentsPaginator = (clone $filteredQuery)
+                ->orderBy('transfer_box_documents.name')
+                ->orderBy('transfer_box_documents.code')
+                ->paginate($documentsPerPage, ['transfer_box_documents.*'], 'documents_page', $documentsPage);
+
+            return response()->json([
+                'filters' => $this->classificationFilterOptions(),
+                'summary' => [
+                    'filtered_documents' => $filteredDocumentsCount,
+                    'total_documents' => $totalDocumentsCount,
+                ],
+                'charts' => [
+                    'series' => $chartRows,
+                ],
+                'series_counts' => [
+                    'data' => $seriesCountsPaginator
+                        ->getCollection()
+                        ->map(fn ($row) => $this->mapClassificationSeriesCount($row))
+                        ->values(),
+                    'meta' => $this->paginationMeta($seriesCountsPaginator),
+                ],
+                'documents' => [
+                    'data' => $documentsPaginator
+                        ->getCollection()
+                        ->map(fn (TransferDocument $document) => $this->mapEntryRegistryDocument($document))
+                        ->values(),
+                    'meta' => $this->paginationMeta($documentsPaginator),
+                ],
+            ]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudo cargar el reporte de series y subseries documentales.',
+            ], 500);
+        }
+    }
+
+    public function unclassifiedDocuments(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'unit' => ['nullable', 'integer', 'exists:units,id'],
+            'series' => ['nullable', 'string', 'max:2000'],
+            'support' => ['nullable', 'string', 'max:30'],
+            'search' => ['nullable', 'string', 'max:120'],
+            'documents_page' => ['nullable', 'integer', 'min:1'],
+            'documents_per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        try {
+            $documentsPage = (int) ($validated['documents_page'] ?? 1);
+            $documentsPerPage = (int) ($validated['documents_per_page'] ?? 50);
+            $baseQuery = $this->unclassifiedDocumentBaseQuery();
+            $totalDocumentsCount = (clone $baseQuery)->count();
+            $hasFilters = $this->hasClassificationFilters($validated);
+
+            if (!$hasFilters) {
+                return response()->json([
+                    'filters' => $this->unclassifiedFilterOptions(),
+                    'summary' => [
+                        'filtered_documents' => 0,
+                        'total_documents' => $totalDocumentsCount,
+                        'has_filters' => false,
+                    ],
+                    'documents' => [
+                        'data' => [],
+                        'meta' => $this->emptyPaginationMeta($documentsPerPage),
+                    ],
+                ]);
+            }
+
+            $filteredQuery = $this->applyUnclassifiedFilters($baseQuery, $validated);
+            $filteredDocumentsCount = (clone $filteredQuery)->count();
+            $documentsPaginator = $filteredQuery
+                ->orderBy('transfer_box_documents.name')
+                ->orderBy('transfer_box_documents.code')
+                ->paginate($documentsPerPage, ['transfer_box_documents.*'], 'documents_page', $documentsPage);
+
+            return response()->json([
+                'filters' => $this->unclassifiedFilterOptions(),
+                'summary' => [
+                    'filtered_documents' => $filteredDocumentsCount,
+                    'total_documents' => $totalDocumentsCount,
+                    'has_filters' => true,
+                ],
+                'documents' => [
+                    'data' => $documentsPaginator
+                        ->getCollection()
+                        ->map(fn (TransferDocument $document) => $this->mapUnclassifiedDocument($document))
+                        ->values(),
+                    'meta' => $this->paginationMeta($documentsPaginator),
+                ],
+            ]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudo cargar el reporte de documentos sin clasificación.',
+            ], 500);
+        }
+    }
+
     private function availableReportsCount(array $metricValues): int
     {
         return collect($metricValues)
             ->filter(fn ($value) => (int) $value > 0)
             ->count();
+    }
+
+    private function classificationDocumentBaseQuery(): Builder
+    {
+        return TransferDocument::query()
+            ->with(['box.transfer.unit', 'box.transfer.requester.person'])
+            ->whereNotNull('transfer_box_documents.created_at');
+    }
+
+    private function unclassifiedDocumentBaseQuery(): Builder
+    {
+        return $this->classificationDocumentBaseQuery()
+            ->where(function (Builder $query) {
+                $query
+                    ->whereNull('transfer_box_documents.series_label')
+                    ->orWhereRaw("TRIM(transfer_box_documents.series_label) = ''");
+            });
+    }
+
+    private function hasClassificationFilters(array $filters): bool
+    {
+        return !empty($filters['unit']) ||
+            !empty($filters['series']) ||
+            !empty($filters['support']) ||
+            trim((string) ($filters['search'] ?? '')) !== '';
+    }
+
+    private function applyClassificationFilters(Builder $query, array $filters): Builder
+    {
+        if (!empty($filters['unit'])) {
+            $query->whereHas('box.transfer', fn (Builder $transferQuery) =>
+                $transferQuery->where('unit_id', (int) $filters['unit'])
+            );
+        }
+
+        if (!empty($filters['series'])) {
+            $query->whereRaw(
+                "COALESCE(NULLIF(TRIM(transfer_box_documents.series_label), ''), 'Sin serie') = ?",
+                [$filters['series']]
+            );
+        }
+
+        if (!empty($filters['support'])) {
+            $query->whereRaw(
+                "COALESCE(NULLIF(TRIM(transfer_box_documents.support_type), ''), 'Sin soporte') = ?",
+                [$filters['support']]
+            );
+        }
+
+        $term = trim((string) ($filters['search'] ?? ''));
+
+        if ($term !== '') {
+            $query->where(function (Builder $searchQuery) use ($term) {
+                $this->addReportSearchClauses($searchQuery, [
+                    'transfer_box_documents.code',
+                    'transfer_box_documents.name',
+                    'transfer_box_documents.series_label',
+                    'transfer_box_documents.support_type',
+                    'transfer_box_documents.year_label',
+                    'transfer_box_documents.pages_label',
+                ], $term);
+
+                $searchQuery->orWhereHas('box', function (Builder $boxQuery) use ($term) {
+                    $this->addReportSearchClauses($boxQuery, [
+                        'transfer_boxes.series_name',
+                        'transfer_boxes.box_number',
+                    ], $term);
+                });
+
+                $searchQuery->orWhereHas('box.transfer', function (Builder $transferQuery) use ($term) {
+                    $this->addReportSearchClauses($transferQuery, [
+                        'transfers.code',
+                    ], $term);
+                });
+
+                $searchQuery->orWhereHas('box.transfer.unit', function (Builder $unitQuery) use ($term) {
+                    $this->addReportSearchClauses($unitQuery, [
+                        'units.code',
+                        'units.name',
+                    ], $term);
+                });
+            });
+        }
+
+        return $query;
+    }
+
+    private function applyUnclassifiedFilters(Builder $query, array $filters): Builder
+    {
+        if (!empty($filters['unit'])) {
+            $query->whereHas('box.transfer', fn (Builder $transferQuery) =>
+                $transferQuery->where('unit_id', (int) $filters['unit'])
+            );
+        }
+
+        if (!empty($filters['series'])) {
+            $query->whereHas('box', fn (Builder $boxQuery) =>
+                $boxQuery->whereRaw(
+                    "COALESCE(NULLIF(TRIM(transfer_boxes.series_name), ''), 'Sin serie') = ?",
+                    [$filters['series']]
+                )
+            );
+        }
+
+        if (!empty($filters['support'])) {
+            $query->whereRaw(
+                "COALESCE(NULLIF(TRIM(transfer_box_documents.support_type), ''), 'Sin soporte') = ?",
+                [$filters['support']]
+            );
+        }
+
+        $term = trim((string) ($filters['search'] ?? ''));
+
+        if ($term !== '') {
+            $query->where(function (Builder $searchQuery) use ($term) {
+                $this->addReportSearchClauses($searchQuery, [
+                    'transfer_box_documents.code',
+                    'transfer_box_documents.name',
+                    'transfer_box_documents.support_type',
+                    'transfer_box_documents.year_label',
+                    'transfer_box_documents.pages_label',
+                ], $term);
+
+                $searchQuery->orWhereHas('box', function (Builder $boxQuery) use ($term) {
+                    $this->addReportSearchClauses($boxQuery, [
+                        'transfer_boxes.series_name',
+                        'transfer_boxes.box_number',
+                        'transfer_boxes.title',
+                        'transfer_boxes.location_code',
+                    ], $term);
+                });
+
+                $searchQuery->orWhereHas('box.transfer', function (Builder $transferQuery) use ($term) {
+                    $this->addReportSearchClauses($transferQuery, [
+                        'transfers.code',
+                    ], $term);
+                });
+
+                $searchQuery->orWhereHas('box.transfer.unit', function (Builder $unitQuery) use ($term) {
+                    $this->addReportSearchClauses($unitQuery, [
+                        'units.code',
+                        'units.name',
+                    ], $term);
+                });
+            });
+        }
+
+        return $query;
+    }
+
+    private function classificationFilterOptions(): array
+    {
+        return [
+            'units' => Unit::query()
+                ->whereIn('id', Transfer::query()
+                    ->whereHas('boxes.documents')
+                    ->select('unit_id'))
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn (Unit $unit) => [
+                    'label' => $unit->name,
+                    'value' => $unit->id,
+                ])
+                ->values(),
+            'series' => TransferDocument::query()
+                ->select([])
+                ->selectRaw("COALESCE(NULLIF(TRIM(series_label), ''), 'Sin serie') as label")
+                ->groupByRaw("COALESCE(NULLIF(TRIM(series_label), ''), 'Sin serie')")
+                ->orderBy('label')
+                ->get()
+                ->map(fn ($row) => [
+                    'label' => $row->label,
+                    'value' => $row->label,
+                ])
+                ->values(),
+            'support' => TransferDocument::query()
+                ->select([])
+                ->selectRaw("COALESCE(NULLIF(TRIM(support_type), ''), 'Sin soporte') as label")
+                ->groupByRaw("COALESCE(NULLIF(TRIM(support_type), ''), 'Sin soporte')")
+                ->orderBy('label')
+                ->get()
+                ->map(fn ($row) => [
+                    'label' => $row->label,
+                    'value' => $row->label,
+                ])
+                ->values(),
+        ];
+    }
+
+    private function unclassifiedFilterOptions(): array
+    {
+        return [
+            'units' => Unit::query()
+                ->whereIn('id', Transfer::query()
+                    ->whereHas('boxes.documents')
+                    ->select('unit_id'))
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn (Unit $unit) => [
+                    'label' => $unit->name,
+                    'value' => $unit->id,
+                ])
+                ->values(),
+            'series' => TransferBox::query()
+                ->whereHas('documents')
+                ->select([])
+                ->selectRaw("COALESCE(NULLIF(TRIM(series_name), ''), 'Sin serie') as label")
+                ->groupByRaw("COALESCE(NULLIF(TRIM(series_name), ''), 'Sin serie')")
+                ->orderBy('label')
+                ->get()
+                ->map(fn ($row) => [
+                    'label' => $row->label,
+                    'value' => $row->label,
+                ])
+                ->values(),
+            'support' => TransferDocument::query()
+                ->select([])
+                ->selectRaw("COALESCE(NULLIF(TRIM(support_type), ''), 'Sin soporte') as label")
+                ->groupByRaw("COALESCE(NULLIF(TRIM(support_type), ''), 'Sin soporte')")
+                ->orderBy('label')
+                ->get()
+                ->map(fn ($row) => [
+                    'label' => $row->label,
+                    'value' => $row->label,
+                ])
+                ->values(),
+        ];
+    }
+
+    private function addReportSearchClauses(Builder $query, array $columns, string $term): void
+    {
+        $like = '%' . mb_strtolower($term) . '%';
+
+        foreach ($columns as $index => $column) {
+            $method = $index === 0 ? 'whereRaw' : 'orWhereRaw';
+            $query->{$method}("LOWER(CAST({$column} AS TEXT)) LIKE ?", [$like]);
+        }
+    }
+
+    private function mapClassificationSeriesCount($row): array
+    {
+        $documentsCount = (int) $row->documents_count;
+        $unitsCount = (int) $row->units_count;
+
+        return [
+            'label' => $row->label ?: 'Sin serie',
+            'documents_count' => $documentsCount,
+            'units_count' => $unitsCount,
+            'documents_label' => $documentsCount === 1 ? '1 documento' : "{$documentsCount} documentos",
+            'units_label' => $unitsCount === 1 ? '1 unidad productora' : "{$unitsCount} unidades productoras",
+        ];
+    }
+
+    private function paginationMeta($paginator): array
+    {
+        return [
+            'current_page' => $paginator->currentPage(),
+            'last_page' => $paginator->lastPage(),
+            'per_page' => $paginator->perPage(),
+            'total' => $paginator->total(),
+            'from' => $paginator->firstItem(),
+            'to' => $paginator->lastItem(),
+        ];
+    }
+
+    private function emptyPaginationMeta(int $perPage): array
+    {
+        return [
+            'current_page' => 1,
+            'last_page' => 1,
+            'per_page' => $perPage,
+            'total' => 0,
+            'from' => null,
+            'to' => null,
+        ];
     }
 
     private function applyEntryRegistryFilters(Builder $query, array $filters): Builder
@@ -348,6 +770,27 @@ class ReportController extends Controller
             'pages' => $document->pages_label ?: 'N/D',
             'transfer_code' => $transfer?->code ?: 'N/D',
             'box_number' => $box?->formattedBoxNumber() ?: 'N/D',
+        ];
+    }
+
+    private function mapUnclassifiedDocument(TransferDocument $document): array
+    {
+        $date = $document->created_at;
+        $box = $document->box;
+        $transfer = $box?->transfer;
+
+        return [
+            'id' => $document->id,
+            'code' => $document->code,
+            'name' => $document->name,
+            'unit_id' => $transfer?->unit?->id,
+            'unit' => $transfer?->unit?->name ?: 'Sin unidad',
+            'date' => $date?->toDateString(),
+            'date_label' => $date?->format('d/m/Y H:i') ?: 'Sin fecha',
+            'box' => $box?->boxCode($transfer?->code) ?: 'N/D',
+            'box_number' => $box?->formattedBoxNumber() ?: 'N/D',
+            'box_series' => $box?->series_name ?: 'Sin serie',
+            'support' => $document->support_type ?: 'Sin soporte',
         ];
     }
 

@@ -150,6 +150,10 @@ Route::middleware('auth')->group(function () {
         ->middleware('permission:endpoint.ui.reports.read');
     Route::get('/api/reports/access-consultation/response-times', [ReportController::class, 'accessConsultationResponseTimes'])
         ->middleware('permission:endpoint.ui.reports.read');
+    Route::get('/api/reports/classification-organization/series-subseries', [ReportController::class, 'classificationSeriesSubseries'])
+        ->middleware('permission:endpoint.ui.reports.read');
+    Route::get('/api/reports/classification-organization/unclassified-documents', [ReportController::class, 'unclassifiedDocuments'])
+        ->middleware('permission:endpoint.ui.reports.read');
     Route::get('/api/archive/catalog', [ArchiveController::class, 'catalog']);
     Route::get('/api/archive/boxes', [ArchiveController::class, 'boxes']);
     Route::post('/api/archive/boxes', [ArchiveController::class, 'storeBox']);

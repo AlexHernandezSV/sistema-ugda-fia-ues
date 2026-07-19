@@ -12,6 +12,7 @@ const registryErrorMessage = ref("");
 const selectedCategory = ref(null);
 const selectedReport = ref(null);
 const hoveredPoint = ref(null);
+const classificationSearchTimeout = ref(null);
 
 const reportSummary = ref({
     categories: {
@@ -80,6 +81,67 @@ const accessResponseTimeReport = ref({
     rows: [],
 });
 
+const classificationSeriesReport = ref({
+    filters: {
+        units: [],
+        series: [],
+        support: [],
+    },
+    summary: {
+        filtered_documents: 0,
+        total_documents: 0,
+    },
+    charts: {
+        series: [],
+    },
+    series_counts: {
+        data: [],
+        meta: {
+            current_page: 1,
+            last_page: 1,
+            per_page: 5,
+            total: 0,
+            from: null,
+            to: null,
+        },
+    },
+    documents: {
+        data: [],
+        meta: {
+            current_page: 1,
+            last_page: 1,
+            per_page: 50,
+            total: 0,
+            from: null,
+            to: null,
+        },
+    },
+});
+
+const unclassifiedDocumentsReport = ref({
+    filters: {
+        units: [],
+        series: [],
+        support: [],
+    },
+    summary: {
+        filtered_documents: 0,
+        total_documents: 0,
+        has_filters: false,
+    },
+    documents: {
+        data: [],
+        meta: {
+            current_page: 1,
+            last_page: 1,
+            per_page: 50,
+            total: 0,
+            from: null,
+            to: null,
+        },
+    },
+});
+
 const filters = reactive({
     unit: null,
     series: null,
@@ -132,8 +194,8 @@ const reportCategories = computed(() => [
         key: "classification_and_organization",
         title: "Reportes de Clasificación y Organización",
         description: "Resúmenes para series, cajas y organización del archivo general.",
-        availableReports: reportSummary.value.categories.classification_and_organization,
-        reports: [],
+        availableReports: classificationReports.value.length,
+        reports: classificationReports.value,
     },
 ]);
 
@@ -185,16 +247,42 @@ const accessReports = computed(() => [
     },
 ]);
 
+const classificationReports = computed(() => [
+    {
+        key: "documentary-series-subseries",
+        title: "Series y Subseries Documentales",
+        description: "Conteo de documentos por serie",
+        icon: "pi pi-chart-bar",
+        hasDashboard: true,
+    },
+    {
+        key: "unclassified-documents",
+        title: "Documentos sin Clasificación",
+        description: "Documentos pendientes de clasificar",
+        icon: "pi pi-chart-bar",
+        hasDashboard: true,
+    },
+]);
+
 const currentCategory = computed(() =>
     reportCategories.value.find((category) => category.key === selectedCategory.value)
 );
 
 const currentReport = computed(() =>
-    [...entryReports.value, ...accessReports.value].find((report) => report.key === selectedReport.value) ??
+    [...entryReports.value, ...accessReports.value, ...classificationReports.value]
+        .find((report) => report.key === selectedReport.value) ??
     entryReports.value[0]
 );
 
 const isEntryReport = computed(() => selectedCategory.value === "entry_and_registry");
+const isClassificationSeriesReport = computed(() =>
+    selectedCategory.value === "classification_and_organization" &&
+    selectedReport.value === "documentary-series-subseries"
+);
+const isUnclassifiedDocumentsReport = computed(() =>
+    selectedCategory.value === "classification_and_organization" &&
+    selectedReport.value === "unclassified-documents"
+);
 const isAccessHistoryReport = computed(() =>
     selectedCategory.value === "access_and_consultation" &&
     selectedReport.value === "consultation-history"
@@ -229,6 +317,35 @@ const hasActiveFilters = computed(() =>
 );
 
 const documents = computed(() => registryReport.value.documents ?? []);
+const classificationDocuments = computed(() => classificationSeriesReport.value.documents.data ?? []);
+const unclassifiedDocuments = computed(() => unclassifiedDocumentsReport.value.documents.data ?? []);
+const classificationSeriesCountRows = computed(() =>
+    classificationSeriesReport.value.series_counts.data ?? []
+);
+const classificationSeriesMeta = computed(() => classificationSeriesReport.value.series_counts.meta ?? {
+    current_page: 1,
+    last_page: 1,
+    per_page: 5,
+    total: 0,
+    from: null,
+    to: null,
+});
+const classificationDocumentsMeta = computed(() => classificationSeriesReport.value.documents.meta ?? {
+    current_page: 1,
+    last_page: 1,
+    per_page: 50,
+    total: 0,
+    from: null,
+    to: null,
+});
+const unclassifiedDocumentsMeta = computed(() => unclassifiedDocumentsReport.value.documents.meta ?? {
+    current_page: 1,
+    last_page: 1,
+    per_page: 50,
+    total: 0,
+    from: null,
+    to: null,
+});
 
 const unitOptions = computed(() => {
     const options = new Map();
@@ -274,6 +391,34 @@ const supportOptions = computed(() => {
 
     return Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label));
 });
+
+const classificationUnitOptions = computed(() => classificationSeriesReport.value.filters.units ?? []);
+const classificationSeriesOptions = computed(() => classificationSeriesReport.value.filters.series ?? []);
+const classificationSupportOptions = computed(() => classificationSeriesReport.value.filters.support ?? []);
+const unclassifiedUnitOptions = computed(() => unclassifiedDocumentsReport.value.filters.units ?? []);
+const unclassifiedSeriesOptions = computed(() => unclassifiedDocumentsReport.value.filters.series ?? []);
+const unclassifiedSupportOptions = computed(() => unclassifiedDocumentsReport.value.filters.support ?? []);
+const activeUnitOptions = computed(() =>
+    isUnclassifiedDocumentsReport.value
+        ? unclassifiedUnitOptions.value
+        : isClassificationSeriesReport.value
+        ? classificationUnitOptions.value
+        : unitOptions.value
+);
+const activeSeriesOptions = computed(() =>
+    isUnclassifiedDocumentsReport.value
+        ? unclassifiedSeriesOptions.value
+        : isClassificationSeriesReport.value
+        ? classificationSeriesOptions.value
+        : seriesOptions.value
+);
+const activeSupportOptions = computed(() =>
+    isUnclassifiedDocumentsReport.value
+        ? unclassifiedSupportOptions.value
+        : isClassificationSeriesReport.value
+        ? classificationSupportOptions.value
+        : supportOptions.value
+);
 
 const visibleDocuments = computed(() => {
     const searchTerm = filters.search.trim().toLowerCase();
@@ -367,6 +512,11 @@ const visibleAccessResponseTimeRows = computed(() => {
 });
 
 const filteredDocumentsCount = computed(() => visibleDocuments.value.length);
+const filteredClassificationDocumentsCount = computed(() =>
+    isUnclassifiedDocumentsReport.value
+        ? unclassifiedDocumentsReport.value.summary.filtered_documents ?? 0
+        : classificationSeriesReport.value.summary.filtered_documents ?? 0
+);
 const filteredAccessLoansCount = computed(() => visibleAccessLoans.value.length);
 const accessDocumentRows = computed(() => {
     const grouped = new Map();
@@ -404,6 +554,11 @@ const filteredAccessResponseTimeCount = computed(() => visibleAccessResponseTime
 const reportTotalDocumentsCount = computed(() =>
     isUnitsReport.value ? documents.value.length : registryReport.value.summary.total_documents
 );
+const reportTotalClassificationDocumentsCount = computed(() =>
+    isUnclassifiedDocumentsReport.value
+        ? unclassifiedDocumentsReport.value.summary.total_documents ?? 0
+        : classificationSeriesReport.value.summary.total_documents ?? 0
+);
 const reportTotalAccessLoansCount = computed(() => accessHistoryReport.value.summary.total_loans);
 const reportTotalAccessDocumentsCount = computed(() => accessDocumentsReport.value.summary.total_documents);
 const reportTotalAccessResponseTimeCount = computed(() => accessResponseTimeReport.value.summary.total_rows);
@@ -415,6 +570,42 @@ const visibleSeriesCount = computed(() =>
 );
 
 const chartTitle = computed(() => currentReport.value?.title ?? "Documentos por Periodo");
+
+const classificationSeriesChartRows = computed(() => classificationSeriesReport.value.charts.series ?? []);
+const classificationSeriesPieRows = computed(() => {
+    const rows = classificationSeriesChartRows.value;
+
+    if (rows.length <= 8) {
+        return rows;
+    }
+
+    const mainRows = rows.slice(0, 7);
+    const otherRows = rows.slice(7);
+    const otherDocuments = otherRows.reduce((sum, row) => sum + row.documents_count, 0);
+    const otherUnits = otherRows.reduce((sum, row) => sum + row.units_count, 0);
+
+    return [
+        ...mainRows,
+        {
+            label: "Otros",
+            documents_count: otherDocuments,
+            units_count: otherUnits,
+            documents_label: otherDocuments === 1 ? "1 documento" : `${otherDocuments} documentos`,
+            units_label: otherUnits === 1 ? "1 unidad productora" : `${otherUnits} unidades productoras`,
+        },
+    ];
+});
+const classificationSeriesPieTotal = computed(() =>
+    classificationSeriesPieRows.value.reduce((sum, row) => sum + row.documents_count, 0)
+);
+const classificationDocumentsFirst = computed(() =>
+    ((classificationDocumentsMeta.value.current_page ?? 1) - 1) *
+    (classificationDocumentsMeta.value.per_page ?? 50)
+);
+const unclassifiedDocumentsFirst = computed(() =>
+    ((unclassifiedDocumentsMeta.value.current_page ?? 1) - 1) *
+    (unclassifiedDocumentsMeta.value.per_page ?? 50)
+);
 
 const accessChartRows = computed(() => {
     const grouped = new Map();
@@ -695,6 +886,38 @@ const describePieSlice = (center, radius, startAngle, endAngle) => {
     ].join(" ");
 };
 
+const classificationPieColor = (index) => [
+    "#0b4f9c",
+    "#2167b8",
+    "#4d93df",
+    "#78aee8",
+    "#0f766e",
+    "#059669",
+    "#a855f7",
+    "#64748b",
+][index % 8];
+
+const classificationSeriesPieSegments = computed(() => {
+    const total = classificationSeriesPieTotal.value;
+    let currentAngle = 90;
+    const center = 190;
+    const radius = 128;
+
+    return classificationSeriesPieRows.value.map((row, index) => {
+        const sliceAngle = total > 0 ? (row.documents_count / total) * 360 : 0;
+        const startAngle = currentAngle;
+        const endAngle = currentAngle + sliceAngle;
+        currentAngle = endAngle;
+
+        return {
+            ...row,
+            color: classificationPieColor(index),
+            percentage: total > 0 ? Math.round((row.documents_count / total) * 100) : 0,
+            path: describePieSlice(center, radius, startAngle, endAngle),
+        };
+    });
+});
+
 const supportChartRows = computed(() => {
     const grouped = new Map();
 
@@ -955,6 +1178,122 @@ const fetchAccessConsultationResponseTimes = async () => {
     }
 };
 
+const normalizeReportMeta = (meta, fallbackPerPage) => ({
+    current_page: meta?.current_page ?? 1,
+    last_page: meta?.last_page ?? 1,
+    per_page: meta?.per_page ?? fallbackPerPage,
+    total: meta?.total ?? 0,
+    from: meta?.from ?? null,
+    to: meta?.to ?? null,
+});
+
+const resetDocumentFilters = () => {
+    filters.unit = null;
+    filters.series = null;
+    filters.support = null;
+    filters.search = "";
+};
+
+const fetchClassificationSeriesSubseries = async ({ resetPages = false } = {}) => {
+    loadingRegistry.value = true;
+    registryErrorMessage.value = "";
+
+    const seriesMeta = classificationSeriesMeta.value;
+    const documentsMeta = classificationDocumentsMeta.value;
+    const subseriesPage = resetPages ? 1 : seriesMeta.current_page;
+    const documentsPage = resetPages ? 1 : documentsMeta.current_page;
+
+    try {
+        const { data } = await axios.get("/api/reports/classification-organization/series-subseries", {
+            params: {
+                unit: filters.unit,
+                series: filters.series,
+                support: filters.support,
+                search: filters.search.trim() || null,
+                subseries_page: subseriesPage,
+                subseries_per_page: seriesMeta.per_page ?? 5,
+                documents_page: documentsPage,
+                documents_per_page: documentsMeta.per_page ?? 50,
+            },
+        });
+
+        classificationSeriesReport.value = {
+            filters: {
+                units: data.filters?.units ?? [],
+                series: data.filters?.series ?? [],
+                support: data.filters?.support ?? [],
+            },
+            summary: {
+                filtered_documents: data.summary?.filtered_documents ?? 0,
+                total_documents: data.summary?.total_documents ?? 0,
+            },
+            charts: {
+                series: data.charts?.series ?? [],
+            },
+            series_counts: {
+                data: data.series_counts?.data ?? [],
+                meta: normalizeReportMeta(data.series_counts?.meta, 5),
+            },
+            documents: {
+                data: data.documents?.data ?? [],
+                meta: normalizeReportMeta(data.documents?.meta, 50),
+            },
+        };
+    } catch (error) {
+        console.error("Error al cargar series y subseries documentales:", error);
+        registryErrorMessage.value =
+            error.response?.data?.message ??
+            "No se pudo cargar el reporte de series y subseries documentales.";
+    } finally {
+        loadingRegistry.value = false;
+    }
+};
+
+const fetchUnclassifiedDocuments = async ({ resetPages = false } = {}) => {
+    loadingRegistry.value = true;
+    registryErrorMessage.value = "";
+
+    const documentsMeta = unclassifiedDocumentsMeta.value;
+    const documentsPage = resetPages ? 1 : documentsMeta.current_page;
+
+    try {
+        const { data } = await axios.get("/api/reports/classification-organization/unclassified-documents", {
+            params: {
+                unit: filters.unit,
+                series: filters.series,
+                support: filters.support,
+                search: filters.search.trim() || null,
+                documents_page: documentsPage,
+                documents_per_page: documentsMeta.per_page ?? 50,
+            },
+        });
+
+        unclassifiedDocumentsReport.value = {
+            filters: {
+                units: data.filters?.units ?? [],
+                series: data.filters?.series ?? [],
+                support: data.filters?.support ?? [],
+            },
+            summary: {
+                filtered_documents: data.summary?.filtered_documents ?? 0,
+                total_documents: data.summary?.total_documents ?? 0,
+                has_filters: Boolean(data.summary?.has_filters),
+            },
+            documents: {
+                data: data.documents?.data ?? [],
+                meta: normalizeReportMeta(data.documents?.meta, 50),
+            },
+        };
+    } catch (error) {
+        console.error("Error al cargar documentos sin clasificación:", error);
+        registryErrorMessage.value =
+            error.response?.data?.message ??
+            "No se pudo cargar el reporte de documentos sin clasificación.";
+    } finally {
+        loadingRegistry.value = false;
+    }
+};
+
 const openCategory = async (categoryKey) => {
     selectedCategory.value = categoryKey;
     selectedReport.value = null;
@@ -986,6 +1325,22 @@ const openReport = async (reportKey) => {
         if (reportKey === "average-response-times") {
             await fetchAccessConsultationResponseTimes();
         }
+    }
+
+    if (
+        selectedCategory.value === "classification_and_organization" &&
+        reportKey === "documentary-series-subseries"
+    ) {
+        await fetchClassificationSeriesSubseries({ resetPages: true });
+        return;
+    }
+
+    if (
+        selectedCategory.value === "classification_and_organization" &&
+        reportKey === "unclassified-documents"
+    ) {
+        resetDocumentFilters();
+        await fetchUnclassifiedDocuments({ resetPages: true });
     }
 };
 
@@ -1039,10 +1394,72 @@ const clearFilters = () => {
         return;
     }
 
-    filters.unit = null;
-    filters.series = null;
-    filters.support = null;
-    filters.search = "";
+    resetDocumentFilters();
+};
+
+const queueClassificationReportFetch = () => {
+    if (!isClassificationSeriesReport.value && !isUnclassifiedDocumentsReport.value) {
+        return;
+    }
+
+    if (classificationSearchTimeout.value) {
+        window.clearTimeout(classificationSearchTimeout.value);
+    }
+
+    classificationSearchTimeout.value = window.setTimeout(() => {
+        if (isUnclassifiedDocumentsReport.value) {
+            fetchUnclassifiedDocuments({ resetPages: true });
+            return;
+        }
+
+        fetchClassificationSeriesSubseries({ resetPages: true });
+    }, 350);
+};
+
+const changeClassificationSeriesPage = (direction) => {
+    const meta = classificationSeriesMeta.value;
+    const nextPage = Math.min(
+        Math.max((meta.current_page ?? 1) + direction, 1),
+        meta.last_page ?? 1
+    );
+
+    if (nextPage === meta.current_page) {
+        return;
+    }
+
+    classificationSeriesReport.value.series_counts.meta = {
+        ...meta,
+        current_page: nextPage,
+    };
+    fetchClassificationSeriesSubseries();
+};
+
+const onClassificationDocumentsPage = (event) => {
+    classificationSeriesReport.value.documents.meta = {
+        ...classificationDocumentsMeta.value,
+        current_page: event.page + 1,
+        per_page: event.rows,
+    };
+    fetchClassificationSeriesSubseries();
+};
+
+const onUnclassifiedDocumentsPage = (event) => {
+    unclassifiedDocumentsReport.value.documents.meta = {
+        ...unclassifiedDocumentsMeta.value,
+        current_page: event.page + 1,
+        per_page: event.rows,
+    };
+    fetchUnclassifiedDocuments();
+};
+
+const paginationLabel = (meta, singular, plural) => {
+    if (!meta?.total) {
+        return `Sin ${plural}`;
+    }
+
+    const itemLabel = meta.total === 1 ? singular : plural;
+
+    return `Mostrando ${meta.from ?? 0} - ${meta.to ?? 0} de ${meta.total} ${itemLabel}`;
 };
 
 const toggleAccessUserPanel = (key) => {
@@ -1069,7 +1486,11 @@ const escapeHtml = (value) =>
 
 const isCurrentExportDisabled = computed(() =>
     loadingRegistry.value ||
-    (isAccessResponseTimeReport.value
+    (isUnclassifiedDocumentsReport.value
+        ? unclassifiedDocuments.value.length === 0
+        : isClassificationSeriesReport.value
+        ? classificationDocuments.value.length === 0
+        : isAccessResponseTimeReport.value
         ? visibleAccessResponseTimeRows.value.length === 0
         : isAccessDocumentsReport.value
         ? accessDocumentRows.value.length === 0
@@ -1079,6 +1500,120 @@ const isCurrentExportDisabled = computed(() =>
 );
 
 const exportCurrentTable = () => {
+    if (isUnclassifiedDocumentsReport.value) {
+        const rows = unclassifiedDocuments.value
+            .map((document) => `
+                <tr>
+                    <td>${escapeHtml(document.code)}</td>
+                    <td>${escapeHtml(document.name)}</td>
+                    <td>${escapeHtml(document.unit)}</td>
+                    <td>${escapeHtml(document.date_label)}</td>
+                    <td>${escapeHtml(document.box)}</td>
+                </tr>`)
+            .join("");
+
+        const workbook = `
+            <html>
+                <head>
+                    <meta charset="UTF-8" />
+                    <style>
+                        table { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; }
+                        th { background: #0b4f9c; color: #ffffff; font-weight: 700; }
+                        th, td { border: 1px solid #d9e2ef; padding: 7px 9px; text-align: left; }
+                        h1 { color: #10213d; font-family: Arial, sans-serif; font-size: 18px; }
+                    </style>
+                </head>
+                <body>
+                    <h1>Documentos sin Clasificación</h1>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Codigo</th>
+                                <th>Nombre</th>
+                                <th>Unidad</th>
+                                <th>Fecha</th>
+                                <th>Caja</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </body>
+            </html>
+        `;
+
+        const blob = new Blob([workbook], {
+            type: "application/vnd.ms-excel;charset=utf-8;",
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+
+        link.href = url;
+        link.download = "documentos-sin-clasificacion.xls";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        return;
+    }
+
+    if (isClassificationSeriesReport.value) {
+        const rows = classificationDocuments.value
+            .map((document) => `
+                <tr>
+                    <td>${escapeHtml(document.code)}</td>
+                    <td>${escapeHtml(document.name)}</td>
+                    <td>${escapeHtml(document.series)}</td>
+                    <td>${escapeHtml(document.unit)}</td>
+                    <td>${escapeHtml(document.date_label)}</td>
+                    <td>${escapeHtml(document.support)}</td>
+                </tr>`)
+            .join("");
+
+        const workbook = `
+            <html>
+                <head>
+                    <meta charset="UTF-8" />
+                    <style>
+                        table { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; }
+                        th { background: #0b4f9c; color: #ffffff; font-weight: 700; }
+                        th, td { border: 1px solid #d9e2ef; padding: 7px 9px; text-align: left; }
+                        h1 { color: #10213d; font-family: Arial, sans-serif; font-size: 18px; }
+                    </style>
+                </head>
+                <body>
+                    <h1>${escapeHtml(chartTitle.value)}</h1>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Codigo</th>
+                                <th>Nombre</th>
+                                <th>Serie</th>
+                                <th>Unidad</th>
+                                <th>Fecha</th>
+                                <th>Soporte</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </body>
+            </html>
+        `;
+
+        const blob = new Blob([workbook], {
+            type: "application/vnd.ms-excel;charset=utf-8;",
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+
+        link.href = url;
+        link.download = "series-y-subseries-documentales.xls";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        return;
+    }
+
     if (isAccessResponseTimeReport.value) {
         const rows = visibleAccessResponseTimeRows.value
             .map((row, index) => `
@@ -1343,10 +1878,15 @@ const exportCurrentTable = () => {
 watch(
     () => filters.unit,
     () => {
-        if (filters.series && !seriesOptions.value.some((option) => option.value === filters.series)) {
+        if (filters.series && !activeSeriesOptions.value.some((option) => option.value === filters.series)) {
             filters.series = null;
         }
     }
+);
+
+watch(
+    () => [filters.unit, filters.series, filters.support, filters.search],
+    () => queueClassificationReportFetch()
 );
 
 onMounted(fetchReportSummary);
@@ -1426,7 +1966,10 @@ onMounted(fetchReportSummary);
                         :key="report.key"
                         type="button"
                         class="reports-tile"
-                        @click="openReport(report.key)"
+                        :class="{ 'reports-tile--catalog-only': report.hasDashboard === false }"
+                        :aria-disabled="report.hasDashboard === false"
+                        :disabled="report.hasDashboard === false"
+                        @click="report.hasDashboard === false ? null : openReport(report.key)"
                     >
                         <span>
                             <strong>{{ report.title }}</strong>
@@ -1613,7 +2156,7 @@ onMounted(fetchReportSummary);
                         <span>Unidad Productora</span>
                         <Dropdown
                             v-model="filters.unit"
-                            :options="unitOptions"
+                            :options="activeUnitOptions"
                             optionLabel="label"
                             optionValue="value"
                             placeholder="Todas"
@@ -1626,7 +2169,7 @@ onMounted(fetchReportSummary);
                         <span>Serie Documental</span>
                         <Dropdown
                             v-model="filters.series"
-                            :options="seriesOptions"
+                            :options="activeSeriesOptions"
                             optionLabel="label"
                             optionValue="value"
                             placeholder="Todas"
@@ -1639,7 +2182,7 @@ onMounted(fetchReportSummary);
                         <span>Soporte</span>
                         <Dropdown
                             v-model="filters.support"
-                            :options="supportOptions"
+                            :options="activeSupportOptions"
                             optionLabel="label"
                             optionValue="value"
                             placeholder="Todos"
@@ -1665,7 +2208,9 @@ onMounted(fetchReportSummary);
                     Mostrando
                     <strong>
                         {{
-                            isAccessResponseTimeReport
+                            isClassificationSeriesReport || isUnclassifiedDocumentsReport
+                                ? filteredClassificationDocumentsCount
+                                : isAccessResponseTimeReport
                                 ? filteredAccessResponseTimeCount
                                 : isAccessDocumentsReport
                                 ? filteredAccessDocumentsCount
@@ -1677,7 +2222,9 @@ onMounted(fetchReportSummary);
                     de
                     <strong>
                         {{
-                            isAccessResponseTimeReport
+                            isClassificationSeriesReport || isUnclassifiedDocumentsReport
+                                ? reportTotalClassificationDocumentsCount
+                                : isAccessResponseTimeReport
                                 ? reportTotalAccessResponseTimeCount
                                 : isAccessDocumentsReport
                                 ? reportTotalAccessDocumentsCount
@@ -1690,7 +2237,7 @@ onMounted(fetchReportSummary);
                 </div>
             </article>
 
-            <article class="reports-chart-panel">
+            <article v-if="!isUnclassifiedDocumentsReport" class="reports-chart-panel">
                 <div class="reports-panel-title">
                     <h2 class="m-0">{{ chartTitle }}</h2>
                     <span v-if="loadingRegistry">
@@ -1699,7 +2246,54 @@ onMounted(fetchReportSummary);
                     </span>
                 </div>
 
-                <div v-if="isAccessResponseTimeReport" class="reports-response-time-chart">
+                <div v-if="isClassificationSeriesReport" class="reports-classification-pie">
+                    <div class="reports-classification-pie__figure">
+                        <svg
+                            v-if="classificationSeriesPieSegments.length > 0"
+                            viewBox="0 0 380 380"
+                            role="img"
+                            aria-label="Series y subseries documentales"
+                        >
+                            <path
+                                v-for="segment in classificationSeriesPieSegments"
+                                :key="segment.label"
+                                :d="segment.path"
+                                :fill="segment.color"
+                                class="reports-classification-pie__slice"
+                            />
+                            <circle cx="190" cy="190" r="76" class="reports-classification-pie__center" />
+                            <text x="190" y="184" text-anchor="middle" class="reports-classification-pie__total">
+                                {{ classificationSeriesPieTotal }}
+                            </text>
+                            <text x="190" y="206" text-anchor="middle" class="reports-classification-pie__caption">
+                                documentos
+                            </text>
+                        </svg>
+                    </div>
+
+                    <div class="reports-classification-pie__legend">
+                        <div
+                            v-for="segment in classificationSeriesPieSegments"
+                            :key="`legend-${segment.label}`"
+                            class="reports-classification-pie__legend-row"
+                        >
+                            <span
+                                class="reports-classification-pie__swatch"
+                                :style="{ backgroundColor: segment.color }"
+                            ></span>
+                            <span>
+                                <strong>{{ segment.label }}</strong>
+                                <small>{{ segment.documents_count }} docs | {{ segment.percentage }}%</small>
+                            </span>
+                        </div>
+                    </div>
+
+                    <p v-if="classificationSeriesPieSegments.length === 0" class="reports-empty-text m-0">
+                        No hay datos para graficar con los filtros actuales.
+                    </p>
+                </div>
+
+                <div v-else-if="isAccessResponseTimeReport" class="reports-response-time-chart">
                     <svg viewBox="0 0 1000 300" role="img" aria-label="Tiempos promedio de respuesta">
                         <line
                             v-for="tick in accessResponseTimeTicks"
@@ -1988,7 +2582,139 @@ onMounted(fetchReportSummary);
                 </div>
             </article>
 
-            <template v-if="isAccessResponseTimeReport">
+            <template v-if="isClassificationSeriesReport">
+                <article class="reports-classification-count-panel">
+                    <div class="reports-panel-title">
+                        <h2 class="m-0">Series y Subseries Documentales - Conteo de Documentos</h2>
+                        <span>{{ paginationLabel(classificationSeriesMeta, 'clasificacion', 'clasificaciones') }}</span>
+                    </div>
+
+                    <div class="reports-classification-count-list">
+                        <section
+                            v-for="row in classificationSeriesCountRows"
+                            :key="row.label"
+                            class="reports-classification-count-card"
+                        >
+                            <span>
+                                <strong>{{ row.label }}</strong>
+                                <small>{{ row.documents_label }} | {{ row.units_label }}</small>
+                            </span>
+                            <strong class="reports-classification-count-card__badge">
+                                {{ row.documents_count }}
+                                <small>docs</small>
+                            </strong>
+                        </section>
+
+                        <p v-if="classificationSeriesCountRows.length === 0" class="reports-empty-text m-0">
+                            No hay series o subseries con los filtros actuales.
+                        </p>
+                    </div>
+
+                    <div
+                        v-if="classificationSeriesMeta.total > classificationSeriesMeta.per_page"
+                        class="reports-pagination"
+                    >
+                        <button
+                            type="button"
+                            class="reports-pagination__button"
+                            :disabled="classificationSeriesMeta.current_page <= 1 || loadingRegistry"
+                            @click="changeClassificationSeriesPage(-1)"
+                        >
+                            <i class="pi pi-chevron-left"></i>
+                            <span>Anterior</span>
+                        </button>
+                        <span>
+                            Pagina {{ classificationSeriesMeta.current_page }} de {{ classificationSeriesMeta.last_page }}
+                        </span>
+                        <button
+                            type="button"
+                            class="reports-pagination__button"
+                            :disabled="classificationSeriesMeta.current_page >= classificationSeriesMeta.last_page || loadingRegistry"
+                            @click="changeClassificationSeriesPage(1)"
+                        >
+                            <span>Siguiente</span>
+                            <i class="pi pi-chevron-right"></i>
+                        </button>
+                    </div>
+                </article>
+
+                <article class="reports-table-panel">
+                    <div class="reports-panel-title">
+                        <h2 class="m-0">Listado de Documentos Filtrados</h2>
+                        <span>{{ paginationLabel(classificationDocumentsMeta, 'documento', 'documentos') }}</span>
+                    </div>
+
+                    <DataTable
+                        :value="classificationDocuments"
+                        :loading="loadingRegistry"
+                        :paginator="classificationDocumentsMeta.total > classificationDocumentsMeta.per_page"
+                        lazy
+                        :first="classificationDocumentsFirst"
+                        :rows="classificationDocumentsMeta.per_page"
+                        :totalRecords="classificationDocumentsMeta.total"
+                        responsiveLayout="scroll"
+                        stripedRows
+                        class="reports-table"
+                        @page="onClassificationDocumentsPage"
+                    >
+                        <Column field="code" header="Codigo" style="min-width: 10rem" />
+                        <Column field="name" header="Nombre" style="min-width: 18rem" />
+                        <Column field="series" header="Serie" style="min-width: 16rem" />
+                        <Column field="unit" header="Unidad" style="min-width: 15rem" />
+                        <Column field="date_label" header="Fecha" style="min-width: 12rem" />
+                        <Column header="Soporte" style="min-width: 9rem">
+                            <template #body="{ data }">
+                                <span class="report-tag" :class="supportSeverity(data.support)">
+                                    {{ data.support }}
+                                </span>
+                            </template>
+                        </Column>
+                        <template #empty>
+                            <div class="reports-empty-text">No hay documentos con los filtros actuales.</div>
+                        </template>
+                    </DataTable>
+                </article>
+            </template>
+
+            <article v-else-if="isUnclassifiedDocumentsReport" class="reports-table-panel">
+                <div class="reports-panel-title">
+                    <h2 class="m-0">
+                        Documentos sin Clasificación ({{ unclassifiedDocumentsMeta.total }})
+                    </h2>
+                    <span>{{ paginationLabel(unclassifiedDocumentsMeta, 'documento', 'documentos') }}</span>
+                </div>
+
+                <DataTable
+                    :value="unclassifiedDocuments"
+                    :loading="loadingRegistry"
+                    :paginator="unclassifiedDocumentsMeta.total > unclassifiedDocumentsMeta.per_page"
+                    lazy
+                    :first="unclassifiedDocumentsFirst"
+                    :rows="unclassifiedDocumentsMeta.per_page"
+                    :totalRecords="unclassifiedDocumentsMeta.total"
+                    responsiveLayout="scroll"
+                    stripedRows
+                    class="reports-table"
+                    @page="onUnclassifiedDocumentsPage"
+                >
+                    <Column field="code" header="Código" style="min-width: 10rem" />
+                    <Column field="name" header="Nombre" style="min-width: 18rem" />
+                    <Column field="unit" header="Unidad" style="min-width: 15rem" />
+                    <Column field="date_label" header="Fecha" style="min-width: 12rem" />
+                    <Column field="box" header="Caja" style="min-width: 12rem" />
+                    <template #empty>
+                        <div class="reports-empty-text">
+                            {{
+                                unclassifiedDocumentsReport.summary.has_filters
+                                    ? 'No hay documentos con los filtros actuales.'
+                                    : 'Selecciona al menos un filtro para consultar documentos.'
+                            }}
+                        </div>
+                    </template>
+                </DataTable>
+            </article>
+
+            <template v-else-if="isAccessResponseTimeReport">
                 <article class="reports-response-summary-panel">
                     <h2 class="reports-response-summary-panel__title m-0">
                         Tiempos de Localización de Documentos
@@ -2395,6 +3121,7 @@ onMounted(fetchReportSummary);
 .reports-chart-panel,
 .reports-table-panel,
 .reports-access-detail-panel,
+.reports-classification-count-panel,
 .reports-response-summary-panel,
 .reports-unit-distribution-panel {
     background: #ffffff;
@@ -2444,6 +3171,17 @@ onMounted(fetchReportSummary);
     box-shadow: 0 10px 24px rgba(15, 23, 42, 0.07);
 }
 
+.reports-tile--catalog-only {
+    cursor: default;
+    opacity: 1;
+}
+
+.reports-tile--catalog-only:hover {
+    background: #fbfcfe;
+    border-color: #d9e2ef;
+    box-shadow: none;
+}
+
 .reports-tile span {
     display: flex;
     flex-direction: column;
@@ -2481,6 +3219,7 @@ onMounted(fetchReportSummary);
 .reports-chart-panel,
 .reports-table-panel,
 .reports-access-detail-panel,
+.reports-classification-count-panel,
 .reports-response-summary-panel,
 .reports-unit-distribution-panel {
     padding: 1.35rem 1.55rem;
@@ -2675,6 +3414,91 @@ onMounted(fetchReportSummary);
     fill: #2167b8;
     stroke: #0b4f9c;
     stroke-width: 2;
+}
+
+.reports-classification-pie {
+    align-items: center;
+    display: grid;
+    gap: 1.5rem;
+    grid-template-columns: minmax(18rem, 26rem) 1fr;
+    min-height: 360px;
+}
+
+.reports-classification-pie__figure {
+    align-items: center;
+    display: flex;
+    justify-content: center;
+}
+
+.reports-classification-pie__figure svg {
+    display: block;
+    height: min(360px, 64vw);
+    max-height: 360px;
+    width: min(100%, 360px);
+}
+
+.reports-classification-pie__slice {
+    stroke: #ffffff;
+    stroke-width: 1.4;
+}
+
+.reports-classification-pie__center {
+    fill: #ffffff;
+    stroke: #d9e2ef;
+    stroke-width: 1;
+}
+
+.reports-classification-pie__total {
+    fill: #061b3a;
+    font-size: 2.1rem;
+    font-weight: 700;
+}
+
+.reports-classification-pie__caption {
+    fill: #667085;
+    font-size: 0.82rem;
+}
+
+.reports-classification-pie__legend {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.reports-classification-pie__legend-row {
+    align-items: center;
+    background: #fbfcfe;
+    border: 1px solid #d9e2ef;
+    border-radius: 8px;
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: auto 1fr;
+    min-height: 3.4rem;
+    padding: 0.7rem 0.85rem;
+}
+
+.reports-classification-pie__swatch {
+    border-radius: 999px;
+    display: inline-flex;
+    height: 0.8rem;
+    width: 0.8rem;
+}
+
+.reports-classification-pie__legend-row span:last-child {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.reports-classification-pie__legend-row strong {
+    color: #061b3a;
+    font-size: 0.88rem;
+    overflow-wrap: anywhere;
+}
+
+.reports-classification-pie__legend-row small {
+    color: #667085;
+    font-size: 0.78rem;
 }
 
 .reports-support-chart {
@@ -3146,6 +3970,93 @@ onMounted(fetchReportSummary);
     padding: 0.2rem 0.75rem;
 }
 
+.reports-classification-count-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+.reports-classification-count-card {
+    align-items: center;
+    background: #fbfcfe;
+    border: 1px solid #d9e2ef;
+    border-radius: 8px;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+    min-height: 5.7rem;
+    padding: 1rem;
+}
+
+.reports-classification-count-card > span {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    min-width: 0;
+}
+
+.reports-classification-count-card > span strong {
+    color: #061b3a;
+    font-size: 0.98rem;
+}
+
+.reports-classification-count-card > span small {
+    color: #536173;
+    font-size: 0.82rem;
+}
+
+.reports-classification-count-card__badge {
+    align-items: center;
+    background: #0b4f9c;
+    border-radius: 999px;
+    color: #ffffff;
+    display: inline-flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    font-size: 1.25rem;
+    height: 4rem;
+    justify-content: center;
+    line-height: 1;
+    width: 4rem;
+}
+
+.reports-classification-count-card__badge small {
+    color: #ffffff;
+    font-size: 0.58rem;
+    font-weight: 700;
+    margin-top: 0.25rem;
+}
+
+.reports-pagination {
+    align-items: center;
+    color: #536173;
+    display: flex;
+    font-size: 0.88rem;
+    gap: 0.9rem;
+    justify-content: flex-end;
+    padding-top: 1rem;
+}
+
+.reports-pagination__button {
+    align-items: center;
+    background: #ffffff;
+    border: 1px solid #d9e2ef;
+    border-radius: 8px;
+    color: #0b4f9c;
+    cursor: pointer;
+    display: inline-flex;
+    font-weight: 700;
+    gap: 0.45rem;
+    min-height: 2.25rem;
+    padding: 0.45rem 0.75rem;
+}
+
+.reports-pagination__button:disabled {
+    color: #94a3b8;
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
 .reports-access-detail-panel__title {
     color: #27364a;
     font-size: 1.05rem;
@@ -3485,6 +4396,10 @@ onMounted(fetchReportSummary);
         font-size: 12px;
     }
 
+    .reports-classification-pie {
+        grid-template-columns: 1fr;
+    }
+
     .reports-access-chart__plot {
         grid-template-columns: 2.5rem 1fr;
     }
@@ -3517,6 +4432,15 @@ onMounted(fetchReportSummary);
     }
 
     .reports-access-document {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .reports-classification-count-card {
+        align-items: flex-start;
+    }
+
+    .reports-pagination {
         align-items: flex-start;
         flex-direction: column;
     }
