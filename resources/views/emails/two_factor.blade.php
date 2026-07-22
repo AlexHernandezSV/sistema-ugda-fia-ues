@@ -3,71 +3,79 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Código de acceso seguro UGDA</title>
+    <title>Código de acceso seguro - Sistema UGDA</title>
 </head>
-<body style="margin: 0; padding: 0; background-color: #eef3f8; font-family: Arial, Helvetica, sans-serif; color: #16324f;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #eef3f8; margin: 0; padding: 32px 16px;">
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #F3F7FA; margin: 0; padding: 40px 20px;">
+
+    <!-- Contenedor Principal -->
+    <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.04);">
+        
+        <!-- Encabezado Institucional -->
         <tr>
-            <td align="center">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width: 640px; background-color: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(22, 50, 79, 0.12);">
-                    <tr>
-                        <td style="background: linear-gradient(135deg, #2f6f9f 0%, #1f4f79 100%); padding: 28px 32px; text-align: center;">
-                            <div style="width: 56px; height: 56px; margin: 0 auto 14px; border-radius: 16px; background-color: rgba(255, 255, 255, 0.18); color: #ffffff; font-size: 28px; line-height: 56px; text-align: center;">
-                                &#128274;
-                            </div>
-                            <div style="font-size: 26px; font-weight: 700; color: #ffffff; margin-bottom: 8px;">
-                                Código de acceso seguro
-                            </div>
-                            <div style="font-size: 15px; line-height: 1.6; color: rgba(255, 255, 255, 0.9);">
-                                Sistema de Gestión Documental UGDA
-                            </div>
-                        </td>
-                    </tr>
+            <td style="background-color: #2F66B6; padding: 24px; text-align: center;">
+                <h1 style="color: #ffffff; margin: 0; font-size: 18px; font-weight: 600; letter-spacing: 0.5px;">Sistema de Gestión Documental</h1>
+                <p style="color: #D1E3F8; margin: 4px 0 0 0; font-size: 13px;">Universidad de El Salvador</p>
+            </td>
+        </tr>
 
-                    <tr>
-                        <td style="padding: 32px;">
-                            <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.7; color: #334155; text-align: center;">
-                                Hemos recibido una solicitud para iniciar sesion en tu cuenta. Utiliza el siguiente código de verificación para completar el acceso.
-                            </p>
+        <!-- Cuerpo del Correo -->
+        <tr>
+            <td style="padding: 40px 32px;">
+                
+                <!-- Etiqueta (Badge) similar a la UI -->
+                <div style="display: inline-block; background-color: #2F66B6; color: #ffffff; padding: 6px 14px; border-radius: 20px; font-size: 11px; font-weight: 600; margin-bottom: 20px; letter-spacing: 0.3px;">
+                    UGDA - VERIFICACIÓN DE ACCESO
+                </div>
 
-                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin: 24px 0;">
-                                <tr>
-                                    <td align="center">
-                                        <div style="display: inline-block; min-width: 220px; padding: 18px 28px; border-radius: 18px; background-color: #f4f9fd; border: 2px dashed #2f6f9f; text-align: center;">
-                                            <div style="font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: #5f7c99; margin-bottom: 8px;">
-                                                Código de verificación
-                                            </div>
-                                            <div style="font-size: 38px; font-weight: 700; letter-spacing: 0.18em; color: #2f6f9f; text-indent: 0.18em;">
-                                                {{ $code }}
-                                            </div>
-                                        </div>
-                                    </td>
-                                </tr>
-                            </table>
+                <h2 style="color: #1E3A8A; margin: 0 0 20px 0; font-size: 22px; font-weight: 700;">Código de acceso seguro</h2>
 
-                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f8fbfe; border: 1px solid #d7e6f2; border-radius: 16px; margin: 0 0 24px;">
-                                <tr>
-                                    <td style="padding: 18px 20px;">
-                                        <div style="font-size: 15px; font-weight: 700; color: #1f4f79; margin-bottom: 10px;">
-                                            Recomendaciones de seguridad
-                                        </div>
-                                        <div style="font-size: 14px; line-height: 1.7; color: #526477;">
-                                            Este código expirara en <strong>10 minutos</strong>.<br>
-                                            No compartas este mensaje ni el código con otras personas.<br>
-                                            Si no intentaste iniciar sesion, ignora este correo.
-                                        </div>
-                                    </td>
-                                </tr>
-                            </table>
+                <p style="color: #475569; font-size: 15px; line-height: 1.6; margin-bottom: 28px;">
+                    Hemos recibido una solicitud para iniciar sesión en tu cuenta. Utiliza el siguiente código de verificación para completar el acceso:
+                </p>
 
-                            <p style="margin: 0; font-size: 13px; line-height: 1.7; color: #7a8a9a; text-align: center;">
-                                Este es un mensaje automatico del sistema UGDA. No es necesario responder a este correo.
-                            </p>
-                        </td>
-                    </tr>
-                </table>
+                <!-- Caja del Código con selección rápida -->
+                <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 32px 24px; margin-bottom: 32px; text-align: center;">
+                    <span style="color: #64748B; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 12px;">Tu código de verificación es</span>
+                    
+                    <!-- El código tiene un fondo gris sutil y la propiedad user-select: all -->
+                    <div style="font-size: 42px; font-weight: 700; color: #2F66B6; letter-spacing: 8px; margin: 0; display: inline-block; background-color: #E2E8F0; padding: 10px 24px; border-radius: 8px; -webkit-user-select: all; user-select: all; cursor: pointer;">
+                        {{ $code }}
+                    </div>
+                    
+                    <!-- Instrucción para el usuario -->
+                    <p style="margin: 12px 0 0 0; color: #94A3B8; font-size: 12px;">
+                        (Toca o haz clic en el código para seleccionarlo fácilmente)
+                    </p>
+                </div>
+
+                <!-- Caja de Recomendaciones -->
+                <div style="background-color: #F8FAFC; border-left: 4px solid #2F66B6; border-radius: 4px 8px 8px 4px; padding: 18px 20px; margin-bottom: 32px;">
+                    <h3 style="color: #1E3A8A; font-size: 15px; margin: 0 0 10px 0;">Recomendaciones de seguridad</h3>
+                    <ul style="margin: 0; padding-left: 20px; color: #475569; font-size: 14px; line-height: 1.6;">
+                        <li style="margin-bottom: 6px;">Este código expirará en <strong>10 minutos</strong>.</li>
+                        <li style="margin-bottom: 6px;">No compartas este mensaje ni el código con otras personas.</li>
+                        <li>Si no intentaste iniciar sesión, ignora este correo.</li>
+                    </ul>
+                </div>
+
+            </td>
+        </tr>
+
+        <!-- Pie de página (Footer) -->
+        <tr>
+            <td style="background-color: #F8FAFC; padding: 28px; text-align: center; border-top: 1px solid #E2E8F0;">
+                <p style="margin: 0; color: #64748B; font-size: 12px; line-height: 1.5;">
+                    Este es un mensaje automático del sistema UGDA. No es necesario responder a este correo.
+                </p>
+                <div style="margin: 20px 0; height: 1px; background-color: #E2E8F0;"></div>
+                <p style="margin: 0; color: #94A3B8; font-size: 11px; line-height: 1.6;">
+                    © 2026 Universidad de El Salvador<br>
+                    Facultad de Ingeniería y Arquitectura<br>
+                    Todos los derechos reservados
+                </p>
             </td>
         </tr>
     </table>
+
 </body>
 </html>
