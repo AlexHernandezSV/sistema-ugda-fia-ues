@@ -232,11 +232,9 @@ Notas:
 
 - `docker/start-app.sh` hace `composer install`, `php artisan migrate --seed --force` y `php artisan storage:link`.
 - `docker/start-vite.sh` hace `npm install` y levanta Vite en `5173`.
-- Si el agente necesita reiniciar todo desde cero:
-  - `docker compose down -v`
-  - `docker compose up -d`
-- Si solo necesita resembrar la base:
-  - `docker compose exec app php artisan migrate:fresh --seed`
+- Si el agente necesita reiniciar los servicios sin eliminar datos:
+  - `docker compose restart`
+- Para aplicar migraciones o seeders puntuales, revisar primero su impacto y ejecutar solo el comando especifico necesario.
 
 ## Datos de acceso sembrados
 
@@ -244,6 +242,13 @@ Notas:
 - Password: `password`
 
 ## Reglas importantes para no romper la rama
+
+### Proteccion de la base de datos
+
+- Nunca eliminar, resetear, recrear, vaciar ni sobrescribir la base de datos existente.
+- No ejecutar `migrate:fresh`, `db:wipe`, `docker compose down -v`, `DROP DATABASE`, `TRUNCATE` ni comandos equivalentes durante las tareas del proyecto.
+- Conservar siempre los datos existentes y preferir migraciones incrementales o cambios puntuales.
+- Cualquier accion destructiva sobre la base de datos requiere autorizacion explicita del usuario antes de ejecutarse.
 
 - La tabla `users` ya no tiene columna `name`.
 - Usar estos campos en usuarios:
