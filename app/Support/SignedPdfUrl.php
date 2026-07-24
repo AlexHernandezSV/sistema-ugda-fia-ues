@@ -8,6 +8,11 @@ class SignedPdfUrl
 {
     private const PREVIEW_TTL_MINUTES = 10;
 
+    public static function transferDocumentReference(int $documentId): string
+    {
+        return 'document-' . $documentId;
+    }
+
     public static function transferDocument(string $number, string $code): string
     {
         return URL::temporarySignedRoute(

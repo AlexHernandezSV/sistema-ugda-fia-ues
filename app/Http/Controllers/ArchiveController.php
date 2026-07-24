@@ -1074,7 +1074,7 @@ class ArchiveController extends Controller
             'digital_available' => !empty($document->digital_file_name),
             'digital_file' => $document->digital_file_name,
             'digital_url' => !empty($document->digital_file_name) && $transfer?->code && $document->code
-                ? SignedPdfUrl::transferDocument($transfer->code, $document->code)
+                ? SignedPdfUrl::transferDocument($transfer->code, SignedPdfUrl::transferDocumentReference($document->id))
                 : null,
             'box' => [
                 'id' => $box?->id,

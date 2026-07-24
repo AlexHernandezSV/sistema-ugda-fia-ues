@@ -118,8 +118,12 @@ class RequestCatalogTest extends TestCase
             ->assertJsonPath('boxes.0.documents.0.series', 'Expedientes Academicos')
             ->assertJsonPath('boxes.0.documents.0.support', 'Fisico')
             ->assertJsonPath('boxes.0.documents.0.pages', '350 pags')
-            ->assertJsonPath('boxes.0.documents.0.digitalAvailable', true)
-            ->assertJsonPath('boxes.0.documents.0.digitalUrl', '/api/transfers/000964/documents/EXP-GRAD-2024/download');
+            ->assertJsonPath('boxes.0.documents.0.digitalAvailable', true);
+
+        $this->assertStringContainsString(
+            '/api/transfers/000964/documents/document-',
+            (string) $response->json('boxes.0.documents.0.digitalUrl')
+        );
     }
 
     public function test_admin_can_search_general_archive_by_any_document_related_value(): void
@@ -157,14 +161,27 @@ class RequestCatalogTest extends TestCase
         $this->assertTrue($codes->contains('ACTA-GRAD-2024'));
     }
 
-    public function test_general_archive_is_only_available_to_admin_profile(): void
+    public function test_general_archive_is_not_available_to_requester_profile(): void
     {
         $requester = User::where('email', 'unidad.solicitante@yopmail.com')->firstOrFail();
 
         $response = $this->actingAs($requester)->getJson('/api/archive/documents?q=acta');
 
         $response->assertForbidden()
-            ->assertJsonPath('message', 'Solo el administrador puede consultar el archivo general.');
+            ->assertJsonPath('message', 'Solo el personal UGDA puede consultar el archivo general.');
+    }
+
+    public function test_ugda_can_use_general_archive_but_not_physical_locations(): void
+    {
+        $ugda = User::where('email', 'usuario.ugda@yopmail.com')->firstOrFail();
+
+        $this->actingAs($ugda)
+            ->getJson('/api/archive/documents?q=acta')
+            ->assertOk();
+
+        $this->actingAs($ugda)
+            ->getJson('/api/physical-locations')
+            ->assertForbidden();
     }
 
     public function test_authenticated_user_can_get_review_transfer_detail_with_ugda_sections(): void

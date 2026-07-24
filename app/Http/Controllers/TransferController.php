@@ -376,7 +376,7 @@ class TransferController extends Controller
                         'support' => $document->support_type,
                         'file_name' => $document->digital_file_name,
                         'file_url' => $document->digital_file_name
-                            ? SignedPdfUrl::transferDocument($transfer->code, $document->code)
+                            ? SignedPdfUrl::transferDocument($transfer->code, SignedPdfUrl::transferDocumentReference($document->id))
                             : null,
                     ])->values()->all(),
                 ])->values()->all(),

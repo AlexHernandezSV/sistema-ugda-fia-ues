@@ -29,6 +29,8 @@ const totalPages = ref(0);
 
 let pdfDocument = null;
 let renderTask = null;
+let renderQueue = Promise.resolve();
+let previewRequestId = 0;
 
 const isPdfFile = (file) => (
     file
@@ -38,16 +40,28 @@ const isPdfFile = (file) => (
     )
 );
 
-const destroyPdfDocument = async () => {
-    if (renderTask) {
-        try {
-            renderTask.cancel();
-        } catch (error) {
-            // PDF.js may throw if the render task already finished.
-        } finally {
-            renderTask = null;
+const cancelRenderTask = async () => {
+    const task = renderTask;
+
+    if (!task) {
+        return;
+    }
+
+    renderTask = null;
+
+    try {
+        task.cancel();
+        await task.promise;
+    } catch (error) {
+        if (error?.name !== 'RenderingCancelledException') {
+            console.warn('No se pudo cancelar el renderizado del PDF:', error);
         }
     }
+};
+
+const destroyPdfDocument = async () => {
+    await renderQueue;
+    await cancelRenderTask();
 
     if (!pdfDocument) {
         return;
@@ -62,37 +76,50 @@ const destroyPdfDocument = async () => {
     }
 };
 
-const renderPage = async () => {
-    if (!pdfDocument || !pdfCanvas.value) {
-        return;
-    }
+const renderPage = (requestId = previewRequestId) => {
+    const operation = renderQueue.then(async () => {
+        if (requestId !== previewRequestId || !visible.value || !pdfDocument || !pdfCanvas.value) {
+            return;
+        }
 
-    const page = await pdfDocument.getPage(currentPage.value);
-    const canvas = pdfCanvas.value;
-    const context = canvas.getContext('2d');
-    const viewport = page.getViewport({ scale: 1.25 });
-    const pixelRatio = window.devicePixelRatio || 1;
+        const documentForRender = pdfDocument;
+        const page = await documentForRender.getPage(currentPage.value);
 
-    canvas.width = Math.floor(viewport.width * pixelRatio);
-    canvas.height = Math.floor(viewport.height * pixelRatio);
-    canvas.style.width = `${viewport.width}px`;
-    canvas.style.height = `${viewport.height}px`;
+        if (requestId !== previewRequestId || documentForRender !== pdfDocument || !pdfCanvas.value) {
+            return;
+        }
 
-    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-    context.clearRect(0, 0, viewport.width, viewport.height);
+        const canvas = pdfCanvas.value;
+        const context = canvas.getContext('2d');
+        const viewport = page.getViewport({ scale: 1.25 });
+        const pixelRatio = window.devicePixelRatio || 1;
 
-    renderTask = page.render({ canvasContext: context, viewport });
+        canvas.width = Math.floor(viewport.width * pixelRatio);
+        canvas.height = Math.floor(viewport.height * pixelRatio);
+        canvas.style.width = `${viewport.width}px`;
+        canvas.style.height = `${viewport.height}px`;
 
-    try {
-        await renderTask.promise;
-    } finally {
-        renderTask = null;
-    }
+        context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+        context.clearRect(0, 0, viewport.width, viewport.height);
+
+        const task = page.render({ canvasContext: context, viewport });
+        renderTask = task;
+
+        try {
+            await task.promise;
+        } finally {
+            if (renderTask === task) {
+                renderTask = null;
+            }
+        }
+    });
+
+    renderQueue = operation.catch(() => {});
+
+    return operation;
 };
 
 const loadPdf = async () => {
-    await destroyPdfDocument();
-
     if (!props.source) {
         throw new Error('No hay archivo digital para visualizar.');
     }
@@ -130,6 +157,8 @@ const openPreview = async () => {
         return;
     }
 
+    const requestId = ++previewRequestId;
+
     loading.value = true;
     errorMessage.value = '';
     currentPage.value = 1;
@@ -138,13 +167,30 @@ const openPreview = async () => {
     await nextTick();
 
     try {
-        pdfDocument = await loadPdf();
+        await destroyPdfDocument();
+
+        if (requestId !== previewRequestId || !visible.value) {
+            return;
+        }
+
+        const loadedDocument = await loadPdf();
+
+        if (requestId !== previewRequestId || !visible.value) {
+            await loadedDocument.destroy();
+            return;
+        }
+
+        pdfDocument = loadedDocument;
         totalPages.value = pdfDocument.numPages;
-        await renderPage();
+        await renderPage(requestId);
     } catch (error) {
-        errorMessage.value = error.message || 'No se pudo visualizar el PDF.';
+        if (requestId === previewRequestId && error?.name !== 'RenderingCancelledException') {
+            errorMessage.value = error.message || 'No se pudo visualizar el PDF.';
+        }
     } finally {
-        loading.value = false;
+        if (requestId === previewRequestId) {
+            loading.value = false;
+        }
     }
 };
 
@@ -240,6 +286,7 @@ const closePreview = () => {
 };
 
 const handleHide = async () => {
+    previewRequestId += 1;
     await destroyPdfDocument();
     errorMessage.value = '';
     loading.value = false;

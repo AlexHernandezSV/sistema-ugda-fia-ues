@@ -293,8 +293,9 @@ class RequestCatalogController extends Controller
 
     private function buildTransferSummarySheetPdf(array $summary): string
     {
-        $pageWidth = 595;
-        $pageHeight = 842;
+        // Tamano carta vertical: 8.5 x 11 pulgadas a 72 puntos por pulgada.
+        $pageWidth = 612;
+        $pageHeight = 792;
         $margin = 34;
         $pages = [];
         $content = '';
@@ -542,10 +543,12 @@ class RequestCatalogController extends Controller
 
         $signatureColor = '0.07 0.31 0.48';
         $signatureWidth = ($pageWidth - ($margin * 2)) / 2;
+        $authorizedBy = trim((string) ($summary['authorizedBy'] ?? 'N/D')) ?: 'N/D';
         $drawRect($margin, $y, $signatureWidth, 58, $signatureColor, null, 0.5);
         $drawRect($margin + $signatureWidth, $y, $signatureWidth, 58, $signatureColor, null, 0.5);
-        $drawText($margin + 6, $y + 12, 'NOMBRE Y FIRMA DEL JEFE QUE AUTORIZA EL ENVIO', 7, 'F2', $signatureColor);
+        $drawFittedText($margin + 6, $y + 12, 'Autorizado por ' . $authorizedBy, 7, 'F2', $signatureColor, $signatureWidth - 12);
         $drawText($margin + $signatureWidth + 6, $y + 12, 'RECIBIDO POR', 7, 'F2', $signatureColor);
+        $drawText($margin + 18, $y + 38, 'Firma', 7, 'F2', $signatureColor);
         $drawLine($margin + 18, $y + 47, $margin + $signatureWidth - 18, $y + 47, $signatureColor);
         $drawLine($margin + $signatureWidth + 18, $y + 47, $pageWidth - $margin - 18, $y + 47, $signatureColor);
         $y += 70;

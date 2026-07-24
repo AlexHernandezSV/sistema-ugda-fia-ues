@@ -530,13 +530,19 @@ class RequestCatalog
         ];
     }
 
-    public static function transferDocumentDownload(string $number, string $code, ?User $viewer = null): ?array
+    public static function transferDocumentDownload(string $number, string $reference, ?User $viewer = null): ?array
     {
-        $document = TransferDocument::query()
-            ->where('code', $code)
+        $documentQuery = TransferDocument::query()
             ->whereHas('box.transfer', fn ($query) => $query->where('code', $number))
-            ->with(['box.transfer.workflowStatus'])
-            ->first();
+            ->with(['box.transfer.workflowStatus']);
+
+        if (preg_match('/^document-(\d+)$/', $reference, $matches) === 1) {
+            $documentQuery->whereKey((int) $matches[1]);
+        } else {
+            $documentQuery->where('code', $reference);
+        }
+
+        $document = $documentQuery->first();
 
         if ($document === null || empty($document->digital_file_name)) {
             return null;
@@ -836,7 +842,9 @@ class RequestCatalog
                     'digitalFile' => $hideDigitalSupport ? null : $document->digital_file_name,
                     'digitalAvailable' => !$hideDigitalSupport && !empty($document->digital_file_name),
                     'digitalRestricted' => $hideDigitalSupport && !empty($document->digital_file_name),
-                    'digitalUrl' => !$hideDigitalSupport && $document->digital_file_name ? SignedPdfUrl::transferDocument($transfer->code, $document->code) : null,
+                    'digitalUrl' => !$hideDigitalSupport && $document->digital_file_name
+                        ? SignedPdfUrl::transferDocument($transfer->code, SignedPdfUrl::transferDocumentReference($document->id))
+                        : null,
                 ];
             })->values()->all(),
         ];
