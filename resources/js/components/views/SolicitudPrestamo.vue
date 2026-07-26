@@ -292,11 +292,11 @@ onMounted(fetchCatalog);
                 <div class="grid">
                     <div class="col-12 md:col-6">
                         <label class="prestamo-label">Nombre del Solicitante <span>*</span></label>
-                        <InputText v-model="requester.name" class="w-full mt-2" placeholder="Nombre completo del solicitante" />
+                        <InputText v-model="requester.name" class="w-full mt-2" placeholder="Nombre completo del solicitante" readonly/>
                     </div>
                     <div class="col-12 md:col-6">
                         <label class="prestamo-label">Unidad Solicitante <span>*</span></label>
-                        <InputText v-model="requester.unitName" class="w-full mt-2" placeholder="Ej: Escuela de Ingenieria Civil" />
+                        <InputText v-model="requester.unitName" class="w-full mt-2" placeholder="Ej: Escuela de Ingenieria Civil" readonly/>
                     </div>
                 </div>
             </section>
