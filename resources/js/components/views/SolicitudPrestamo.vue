@@ -453,7 +453,7 @@ onMounted(fetchCatalog);
             <div class="prestamo-confirm">
                 <div class="prestamo-confirm__header">
                     <div>
-                        <h2>Confirmar Envio de Solicitud de Prestamo</h2>
+                        <h2>Confirmar Envio de Solicitud de Préstamo</h2>
                         <p>Revise el resumen antes de enviar la solicitud</p>
                     </div>
                     <button type="button" @click="confirmVisible = false">
@@ -893,6 +893,12 @@ onMounted(fetchCatalog);
 .prestamo-confirm__header h2,
 .prestamo-confirm__header p {
     margin: 0;
+}
+
+.prestamo-confirm__header h2 {
+    color: #ffffff;
+    font-size: 1.3rem;
+    font-weight: 800;
 }
 
 .prestamo-confirm__header p {
