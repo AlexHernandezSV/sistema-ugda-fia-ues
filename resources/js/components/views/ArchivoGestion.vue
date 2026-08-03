@@ -528,7 +528,7 @@ onMounted(fetchBoxes);
 
 .archive-documents-subtitle {
     color: #526477;
-    margin: -0.5rem 0 1rem;
+    margin: 0.5rem 0 1.25rem; /* o 0.75rem arriba */
 }
 
 .archive-delete-dialog__header {
