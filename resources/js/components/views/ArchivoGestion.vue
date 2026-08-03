@@ -73,7 +73,7 @@ const openDocuments = (box) => {
 };
 
 const printLabel = (box) => {
-    const popup = window.open('', '_blank', 'width=520,height=420');
+    const popup = window.open('', '_blank', 'width=800,height=600');
 
     if (!popup) {
         toast.add({
