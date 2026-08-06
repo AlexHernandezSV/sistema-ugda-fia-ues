@@ -186,6 +186,11 @@ const onDocumentPagesInput = (event) => {
     docForm.value.pages = sanitizePositiveInteger(event.target.value);
 };
 
+// Sanitiza el número de caja para que solo sea un entero positivo
+const onBoxNumberInput = (event) => {
+    form.value.box_number = sanitizePositiveInteger(event.target.value);
+};
+
 const escapeHtml = (value = '') => String(value)
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
@@ -809,7 +814,15 @@ onMounted(fetchCatalog);
                 <div class="create-box-grid create-box-grid--two">
                     <label>
                         <span>N de Caja <b>*</b></span>
-                        <InputText v-model="form.box_number" type="number" class="w-full" :disabled="isLoading" />
+                        <InputText
+                            v-model="form.box_number"
+                            type="number"
+                            class="w-full"
+                            :disabled="isLoading"
+                            min="1"
+                            step="1"
+                            @input="onBoxNumberInput"
+                        />
                     </label>
                     <label>
                         <span>Unidad Productora <b>*</b></span>
