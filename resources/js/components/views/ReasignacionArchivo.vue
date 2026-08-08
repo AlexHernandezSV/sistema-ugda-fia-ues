@@ -447,19 +447,6 @@ const requestDocumentReassignmentConfirmation = () => {
         return;
     }
 
-    // --- VALIDACIÓN FINAL POR NÚMERO Y SERIE (Para el usuario) ---
-    const currentBox = selectedDocument.value.box;
-    const destinationBox = selectedDestinationBox.value;
-
-    // Si el número de caja y la serie coinciden exactamente, es la misma caja para el usuario
-    if (currentBox && destinationBox && 
-        currentBox.number === destinationBox.number && 
-        currentBox.series === destinationBox.series) {
-        showToast('error', 'Error', 'El documento ya se encuentra en la caja de destino seleccionada. Ambas cajas tienen el mismo número y serie.');
-        return;
-    }
-    // --------------------------------------------------------------
-
     confirmDocumentDialogVisible.value = true;
 };
 
