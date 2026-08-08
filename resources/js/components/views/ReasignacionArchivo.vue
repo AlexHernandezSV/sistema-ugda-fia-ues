@@ -391,6 +391,16 @@ const requestBoxLocationConfirmation = () => {
         return;
     }
 
+    // --- VALIDACIÓN NUEVA: Evitar reasignar a la misma ubicación ---
+    const currentLocation = selectedBox.value.location;
+    const newLocation = generatedLocationCode.value;
+
+    if (currentLocation && currentLocation.trim() === newLocation.trim()) {
+        showToast('error', 'Error', 'La nueva ubicación no puede ser la misma que la actual. Seleccione una ubicación diferente.');
+        return;
+    }
+    // -------------------------------------------------------------
+
     confirmBoxDialogVisible.value = true;
 };
 
@@ -436,6 +446,19 @@ const requestDocumentReassignmentConfirmation = () => {
         showToast('error', 'Error', 'Seleccione la caja de destino.');
         return;
     }
+
+    // --- VALIDACIÓN FINAL POR NÚMERO Y SERIE (Para el usuario) ---
+    const currentBox = selectedDocument.value.box;
+    const destinationBox = selectedDestinationBox.value;
+
+    // Si el número de caja y la serie coinciden exactamente, es la misma caja para el usuario
+    if (currentBox && destinationBox && 
+        currentBox.number === destinationBox.number && 
+        currentBox.series === destinationBox.series) {
+        showToast('error', 'Error', 'El documento ya se encuentra en la caja de destino seleccionada. Ambas cajas tienen el mismo número y serie.');
+        return;
+    }
+    // --------------------------------------------------------------
 
     confirmDocumentDialogVisible.value = true;
 };
@@ -525,7 +548,6 @@ onMounted(async () => {
                         <InputText
                             v-model="boxSearch"
                             placeholder="Buscar por numero de caja, serie o unidad productora..."
-                            :disabled="isSearching"
                             @input="onBoxSearchInput"
                         />
                     </form>
@@ -624,8 +646,7 @@ onMounted(async () => {
                         <InputText
                             v-model="documentSearch"
                             placeholder="Buscar por nombre, codigo o numero de caja..."
-                            :disabled="isSearchingDocuments"
-                            @input="onDocumentSearchInput"
+                             @input="onDocumentSearchInput"
                         />
                     </form>
 
@@ -664,7 +685,6 @@ onMounted(async () => {
                         <InputText
                             v-model="destinationBoxSearch"
                             placeholder="Buscar caja de destino..."
-                            :disabled="isSearchingDestinationBoxes"
                             @input="onDestinationBoxSearchInput"
                         />
                     </form>
