@@ -262,7 +262,6 @@ onBeforeUnmount(() => {
                                 v-model="reservedQuery"
                                 type="text"
                                 placeholder="Buscar por codigo, nombre, serie o unidad..."
-                                :disabled="loadingReserved"
                             />
                         </label>
                         <Button
@@ -363,7 +362,6 @@ onBeforeUnmount(() => {
                                 v-model="availableQuery"
                                 type="text"
                                 placeholder="Buscar por codigo, nombre, serie o unidad productora..."
-                                :disabled="loadingAvailable"
                             />
                         </label>
 
