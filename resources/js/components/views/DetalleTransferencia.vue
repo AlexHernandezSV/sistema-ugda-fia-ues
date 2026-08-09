@@ -4555,8 +4555,6 @@ watch(
     border-radius: 8px;
     cursor: pointer;
     display: inline-flex;
-    font-size: 1rem;
-    font-weight: 800;
     gap: 0.65rem;
     justify-content: center;
     min-height: 3.2rem;

@@ -612,7 +612,7 @@ onBeforeUnmount(() => {
                         </div>
                         <div v-if="sidebarIsExpanded" class="flex flex-column fadein white-space-nowrap overflow-hidden">
                             <span class="text-sm font-bold text-white text-overflow-ellipsis overflow-hidden">{{ userData.fullName }}</span>
-                            <span class="text-xs text-white-alpha-70 text-overflow-ellipsis overflow-hidden">{{ userData.role || userData.unitName }}</span>
+                            <span class="text-xs text-white-alpha-70 text-overflow-ellipsis overflow-hidden">{{ userData.unitName || userData.role }}</span>
                         </div>
                     </div>
 

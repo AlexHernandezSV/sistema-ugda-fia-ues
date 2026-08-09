@@ -533,28 +533,27 @@ const normalizeDocumentValue = (value) => String(value ?? '')
     .replace(/\s+/g, ' ')
     .toLowerCase();
 
-const getDocumentFingerprint = (document) => [
-    document.series,
-    document.name,
-    document.code,
-    document.support,
-    document.date,
-    document.pages,
-].map(normalizeDocumentValue).join('|');
+const getDocumentCodeKey = (document) => normalizeDocumentValue(document?.code);
 
-const getUniqueDocuments = (documents) => {
+const findDuplicateDocumentCode = (documents) => {
     const seen = new Set();
 
-    return documents.filter((document) => {
-        const fingerprint = getDocumentFingerprint(document);
+    for (const document of documents) {
+        const code = String(document?.code ?? '').trim();
+        const codeKey = getDocumentCodeKey(document);
 
-        if (seen.has(fingerprint)) {
-            return false;
+        if (!codeKey) {
+            continue;
         }
 
-        seen.add(fingerprint);
-        return true;
-    });
+        if (seen.has(codeKey)) {
+            return code;
+        }
+
+        seen.add(codeKey);
+    }
+
+    return '';
 };
 
 const validateDocumentForBox = (document, box) => {
@@ -608,6 +607,12 @@ const validateTempDocumentsForCurrentBox = (documents) => {
         }
     }
 
+    const duplicateCode = findDuplicateDocumentCode(documents);
+
+    if (duplicateCode) {
+        return `El código "${duplicateCode}" está repetido dentro de esta caja. Cada código debe ser único por caja.`;
+    }
+
     return '';
 };
 
@@ -619,6 +624,12 @@ const validateAllBoxesDocuments = () => {
             if (message) {
                 return message;
             }
+        }
+
+        const duplicateCode = findDuplicateDocumentCode(box.documents_list ?? []);
+
+        if (duplicateCode) {
+            return `El código "${duplicateCode}" está repetido dentro de la caja. Cada código debe ser único por caja.`;
         }
     }
 
@@ -678,16 +689,16 @@ const importDocumentsFromExcel = async () => {
             return;
         }
 
-        const existingFingerprints = new Set(tempDocuments.value.map(getDocumentFingerprint));
-        const importedFingerprints = new Set();
+        const existingCodes = new Set(tempDocuments.value.map(getDocumentCodeKey).filter(Boolean));
+        const importedCodes = new Set();
         const documentsToAdd = importedDocuments.filter((document) => {
-            const fingerprint = getDocumentFingerprint(document);
+            const codeKey = getDocumentCodeKey(document);
 
-            if (existingFingerprints.has(fingerprint) || importedFingerprints.has(fingerprint)) {
+            if (existingCodes.has(codeKey) || importedCodes.has(codeKey)) {
                 return false;
             }
 
-            importedFingerprints.add(fingerprint);
+            importedCodes.add(codeKey);
             return true;
         });
         const skippedDocuments = importedDocuments.length - documentsToAdd.length;
@@ -749,6 +760,13 @@ const addDocumentToTemp = () => {
 
     if (documentValidationMessage) {
         showError(documentValidationMessage);
+        return;
+    }
+
+    const duplicateCode = findDuplicateDocumentCode([...tempDocuments.value, documentDraft]);
+
+    if (duplicateCode) {
+        showError(`El código "${duplicateCode}" ya está registrado dentro de esta caja.`);
         return;
     }
 
@@ -866,21 +884,16 @@ const saveBoxChanges = () => {
         return;
     }
 
-    const uniqueDocuments = getUniqueDocuments(tempDocuments.value);
-    const skippedDocuments = tempDocuments.value.length - uniqueDocuments.length;
+    const duplicateCode = findDuplicateDocumentCode(tempDocuments.value);
 
-    boxesList.value[currentBoxIndex.value].documents_list = uniqueDocuments;
-    boxesList.value[currentBoxIndex.value].documents_count = uniqueDocuments.length;
-    isModalOpen.value = false;
-
-    if (skippedDocuments > 0) {
-        toast.add({
-            severity: 'warn',
-            summary: 'Documentos duplicados omitidos',
-            detail: `${skippedDocuments} documento(s) duplicado(s) no se guardaron en la caja.`,
-            life: 3600,
-        });
+    if (duplicateCode) {
+        showError(`El código "${duplicateCode}" está repetido dentro de esta caja. Cada código debe ser único por caja.`);
+        return;
     }
+
+    boxesList.value[currentBoxIndex.value].documents_list = [...tempDocuments.value];
+    boxesList.value[currentBoxIndex.value].documents_count = tempDocuments.value.length;
+    isModalOpen.value = false;
 };
 
 const cancelDocsModal = () => {
@@ -943,11 +956,18 @@ const buildTransferFormData = () => {
     const boxesPayload = boxesList.value.map((box, boxIndex) => ({
         ...box,
         documents_list: (box.documents_list ?? []).map((document, documentIndex) => {
-            if (document.file instanceof File) {
+            if (needsDigitalFile(document.support) && document.file instanceof File) {
                 formData.append(`document_files[${boxIndex}][${documentIndex}]`, document.file);
             }
 
             const { file, ...documentPayload } = document;
+
+            if (!needsDigitalFile(document.support)) {
+                documentPayload.file_name = null;
+                documentPayload.file_url = null;
+                documentPayload.file_removed = true;
+            }
+
             return documentPayload;
         }),
     }));

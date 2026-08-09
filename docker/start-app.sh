@@ -20,6 +20,7 @@ upsert_env() {
 }
 
 upsert_env "APP_URL" "http://localhost:8000"
+upsert_env "APP_TIMEZONE" "America/El_Salvador"
 upsert_env "APP_LOCALE" "es"
 upsert_env "APP_FALLBACK_LOCALE" "es"
 upsert_env "DB_CONNECTION" "pgsql"

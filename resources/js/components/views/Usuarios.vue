@@ -793,7 +793,7 @@ const goBack = () => {
                 </small>
                 <div
                     v-if="selectedUnits.length > 0"
-                    class="flex flex-column gap-2 mt-3"
+                    class="flex flex-column gap-2 mt-3 user-selected-units-list"
                 >
                     <div
                         v-for="(unit, index) in selectedUnits"
@@ -985,6 +985,27 @@ const goBack = () => {
 
 .user-units-selector-button {
     height: var(--ugda-control-height);
+}
+
+.user-selected-units-list {
+    max-height: 17rem;
+    overflow-y: auto;
+    padding-right: 0.25rem;
+    scrollbar-gutter: stable;
+}
+
+.user-selected-units-list::-webkit-scrollbar {
+    width: 0.45rem;
+}
+
+.user-selected-units-list::-webkit-scrollbar-thumb {
+    background: var(--ugda-border-strong);
+    border-radius: 999px;
+}
+
+.user-selected-units-list::-webkit-scrollbar-track {
+    background: var(--ugda-surface-soft);
+    border-radius: 999px;
 }
 
 .filters-toolbar {

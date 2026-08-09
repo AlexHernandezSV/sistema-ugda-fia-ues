@@ -12,6 +12,7 @@ services:
       #APP_KEY: base64:W5I6LIKfVQeHxTuJ2is7/KmFtj6MELulEjXGcUI8LrY=
       APP_DEBUG: "true"
       APP_URL: http://localhost:8000
+      APP_TIMEZONE: America/El_Salvador
       APP_LOCALE: es
       APP_FALLBACK_LOCALE: es
       DB_CONNECTION: pgsql

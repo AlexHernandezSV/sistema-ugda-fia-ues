@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Loan;
+use App\Models\LoanDocument;
 use App\Models\RequestStatusCatalog;
 use App\Models\TransferDocument;
 use App\Services\SystemNotificationService;
@@ -28,6 +29,7 @@ class LoanController extends Controller
         $activeUnit = $user->units
             ->first(fn ($unit) => (bool) ($unit->pivot->is_active ?? false))
             ?? $user->units->first();
+        $loanedOriginalDocumentIds = $this->loanedOriginalDocumentIds();
 
         $documents = TransferDocument::query()
             ->with(['box.transfer.unit', 'box.transfer.workflowStatus'])
@@ -41,13 +43,15 @@ class LoanController extends Controller
             ->map(fn (TransferDocument $document) => [
                 'id' => $document->id,
                 'title' => $document->name,
+                'code' => $document->code,
                 'series' => $document->series_label ?? $document->box?->series_name,
-                'box' => 'CAJA-' . str_pad((string) ($document->box?->box_number ?? 0), 3, '0', STR_PAD_LEFT),
+                'box' => $document->box?->boxCode($document->box?->transfer?->code),
                 'year' => $document->year_label,
                 'unit' => $document->box?->transfer?->unit?->name,
-                'transferredAt' => optional($document->box?->transfer?->completed_at ?? $document->box?->transfer?->requested_at)->format('d/m/Y'),
+                'transferredAt' => optional($document->box?->transfer?->completed_at ?? $document->box?->transfer?->requested_at)->format('d/m/Y H:i'),
                 'support' => $document->support_type,
                 'transferNumber' => $document->box?->transfer?->code,
+                'isLoanedOriginal' => isset($loanedOriginalDocumentIds[$document->id]),
             ])
             ->values();
 
@@ -79,10 +83,10 @@ class LoanController extends Controller
             'system_documents.*.document_type' => ['required_with:system_documents', 'in:Copia,Original'],
             'additional_documents' => ['nullable', 'array'],
             'additional_documents.*.name' => ['required_with:additional_documents', 'string', 'max:255'],
-            'additional_documents.*.year' => ['nullable', 'string', 'max:60'],
-            'additional_documents.*.quantity' => ['nullable', 'string', 'max:120'],
-            'additional_documents.*.unit' => ['nullable', 'string', 'max:255'],
-            'additional_documents.*.observation' => ['nullable', 'string', 'max:1000'],
+            'additional_documents.*.year' => ['required_with:additional_documents', 'integer', 'min:1900', 'max:' . now()->year],
+            'additional_documents.*.quantity' => ['required_with:additional_documents', 'string', 'max:120'],
+            'additional_documents.*.unit' => ['required_with:additional_documents', 'string', 'max:255'],
+            'additional_documents.*.observation' => ['required_with:additional_documents', 'string', 'max:1000'],
             'additional_documents.*.document_type' => ['required_with:additional_documents', 'in:Copia,Original'],
         ]);
 
@@ -128,6 +132,12 @@ class LoanController extends Controller
                 ], 422);
             }
 
+            $additionalDocuments = $additionalDocuments
+                ->map(fn (array $document) => array_merge($document, [
+                    'unit' => $activeUnit->name,
+                ]))
+                ->values();
+
             $transferDocuments = TransferDocument::query()
                 ->with(['box.transfer.unit'])
                 ->whereIn('id', $selectedIds)
@@ -141,6 +151,16 @@ class LoanController extends Controller
             if ($transferDocuments->count() !== $selectedIds->count()) {
                 return response()->json([
                     'message' => 'Uno o mas documentos seleccionados no estan disponibles para prestamo.',
+                ], 422);
+            }
+
+            $loanedOriginalDocumentIds = $this->loanedOriginalDocumentIds();
+            $loanedOriginalDocuments = $transferDocuments
+                ->filter(fn (TransferDocument $document) => isset($loanedOriginalDocumentIds[$document->id]));
+
+            if ($loanedOriginalDocuments->isNotEmpty()) {
+                return response()->json([
+                    'message' => 'Los documentos prestados como Original no estan disponibles para una nueva solicitud.',
                 ], 422);
             }
 
@@ -160,21 +180,28 @@ class LoanController extends Controller
                     'description' => 'Solicitud de prestamo documental creada por unidad solicitante.',
                 ]);
 
+                $documentMap = [];
+
                 foreach ($transferDocuments->values() as $index => $document) {
                     $documentType = $systemDocumentTypes->get($document->id, 'Copia');
 
-                    $loan->documents()->create([
+                    $loanDocument = $loan->documents()->create([
                         'document_kind' => 'system',
                         'group_title' => 'Documentos del Sistema (' . $transferDocuments->count() . ')',
                         'title' => $document->name,
                         'series_label' => $document->series_label,
-                        'box_code' => 'CAJA-' . str_pad((string) ($document->box?->box_number ?? 0), 3, '0', STR_PAD_LEFT),
+                        'box_code' => $document->box?->boxCode($document->box?->transfer?->code),
                         'year_label' => $document->year_label,
                         'unit_name_snapshot' => $document->box?->transfer?->unit?->name,
                         'document_type_label' => $documentType,
                         'document_type_tone' => $documentType === 'Original' ? 'warning' : 'info',
                         'sort_order' => $index + 1,
                     ]);
+
+                    $documentMap[] = [
+                        'loan_document_id' => $loanDocument->id,
+                        'transfer_document_id' => $document->id,
+                    ];
                 }
 
                 foreach ($additionalDocuments as $index => $document) {
@@ -206,6 +233,7 @@ class LoanController extends Controller
                     'context' => [
                         'system_documents' => $transferDocuments->count(),
                         'additional_documents' => $additionalDocuments->count(),
+                        'document_map' => $documentMap,
                     ],
                     'occurred_at' => now(),
                 ]);
@@ -531,6 +559,22 @@ class LoanController extends Controller
             'observations' => ['nullable', 'string', 'max:1000'],
         ]);
 
+        $validator->after(function ($validator) use ($request) {
+            if ($validator->errors()->isNotEmpty()) {
+                return;
+            }
+
+            $loanDate = Carbon::createFromFormat('d/m/Y', $request->string('loan_date')->toString());
+            $dueDate = Carbon::createFromFormat('d/m/Y', $request->string('due_date')->toString());
+
+            if ($dueDate->lt($loanDate)) {
+                $validator->errors()->add(
+                    'due_date',
+                    'La fecha de devolución programada debe ser igual o posterior a la fecha de préstamo.'
+                );
+            }
+        });
+
         if ($validator->fails()) {
             return response()->json([
                 'message' => 'Los datos del prestamo no son validos.',
@@ -772,6 +816,29 @@ class LoanController extends Controller
                 'message' => 'No se pudo registrar la devolución.',
             ], 500);
         }
+    }
+
+    private function loanedOriginalDocumentIds(): array
+    {
+        return LoanDocument::query()
+            ->with('loan.events')
+            ->where('selected_for_loan', true)
+            ->where('returned', false)
+            ->where('document_type_label', 'Original')
+            ->get(['id', 'loan_id'])
+            ->reduce(function (array $documentIds, LoanDocument $document): array {
+                $requestEvent = $document->loan?->events
+                    ->first(fn ($event) => is_array($event->context) && isset($event->context['document_map']));
+
+                foreach ($requestEvent?->context['document_map'] ?? [] as $mapping) {
+                    if ((int) ($mapping['loan_document_id'] ?? 0) === (int) $document->id) {
+                        $documentIds[(int) ($mapping['transfer_document_id'] ?? 0)] = true;
+                        break;
+                    }
+                }
+
+                return $documentIds;
+            }, []);
     }
 
     private function simpleStateChange(

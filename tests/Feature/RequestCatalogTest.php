@@ -3,10 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\LoanDocument;
+use App\Models\Loan;
 use App\Models\RequestStatusCatalog;
 use App\Models\Transfer;
 use App\Models\TransferBox;
 use App\Models\TransferDocument;
+use App\Models\Unit;
 use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
@@ -39,6 +41,24 @@ class RequestCatalogTest extends TestCase
             ])
             ->assertJsonPath('documents.0.title', 'Actas de Junta Directiva 2023')
             ->assertJsonPath('history.0.status', 'Creado');
+    }
+
+    public function test_ugda_cannot_register_a_loan_with_due_date_before_loan_date(): void
+    {
+        $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
+
+        $this->actingAs($admin)
+            ->postJson('/api/loans/PREST-001/register', [
+                'selected_ids' => [1],
+                'loan_date' => '08/08/2026',
+                'due_date' => '07/08/2026',
+                'received_by' => 'Persona de prueba',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonPath(
+                'errors.due_date.0',
+                'La fecha de devolución programada debe ser igual o posterior a la fecha de préstamo.'
+            );
     }
 
     public function test_requester_can_store_system_loan_document_type(): void
@@ -83,6 +103,7 @@ class RequestCatalogTest extends TestCase
         $document = collect($catalogResponse->json('documents'))
             ->firstWhere('id', $transferDocument->id);
         $this->assertNotNull($document);
+        $this->assertSame('C-TEST-LOAN-TYPE-001', $document['box']);
 
         $response = $this->actingAs($requester)->postJson('/api/loans', [
             'requester_name' => 'Patricia Marlene Callejas de Velásquez',
@@ -104,6 +125,107 @@ class RequestCatalogTest extends TestCase
 
         $this->assertSame('Original', $loanDocument->document_type_label);
         $this->assertSame('warning', $loanDocument->document_type_tone);
+        $this->assertSame('C-TEST-LOAN-TYPE-001', $loanDocument->box_code);
+    }
+
+    public function test_request_catalog_marks_original_documents_that_are_still_loaned(): void
+    {
+        $requester = User::where('email', 'unidad.solicitante@yopmail.com')->firstOrFail();
+        $unit = $requester->units()->firstOrFail();
+        $authorizedStatus = RequestStatusCatalog::where('code', 'transfer_auth_authorized')->firstOrFail();
+        $transferredStatus = RequestStatusCatalog::where('code', 'transfer_status_transferred')->firstOrFail();
+        $transfer = Transfer::create([
+            'code' => 'TEST-LOANED-ORIGINAL',
+            'user_id' => $requester->id,
+            'unit_id' => $unit->id,
+            'request_date' => now()->toDateString(),
+            'requested_at' => now(),
+            'status' => 'Aprobada',
+            'authorization_status_id' => $authorizedStatus->id,
+            'workflow_status_id' => $transferredStatus->id,
+            'completed_at' => now(),
+        ]);
+        $box = TransferBox::create([
+            'transfer_id' => $transfer->id,
+            'series_name' => 'Actas y Resoluciones',
+            'start_year' => 2026,
+            'end_year' => 2026,
+            'box_number' => 1,
+            'title' => 'Caja de prueba',
+            'period_label' => '2026',
+        ]);
+        $transferDocument = TransferDocument::create([
+            'transfer_box_id' => $box->id,
+            'code' => 'DOC-LOANED-ORIGINAL',
+            'name' => 'Documento prestado como original',
+            'series_label' => 'Actas y Resoluciones',
+            'support_type' => 'Fisico',
+            'year_label' => '2026',
+            'sort_order' => 1,
+        ]);
+        $availableTransferDocument = TransferDocument::create([
+            'transfer_box_id' => $box->id,
+            'code' => 'DOC-AVAILABLE-ORIGINAL',
+            'name' => $transferDocument->name,
+            'series_label' => $transferDocument->series_label,
+            'support_type' => 'Fisico',
+            'year_label' => $transferDocument->year_label,
+            'sort_order' => 2,
+        ]);
+
+        $loan = Loan::where('number', 'PREST-007')->firstOrFail();
+        $loanDocument = $loan->documents()->create([
+            'document_kind' => 'system',
+            'group_title' => 'Documentos del Sistema (1)',
+            'title' => $transferDocument->name,
+            'series_label' => $transferDocument->series_label,
+            'box_code' => $box->boxCode($transfer->code),
+            'year_label' => $transferDocument->year_label,
+            'document_type_label' => 'Original',
+            'document_type_tone' => 'warning',
+            'selected_for_loan' => true,
+            'returned' => false,
+            'sort_order' => 1,
+        ]);
+        $loan->events()->create([
+            'status_catalog_id' => null,
+            'actor_user_id' => null,
+            'actor_name_snapshot' => null,
+            'event_type' => 'status',
+            'title' => 'Creado',
+            'description' => 'Solicitud de prueba.',
+            'context' => [
+                'document_map' => [[
+                    'loan_document_id' => $loanDocument->id,
+                    'transfer_document_id' => $transferDocument->id,
+                ]],
+            ],
+            'occurred_at' => now(),
+        ]);
+
+        $catalogResponse = $this->actingAs($requester)->getJson('/api/loans/create/catalog');
+        $catalogResponse->assertOk();
+        $catalogDocument = collect($catalogResponse->json('documents'))
+            ->firstWhere('id', $transferDocument->id);
+        $availableCatalogDocument = collect($catalogResponse->json('documents'))
+            ->firstWhere('id', $availableTransferDocument->id);
+
+        $this->assertTrue($catalogDocument['isLoanedOriginal']);
+        $this->assertFalse($availableCatalogDocument['isLoanedOriginal']);
+
+        $this->actingAs($requester)
+            ->postJson('/api/loans', [
+                'requester_name' => 'Patricia Marlene Callejas de Velásquez',
+                'unit_name' => 'Decanato FIA',
+                'system_documents' => [
+                    [
+                        'id' => $transferDocument->id,
+                        'document_type' => 'Original',
+                    ],
+                ],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Los documentos prestados como Original no estan disponibles para una nueva solicitud.');
     }
 
     public function test_authenticated_user_can_get_transfer_detail_with_complete_box_document_information(): void
@@ -182,6 +304,26 @@ class RequestCatalogTest extends TestCase
         $this->actingAs($ugda)
             ->getJson('/api/physical-locations')
             ->assertForbidden();
+    }
+
+    public function test_transfer_review_actions_use_profile_instead_of_assigned_unit(): void
+    {
+        $requester = User::where('email', 'unidad.solicitante@yopmail.com')->firstOrFail();
+        $ugdaUnit = Unit::where('code', 'UGDA')->firstOrFail();
+        $scheduledTransfer = Transfer::where('code', '000965')->firstOrFail();
+
+        $requester->units()->sync([$ugdaUnit->id]);
+        $scheduledTransfer->update(['unit_id' => $ugdaUnit->id]);
+
+        $this->actingAs($requester)
+            ->getJson('/api/transfers/000965')
+            ->assertOk()
+            ->assertJsonPath('processCard', null);
+
+        $this->actingAs($requester)
+            ->postJson('/api/transfers/000965/start-physical-review')
+            ->assertForbidden()
+            ->assertJsonPath('message', 'Solo UGDA puede iniciar la revision fisica.');
     }
 
     public function test_authenticated_user_can_get_review_transfer_detail_with_ugda_sections(): void

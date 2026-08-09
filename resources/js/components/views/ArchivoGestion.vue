@@ -236,6 +236,7 @@ onMounted(fetchBoxes);
                     <Column field="period" header="Periodo" />
                     <Column field="location" header="Ubicación" />
                     <Column field="documents_count" header="Documentos" />
+                    <Column field="created_at_label" header="Registrada" />
                     <Column header="Acciones">
                         <template #body="{ data }">
                             <div class="archive-table-actions">
@@ -286,6 +287,7 @@ onMounted(fetchBoxes);
                 <Column field="year" header="Ano" />
                 <Column field="support" header="Soporte" />
                 <Column field="pages" header="Paginas" />
+                <Column field="created_at_label" header="Registrado" />
                 <template #empty>
                     <div class="archive-boxes-empty">Esta caja no tiene documentos registrados.</div>
                 </template>

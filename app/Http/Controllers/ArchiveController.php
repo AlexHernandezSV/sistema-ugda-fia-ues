@@ -1055,6 +1055,8 @@ class ArchiveController extends Controller
         $box = $document->box;
         $transfer = $box?->transfer;
         $unit = $transfer?->unit;
+        $hasDigitalFile = in_array($document->support_type, ['Digital', 'Mixto'], true)
+            && !empty($document->digital_file_name);
         $boxNumber = $box?->box_number !== null
             ? str_pad((string) $box->box_number, 3, '0', STR_PAD_LEFT)
             : null;
@@ -1067,13 +1069,15 @@ class ArchiveController extends Controller
             'support' => $document->support_type,
             'year' => $document->year_label,
             'pages' => $document->pages_label,
+            'created_at' => optional($document->created_at)->toDateTimeString(),
+            'created_at_label' => optional($document->created_at)->format('d/m/Y H:i'),
             'is_reserved' => (bool) $document->is_reserved,
             'reserved_at' => optional($document->reserved_at)->toDateTimeString(),
-            'reserved_at_label' => optional($document->reserved_at)->format('d/m/Y'),
+            'reserved_at_label' => optional($document->reserved_at)->format('d/m/Y H:i'),
             'reserved_by' => $this->formatUserName($document->reservedBy),
-            'digital_available' => !empty($document->digital_file_name),
-            'digital_file' => $document->digital_file_name,
-            'digital_url' => !empty($document->digital_file_name) && $transfer?->code && $document->code
+            'digital_available' => $hasDigitalFile,
+            'digital_file' => $hasDigitalFile ? $document->digital_file_name : null,
+            'digital_url' => $hasDigitalFile && $transfer?->code && $document->code
                 ? SignedPdfUrl::transferDocument($transfer->code, SignedPdfUrl::transferDocumentReference($document->id))
                 : null,
             'box' => [
@@ -1086,7 +1090,7 @@ class ArchiveController extends Controller
                 'location' => $box?->location_code,
                 'series' => $box?->series_name,
                 'content_description' => $box?->content_description,
-                'assigned_at_label' => $box?->assigned_at?->format('d/m/Y'),
+                'assigned_at_label' => $box?->assigned_at?->format('d/m/Y H:i'),
                 'assigned_by' => $this->formatUserName($box?->assignedBy),
             ],
             'unit' => [
@@ -1097,9 +1101,10 @@ class ArchiveController extends Controller
             'transfer' => [
                 'id' => $transfer?->id,
                 'code' => $transfer?->code,
-                'request_date_label' => optional($transfer?->request_date)->format('d/m/Y'),
+                'request_date_label' => optional($transfer?->requested_at)->format('d/m/Y H:i')
+                    ?: optional($transfer?->request_date)->format('d/m/Y'),
                 'completed_at' => optional($transfer?->completed_at)->toDateTimeString(),
-                'completed_at_label' => optional($transfer?->completed_at)->format('d/m/Y'),
+                'completed_at_label' => optional($transfer?->completed_at)->format('d/m/Y H:i'),
                 'responsible' => $this->formatUserName($transfer?->completedBy) ?: $this->formatUserName($transfer?->requester),
             ],
         ];
@@ -1149,7 +1154,7 @@ class ArchiveController extends Controller
             'location' => $box->location_code,
             'documents_count' => $box->documents->count(),
             'can_delete' => $transfer?->view_mode === 'archive',
-            'created_at_label' => $box->created_at?->format('d/m/Y'),
+            'created_at_label' => $box->created_at?->format('d/m/Y H:i'),
             'assigned_by' => $box->assignedBy
                 ? trim(collect([
                     $box->assignedBy?->person?->first_name,
@@ -1165,6 +1170,7 @@ class ArchiveController extends Controller
                     'year' => $document->year_label,
                     'support' => $document->support_type,
                     'pages' => $document->pages_label,
+                    'created_at_label' => optional($document->created_at)->format('d/m/Y H:i'),
                 ])
                 ->values()
                 ->all(),

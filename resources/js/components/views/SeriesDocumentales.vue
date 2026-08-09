@@ -660,6 +660,7 @@ const clearFilter = () => {
                     v-model="createSeriesForm.code"
                     :maxlength="SERIES_CODE_MAX_LENGTH"
                     placeholder="Ej: 5"
+                    class="w-full"
                     :class="{ 'p-invalid': seriesErrors.code }"
                     @input="normalizeSeriesCode(createSeriesForm)"
                 />
@@ -682,6 +683,7 @@ const clearFilter = () => {
                     v-model="createSeriesForm.name"
                     :maxlength="SERIES_NAME_MAX_LENGTH"
                     placeholder="Ej: ACTAS"
+                    class="w-full"
                     :class="{ 'p-invalid': seriesErrors.name }"
                 />
                 <div class="series-field__feedback">
@@ -842,6 +844,7 @@ const clearFilter = () => {
                                 v-model="createSubseriesForm.code"
                                 :maxlength="SERIES_CODE_MAX_LENGTH"
                                 placeholder="Ej: 12"
+                                class="w-full"
                                 :class="{ 'p-invalid': subseriesErrors.code }"
                                 @input="
                                     normalizeSubseriesCode(createSubseriesForm)
@@ -870,6 +873,7 @@ const clearFilter = () => {
                                 v-model="createSubseriesForm.name"
                                 :maxlength="SERIES_NAME_MAX_LENGTH"
                                 placeholder="Ej: Actas Asamblea General Universitaria"
+                                class="w-full"
                                 :class="{ 'p-invalid': subseriesErrors.name }"
                             />
                             <div class="series-field__feedback">
@@ -955,6 +959,7 @@ const clearFilter = () => {
                                             v-model="editSubseriesForm.code"
                                             :maxlength="SERIES_CODE_MAX_LENGTH"
                                             placeholder="Ej: 12"
+                                            class="w-full"
                                             :class="{
                                                 'p-invalid':
                                                     subseriesErrors.code,
@@ -990,6 +995,7 @@ const clearFilter = () => {
                                             v-model="editSubseriesForm.name"
                                             :maxlength="SERIES_NAME_MAX_LENGTH"
                                             placeholder="Ej: Actas Asamblea General Universitaria"
+                                            class="w-full"
                                             :class="{
                                                 'p-invalid':
                                                     subseriesErrors.name,
@@ -1159,6 +1165,7 @@ const clearFilter = () => {
                         v-model="editSeriesForm.code"
                         :maxlength="SERIES_CODE_MAX_LENGTH"
                         placeholder="Ej: 5"
+                        class="w-full"
                         :class="{ 'p-invalid': seriesErrors.code }"
                         @input="normalizeSeriesCode(editSeriesForm)"
                     />
@@ -1181,6 +1188,7 @@ const clearFilter = () => {
                         v-model="editSeriesForm.name"
                         :maxlength="SERIES_NAME_MAX_LENGTH"
                         placeholder="Nombre de la serie"
+                        class="w-full"
                         :class="{ 'p-invalid': seriesErrors.name }"
                     />
                     <div class="series-field__feedback">
@@ -1774,7 +1782,7 @@ const clearFilter = () => {
 .series-create-grid {
     display: grid;
     gap: 1.25rem;
-    grid-template-columns: minmax(0, 0.45fr) minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .series-create-grid__field {
@@ -1927,7 +1935,7 @@ const clearFilter = () => {
 .subseries-inline-form__row {
     display: grid;
     gap: 0.75rem;
-    grid-template-columns: minmax(0, 0.32fr) minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .subseries-inline-form__units {

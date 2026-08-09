@@ -375,7 +375,7 @@ class RequestCatalog
             'responsible' => self::userDisplayName($transfer->requester) ?: 'N/D',
             'authorizedBy' => self::userDisplayName($transfer->authorizedBy) ?: 'N/D',
             'authorizedAt' => self::formatDateTime($transfer->authorized_at) ?: 'N/D',
-            'requestedAt' => self::formatDate($transfer->requested_at) ?: 'N/D',
+            'requestedAt' => self::formatDateTime($transfer->requested_at) ?: 'N/D',
             'scheduledFor' => self::formatDateTime($transfer->scheduled_for) ?: 'N/D',
             'totalBoxes' => $transfer->boxes->count(),
             'totalDocuments' => $transfer->boxes->sum(fn ($box) => $box->documents->count()),
@@ -830,6 +830,8 @@ class RequestCatalog
             'isLocated' => !empty($box->location_code),
             'documents' => $box->documents->map(function ($document) use ($transfer, $viewer) {
                 $hideDigitalSupport = self::shouldHideCompletedDigitalDocument($transfer, $document, $viewer);
+                $hasDigitalFile = self::supportsDigitalFile($document->support_type)
+                    && !empty($document->digital_file_name);
 
                 return [
                     'code' => $document->code,
@@ -839,10 +841,10 @@ class RequestCatalog
                     'supportRestricted' => $hideDigitalSupport,
                     'year' => $document->year_label,
                     'pages' => $document->pages_label,
-                    'digitalFile' => $hideDigitalSupport ? null : $document->digital_file_name,
-                    'digitalAvailable' => !$hideDigitalSupport && !empty($document->digital_file_name),
-                    'digitalRestricted' => $hideDigitalSupport && !empty($document->digital_file_name),
-                    'digitalUrl' => !$hideDigitalSupport && $document->digital_file_name
+                    'digitalFile' => $hideDigitalSupport || !$hasDigitalFile ? null : $document->digital_file_name,
+                    'digitalAvailable' => !$hideDigitalSupport && $hasDigitalFile,
+                    'digitalRestricted' => $hideDigitalSupport && $hasDigitalFile,
+                    'digitalUrl' => !$hideDigitalSupport && $hasDigitalFile
                         ? SignedPdfUrl::transferDocument($transfer->code, SignedPdfUrl::transferDocumentReference($document->id))
                         : null,
                 ];
@@ -865,7 +867,15 @@ class RequestCatalog
 
     private static function isDigitalSupport(?string $supportType): bool
     {
-        return strcasecmp(trim((string) $supportType), 'Digital') === 0;
+        return self::supportsDigitalFile($supportType);
+    }
+
+    private static function supportsDigitalFile(?string $supportType): bool
+    {
+        $normalized = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', trim((string) $supportType));
+        $normalized = strtolower($normalized !== false ? $normalized : trim((string) $supportType));
+
+        return in_array($normalized, ['digital', 'mixto'], true);
     }
 
     private static function splitSeriesLabels(?string $value): Collection
@@ -1297,19 +1307,7 @@ class RequestCatalog
 
     private static function viewerCanManageUgda(?User $viewer): bool
     {
-        if ($viewer === null) {
-            return false;
-        }
-
-        $profile = $viewer->activeProfile()?->name;
-
-        if (in_array($profile, ['Administrador', 'Usuario UGDA'], true)) {
-            return true;
-        }
-
-        return $viewer->units()
-            ->where('units.code', 'UGDA')
-            ->exists();
+        return in_array($viewer?->activeProfile()?->name, ['Administrador', 'Usuario UGDA'], true);
     }
 
     private static function viewerCanViewBoxLocationLabels(?User $viewer): bool

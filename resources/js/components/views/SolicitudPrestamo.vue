@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import { useToast } from 'primevue/usetoast';
@@ -8,6 +8,7 @@ const router = useRouter();
 const toast = useToast();
 
 const OBSERVATION_MAX_LENGTH = 1000;
+const currentYearDate = new Date();
 
 const loading = ref(true);
 const submitting = ref(false);
@@ -27,7 +28,7 @@ const requester = reactive({
 
 const additionalForm = reactive({
     name: '',
-    year: '',
+    year: null,
     quantity: '',
     unit: '',
     observation: '',
@@ -45,6 +46,7 @@ const filteredDocuments = computed(() => {
 
     return availableDocuments.value.filter((document) => [
         document.title,
+        document.code,
         document.series,
         document.box,
         document.year,
@@ -86,6 +88,7 @@ const fetchCatalog = async () => {
         const { data } = await axios.get('/api/loans/create/catalog');
         requester.name = data.requester?.name ?? '';
         requester.unitName = data.requester?.unit_name ?? '';
+        additionalForm.unit = requester.unitName;
         availableDocuments.value = data.documents ?? [];
     } catch (error) {
         toast.add({
@@ -100,6 +103,12 @@ const fetchCatalog = async () => {
 };
 
 const togglePendingDocument = (id) => {
+    const document = availableDocuments.value.find((item) => item.id === id);
+
+    if (document?.isLoanedOriginal) {
+        return;
+    }
+
     if (pendingSelectedIds.value.includes(id)) {
         pendingSelectedIds.value = pendingSelectedIds.value.filter((item) => item !== id);
         return;
@@ -129,11 +138,23 @@ const removeSystemDocument = (id) => {
 
 const resetAdditionalForm = () => {
     additionalForm.name = '';
-    additionalForm.year = '';
+    additionalForm.year = null;
     additionalForm.quantity = '';
-    additionalForm.unit = '';
+    additionalForm.unit = requester.unitName;
     additionalForm.observation = '';
     additionalForm.documentType = 'Copia';
+};
+
+const getYearString = (value) => {
+    if (!value) {
+        return '';
+    }
+
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return String(value.getFullYear());
+    }
+
+    return String(value).match(/^\d{4}$/)?.[0] ?? '';
 };
 
 const addAdditionalDocument = () => {
@@ -147,7 +168,37 @@ const addAdditionalDocument = () => {
         return;
     }
 
-    if (additionalForm.observation.trim().length > OBSERVATION_MAX_LENGTH) {
+    const yearValue = getYearString(additionalForm.year);
+    const quantityValue = additionalForm.quantity.trim();
+    const unitValue = additionalForm.unit.trim();
+    const observationValue = additionalForm.observation.trim();
+
+    if (yearValue === '') {
+        toast.add({ severity: 'warn', summary: 'Año requerido', detail: 'Seleccione el año del documento.', life: 2800 });
+        return;
+    }
+
+    if (quantityValue === '') {
+        toast.add({ severity: 'warn', summary: 'Cantidad requerida', detail: 'Ingrese la cantidad de documentos.', life: 2800 });
+        return;
+    }
+
+    if (unitValue === '') {
+        toast.add({ severity: 'warn', summary: 'Unidad productora requerida', detail: 'No se encontró una unidad productora para el usuario solicitante.', life: 2800 });
+        return;
+    }
+
+    if (!additionalForm.documentType) {
+        toast.add({ severity: 'warn', summary: 'Tipo requerido', detail: 'Seleccione el tipo de documento.', life: 2800 });
+        return;
+    }
+
+    if (observationValue === '') {
+        toast.add({ severity: 'warn', summary: 'Observación requerida', detail: 'Ingrese una observación adicional.', life: 2800 });
+        return;
+    }
+
+    if (observationValue.length > OBSERVATION_MAX_LENGTH) {
         toast.add({
             severity: 'warn',
             summary: 'Observación inválida',
@@ -158,8 +209,6 @@ const addAdditionalDocument = () => {
     }
 
     // NUEVA VALIDACIÓN: año si fue ingresado
-    const yearValue = additionalForm.year ? additionalForm.year.trim() : '';
-    
     if (yearValue !== '') {
         // Validar formato 4 dígitos
         if (!/^\d{4}$/.test(yearValue)) {
@@ -190,10 +239,10 @@ const addAdditionalDocument = () => {
         {
             id: Date.now(),
             name: additionalForm.name.trim(),
-            year: additionalForm.year.trim(),
-            quantity: additionalForm.quantity.trim(),
-            unit: additionalForm.unit.trim(),
-            observation: additionalForm.observation.trim(),
+            year: yearValue,
+            quantity: quantityValue,
+            unit: unitValue,
+            observation: observationValue,
             documentType: additionalForm.documentType,
         },
     ];
@@ -260,6 +309,12 @@ const submitLoanRequest = async () => {
 };
 
 onMounted(fetchCatalog);
+
+watch(showAdditionalForm, (isVisible) => {
+    if (isVisible) {
+        additionalForm.unit = requester.unitName;
+    }
+});
 </script>
 
 <template>
@@ -318,7 +373,7 @@ onMounted(fetchCatalog);
                 <label class="prestamo-label">Buscar documentos transferidos</label>
                 <div class="prestamo-search mt-2">
                     <i class="pi pi-search"></i>
-                    <input v-model="search" type="text" placeholder="Buscar por nombre, serie, caja, transferencia o ano..." />
+                    <input v-model="search" type="text" placeholder="Buscar por nombre, código, serie, caja, transferencia o año..." />
                 </div>
 
                 <div class="prestamo-documents-head">
@@ -331,15 +386,26 @@ onMounted(fetchCatalog);
                         :key="document.id"
                         type="button"
                         class="prestamo-document"
-                        :class="{ 'prestamo-document--selected': pendingSelectedIds.includes(document.id) || selectedSystemIds.includes(document.id) }"
+                        :class="{
+                            'prestamo-document--selected': pendingSelectedIds.includes(document.id) || selectedSystemIds.includes(document.id),
+                            'prestamo-document--disabled': document.isLoanedOriginal,
+                        }"
+                        :disabled="document.isLoanedOriginal"
                         @click="togglePendingDocument(document.id)"
                     >
                         <div class="prestamo-document__icon">
                             <i class="pi pi-file"></i>
                         </div>
                         <div class="prestamo-document__body">
-                            <span class="prestamo-document-title">{{ document.title }}</span>
+                            <div class="prestamo-document__title-row">
+                                <span class="prestamo-document-title">{{ document.title }}</span>
+                                <span v-if="document.isLoanedOriginal" class="prestamo-document-status">
+                                    <i class="pi pi-lock"></i>
+                                    Prestado
+                                </span>
+                            </div>
                             <div class="prestamo-document__grid">
+                                <span>Código: {{ document.code || 'Sin código' }}</span>
                                 <span>Serie: {{ document.series || 'Sin serie' }}</span>
                                 <span>Caja: {{ document.box }}</span>
                                 <span>Año: {{ document.year || 'N/D' }}</span>
@@ -378,7 +444,7 @@ onMounted(fetchCatalog);
 
                 <label class="prestamo-checkbox">
                     <input v-model="showAdditionalForm" type="checkbox" />
-                    <span>¿No encontro el documento que busca?</span>
+                    <span>¿No encontró el documento que busca?</span>
                 </label>
 
                 <div v-if="showAdditionalForm" class="prestamo-additional-form">
@@ -390,28 +456,41 @@ onMounted(fetchCatalog);
 
                     <div class="grid">
                         <div class="col-12">
-                            <label class="prestamo-label">Nombre del Documento</label>
-                            <InputText v-model="additionalForm.name" class="w-full mt-2" placeholder="Ej: Expedientes de Graduacion 2015" />
+                            <label class="prestamo-label">Nombre del Documento <span>*</span></label>
+                            <InputText v-model="additionalForm.name" class="w-full mt-2" placeholder="Ej: Expedientes de Graduacion 2015" required />
                         </div>
                         <div class="col-12 md:col-6">
-                            <label class="prestamo-label">Año</label>
-                            <InputText v-model="additionalForm.year" class="w-full mt-2" placeholder="Ej: 2015" />
+                            <label class="prestamo-label">Año <span>*</span></label>
+                            <DatePicker
+                                inputId="additionalDocumentYear"
+                                v-model="additionalForm.year"
+                                class="w-full mt-2"
+                                view="year"
+                                dateFormat="yy"
+                                :maxDate="currentYearDate"
+                                showIcon
+                                iconDisplay="input"
+                                readonlyInput
+                                placeholder="Seleccione el año"
+                                required
+                                fluid
+                            />
                         </div>
                         <div class="col-12 md:col-6">
-                            <label class="prestamo-label">Cantidad de Documentos</label>
-                            <InputText v-model="additionalForm.quantity" class="w-full mt-2" placeholder="Ej: 3 cajas, 15 expedientes" />
+                            <label class="prestamo-label">Cantidad de Documentos <span>*</span></label>
+                            <InputText v-model="additionalForm.quantity" class="w-full mt-2" placeholder="Ej: 3 cajas, 15 expedientes" required />
                         </div>
                         <div class="col-12 md:col-8">
-                            <label class="prestamo-label">Unidad Productora</label>
-                            <InputText v-model="additionalForm.unit" class="w-full mt-2" placeholder="Ej: Escuela de Ingenieria Civil" />
+                            <label class="prestamo-label">Unidad Productora <span>*</span></label>
+                            <InputText v-model="additionalForm.unit" class="w-full mt-2" readonly required />
                         </div>
                         <div class="col-12 md:col-4">
-                            <label class="prestamo-label">Tipo</label>
-                            <Dropdown v-model="additionalForm.documentType" :options="documentTypeOptions" class="w-full mt-2" />
+                            <label class="prestamo-label">Tipo <span>*</span></label>
+                            <Dropdown v-model="additionalForm.documentType" :options="documentTypeOptions" class="w-full mt-2" required />
                         </div>
                         <div class="col-12">
-                            <label class="prestamo-label">Observación Adicional</label>
-                            <textarea v-model="additionalForm.observation" rows="4" class="prestamo-textarea mt-2" :maxlength="OBSERVATION_MAX_LENGTH" placeholder="Ej: Se transfirieron el 10 de marzo de 2022"></textarea>
+                            <label class="prestamo-label">Observación Adicional <span>*</span></label>
+                            <textarea v-model="additionalForm.observation" rows="4" class="prestamo-textarea mt-2" :maxlength="OBSERVATION_MAX_LENGTH" placeholder="Ej: Se transfirieron el 10 de marzo de 2022" required></textarea>
                         </div>
                     </div>
 
@@ -659,6 +738,17 @@ onMounted(fetchCatalog);
     width: 100%;
 }
 
+.prestamo-document--disabled {
+    background: #f8fafc;
+    border-color: #b5cde2;
+    cursor: not-allowed;
+    opacity: 0.82;
+}
+
+.prestamo-document--disabled .prestamo-document__icon {
+    color: #2f6f9f;
+}
+
 .prestamo-document--selected {
     background: #eff6ff;
     border-color: #2f6f9f;
@@ -679,6 +769,27 @@ onMounted(fetchCatalog);
     color: #0f172a;
     display: block;
     font-weight: 400;
+}
+
+.prestamo-document__title-row {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+}
+
+.prestamo-document-status {
+    align-items: center;
+    background: #eaf3fb;
+    border: 1px solid #b5cde2;
+    border-radius: 999px;
+    color: #2f6f9f;
+    display: inline-flex;
+    font-size: 0.75rem;
+    font-weight: 800;
+    gap: 0.3rem;
+    line-height: 1;
+    padding: 0.35rem 0.6rem;
 }
 
 .prestamo-document__grid {

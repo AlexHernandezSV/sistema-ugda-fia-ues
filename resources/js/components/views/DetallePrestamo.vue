@@ -509,6 +509,13 @@ const submitLoanRegistration = async () => {
         return;
     }
 
+    if (loanForm.loanDate instanceof Date
+        && loanForm.dueDate instanceof Date
+        && loanForm.dueDate < loanForm.loanDate) {
+        showError('La fecha de devolución programada debe ser igual o posterior a la fecha de préstamo.');
+        return;
+    }
+
     try {
         const { data } = await axios.post(`/api/loans/${loan.value.number}/register`, {
             selected_ids: loanForm.selectedIds,
@@ -1546,6 +1553,7 @@ watch(
                             iconDisplay="input"
                             dateFormat="dd/mm/yy"
                             placeholder="dd/mm/aaaa"
+                            :minDate="loanForm.loanDate || undefined"
                             class="detalle-datepicker"
                         />
                     </div>

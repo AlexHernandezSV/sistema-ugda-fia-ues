@@ -280,6 +280,11 @@ onMounted(() => fetchArchive());
                                     <span>Transferencia</span>
                                     <strong>{{ document.transfer?.completed_at_label || 'N/D' }}</strong>
                                 </div>
+                                <div>
+                                    <i class="pi pi-clock"></i>
+                                    <span>Documento registrado</span>
+                                    <strong>{{ document.created_at_label || 'N/D' }}</strong>
+                                </div>
                             </div>
 
                             <div class="archive-document__details">
@@ -493,6 +498,10 @@ onMounted(() => fetchArchive());
                             <div class="archive-document-modal__field">
                                 <span>Responsable</span>
                                 <strong>{{ selectedDocument.transfer?.responsible || 'N/D' }}</strong>
+                            </div>
+                            <div class="archive-document-modal__field">
+                                <span>Documento registrado</span>
+                                <strong>{{ selectedDocument.created_at_label || 'N/D' }}</strong>
                             </div>
                         </div>
                     </section>

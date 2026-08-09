@@ -23,7 +23,7 @@ class TransferController extends Controller
     {
         try {
             $requestDate = $request->filled('request_date')
-                ? Carbon::parse($request->input('request_date'))
+                ? Carbon::parse($request->input('request_date'), config('app.timezone'))
                 : now();
 
             return response()->json(['code' => RequestNumberGenerator::transfer($requestDate)]);
@@ -374,8 +374,10 @@ class TransferController extends Controller
                         'date' => $document->year_label,
                         'pages' => $document->pages_label,
                         'support' => $document->support_type,
-                        'file_name' => $document->digital_file_name,
-                        'file_url' => $document->digital_file_name
+                        'file_name' => $this->supportRequiresDigitalFile($document->support_type)
+                            ? $document->digital_file_name
+                            : null,
+                        'file_url' => $this->supportRequiresDigitalFile($document->support_type) && $document->digital_file_name
                             ? SignedPdfUrl::transferDocument($transfer->code, SignedPdfUrl::transferDocumentReference($document->id))
                             : null,
                     ])->values()->all(),
@@ -483,7 +485,8 @@ class TransferController extends Controller
             }
 
             DB::transaction(function () use ($request, $transfer, $previousWorkflowCode) {
-                $requestedAt = Carbon::parse($request->input('request_date'));
+                $requestDate = Carbon::parse($request->input('request_date'), config('app.timezone'));
+                $requestedAt = now();
                 $correctionNotes = trim($request->string('correction_notes')->toString());
                 $isPhysicalCorrection = $previousWorkflowCode === 'transfer_status_physical_observed';
                 $authStatus = $isPhysicalCorrection
@@ -495,7 +498,7 @@ class TransferController extends Controller
 
                 $transfer->update([
                     'unit_id' => (int) $request->input('unit_id'),
-                    'request_date' => $requestedAt->toDateString(),
+                    'request_date' => $requestDate->toDateString(),
                     'requested_at' => $requestedAt,
                     'status' => $isPhysicalCorrection ? 'Aprobada' : 'Enviada',
                     'authorization_status_id' => $authStatus,
@@ -606,15 +609,16 @@ class TransferController extends Controller
 
         try {
             $transfer = DB::transaction(function () use ($request) {
-                $requestedAt = Carbon::parse($request->input('request_date'));
+                $requestDate = Carbon::parse($request->input('request_date'), config('app.timezone'));
+                $requestedAt = now();
                 $authPending = RequestStatusCatalog::query()->where('code', 'transfer_auth_pending')->value('id');
                 $statusPending = RequestStatusCatalog::query()->where('code', 'transfer_status_pending')->value('id');
 
                 $transfer = Transfer::query()->create([
-                    'code' => RequestNumberGenerator::transfer($requestedAt),
+                    'code' => RequestNumberGenerator::transfer($requestDate),
                     'user_id' => $request->user()->id,
                     'unit_id' => (int) $request->input('unit_id'),
-                    'request_date' => $requestedAt->toDateString(),
+                    'request_date' => $requestDate->toDateString(),
                     'requested_at' => $requestedAt,
                     'status' => 'Enviada',
                     'authorization_status_id' => $authPending,
@@ -681,7 +685,10 @@ class TransferController extends Controller
                 }
 
                 $seenDocuments[$fingerprint] = true;
-                $uploadedFile = $request?->file("document_files.$boxIndex.$documentIndex");
+                $requiresDigitalFile = $this->supportRequiresDigitalFile($documentPayload['support'] ?? null);
+                $uploadedFile = $requiresDigitalFile
+                    ? $request?->file("document_files.$boxIndex.$documentIndex")
+                    : null;
                 $storedFile = $uploadedFile
                     ? $this->storeTransferDocumentFile($uploadedFile, $transfer->code, (string) ($documentPayload['code'] ?? $sortOrder))
                     : null;
@@ -689,8 +696,17 @@ class TransferController extends Controller
                 $fileName = $storedFile['name'] ?? $existingFile['name'] ?? ($documentPayload['file_name'] ?? null);
                 $filePath = $storedFile['path'] ?? $existingFile['path'] ?? null;
 
+                if (!$requiresDigitalFile) {
+                    $fileName = null;
+                    $filePath = null;
+                }
+
+                $documentCode = trim((string) ($documentPayload['code'] ?? ''));
+
                 $box->documents()->create([
-                    'code' => $documentPayload['code'] ?? 'DOC-' . $transfer->code . '-' . str_pad((string) $sortOrder, 3, '0', STR_PAD_LEFT),
+                    'code' => $documentCode !== ''
+                        ? $documentCode
+                        : 'DOC-' . $transfer->code . '-' . str_pad((string) $sortOrder, 3, '0', STR_PAD_LEFT),
                     'name' => $documentPayload['name'],
                     'series_label' => $documentPayload['series'] ?? $boxPayload['series'],
                     'support_type' => $documentPayload['support'],
@@ -747,16 +763,26 @@ class TransferController extends Controller
 
     private function existingDigitalFilesByDocumentCode(Transfer $transfer): array
     {
-        return $transfer->boxes
-            ->flatMap(fn ($box) => $box->documents)
-            ->filter(fn ($document) => !empty($document->digital_file_name) && !empty($document->digital_file_path))
-            ->mapWithKeys(fn ($document) => [
-                (string) $document->code => [
-                    'name' => $document->digital_file_name,
-                    'path' => $document->digital_file_path,
-                ],
-            ])
-            ->all();
+        $files = [];
+
+        foreach ($transfer->boxes->flatMap(fn ($box) => $box->documents) as $document) {
+            if (!$this->supportRequiresDigitalFile($document->support_type)
+                || empty($document->digital_file_name)
+                || empty($document->digital_file_path)) {
+                continue;
+            }
+
+            $file = [
+                'name' => $document->digital_file_name,
+                'path' => $document->digital_file_path,
+            ];
+
+            // The document id is authoritative; the code remains as a legacy fallback.
+            $files['document-' . $document->id] = $file;
+            $files[(string) $document->code] ??= $file;
+        }
+
+        return $files;
     }
 
     private function resolveExistingDigitalFile(array $documentPayload, array $existingDigitalFiles): ?array
@@ -765,13 +791,27 @@ class TransferController extends Controller
             return null;
         }
 
+        $documentReference = (string) ($documentPayload['id_doc'] ?? '');
+        $documentId = preg_match('/^doc-(\d+)$/', $documentReference, $matches)
+            ? (int) $matches[1]
+            : null;
         $documentCode = (string) ($documentPayload['code'] ?? '');
+        $lookupKeys = $documentId !== null
+            ? ['document-' . $documentId]
+            : array_filter([$documentCode]);
+        $existingFile = null;
 
-        if ($documentCode === '' || empty($existingDigitalFiles[$documentCode])) {
+        foreach ($lookupKeys as $lookupKey) {
+            if (!empty($existingDigitalFiles[$lookupKey])) {
+                $existingFile = $existingDigitalFiles[$lookupKey];
+                break;
+            }
+        }
+
+        if ($existingFile === null) {
             return null;
         }
 
-        $existingFile = $existingDigitalFiles[$documentCode];
         $payloadFileName = (string) ($documentPayload['file_name'] ?? '');
 
         if ($payloadFileName !== '' && $payloadFileName !== (string) ($existingFile['name'] ?? '')) {
@@ -779,6 +819,11 @@ class TransferController extends Controller
         }
 
         return $existingFile;
+    }
+
+    private function supportRequiresDigitalFile(?string $support): bool
+    {
+        return in_array($this->normalizeImportKey((string) $support), ['digital', 'mixto'], true);
     }
 
     private function documentFingerprint(array $documentPayload, string $defaultSeries): string
@@ -822,9 +867,22 @@ class TransferController extends Controller
 
             $startYear = (int) ($boxPayload['year_start'] ?? 0);
             $endYear = (int) ($boxPayload['year_end'] ?? 0);
+            $seenDocumentCodes = [];
 
             foreach (($boxPayload['documents_list'] ?? []) as $documentPayload) {
                 $documentName = trim((string) ($documentPayload['name'] ?? 'documento'));
+                $documentCode = trim((string) ($documentPayload['code'] ?? ''));
+
+                if ($documentCode !== '') {
+                    $normalizedDocumentCode = mb_strtolower(preg_replace('/\s+/', ' ', $documentCode) ?? '');
+
+                    if (isset($seenDocumentCodes[$normalizedDocumentCode])) {
+                        return 'El codigo "' . $documentCode . '" esta repetido dentro de la caja #' . $boxNumber . '. Cada codigo debe ser unico por caja.';
+                    }
+
+                    $seenDocumentCodes[$normalizedDocumentCode] = true;
+                }
+
                 $documentSeries = trim((string) ($documentPayload['series'] ?? ''));
 
                 if ($documentSeries === '' && count($boxLabels) === 1) {
@@ -1139,16 +1197,7 @@ class TransferController extends Controller
 
     private function canUgdaManage(Request $request): bool
     {
-        $user = $request->user();
-        $profileName = $user->activeProfile()?->name;
-
-        if (in_array($profileName, ['Administrador', 'Usuario UGDA'], true)) {
-            return true;
-        }
-
-        return $user->units()
-            ->where('units.code', 'UGDA')
-            ->exists();
+        return in_array($request->user()?->activeProfile()?->name, ['Administrador', 'Usuario UGDA'], true);
     }
 
     public function schedule(Request $request, string $number): JsonResponse

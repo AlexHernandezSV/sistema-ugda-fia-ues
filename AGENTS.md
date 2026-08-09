@@ -245,6 +245,7 @@ Notas:
 
 ### Proteccion de la base de datos
 
+- No eliminar la base de datos bajo ninguna circunstancia sin autorizacion explicita y previa del usuario.
 - Nunca eliminar, resetear, recrear, vaciar ni sobrescribir la base de datos existente.
 - No ejecutar `migrate:fresh`, `db:wipe`, `docker compose down -v`, `DROP DATABASE`, `TRUNCATE` ni comandos equivalentes durante las tareas del proyecto.
 - Conservar siempre los datos existentes y preferir migraciones incrementales o cambios puntuales.
@@ -299,3 +300,8 @@ Antes de implementar cambios grandes:
 - revisar esta rama actual, no asumir que tiene el mismo módulo documental avanzado de otras ramas
 - confirmar si el frontend de solicitudes usa `Solicitudes.vue` y `NuevaSolicitud.vue`
 - confirmar si el contenedor `sistema-ugda-app` sigue disponible antes de correr migraciones o artisan
+
+## Preferencia operativa persistente
+
+- No ejecutar migraciones de base de datos durante las tareas de este proyecto, salvo que el usuario lo solicite expresamente.
+- Comando de referencia para la última migración aplicada: `docker compose exec app php artisan migrate --force`.
