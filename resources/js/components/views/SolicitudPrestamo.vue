@@ -1,10 +1,11 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 import { useToast } from 'primevue/usetoast';
 
 const router = useRouter();
+const route = useRoute();
 const toast = useToast();
 
 const OBSERVATION_MAX_LENGTH = 1000;
@@ -36,6 +37,15 @@ const additionalForm = reactive({
 });
 
 const additionalDocuments = ref([]);
+const editObservations = ref([]);
+const correctionNotes = ref('');
+
+const isEditMode = computed(() => route.name === 'solicitudes-prestamo-editar');
+const editNumber = computed(() => route.params.number);
+const pageTitle = computed(() => isEditMode.value ? 'Corregir Solicitud de Prestamo' : 'Solicitud de Prestamo');
+const pageSubtitle = computed(() => isEditMode.value
+    ? `Solicitud #${editNumber.value} - Atienda las observaciones registradas`
+    : 'Solicita documentos que ya se encuentran en custodia de la UGDA');
 
 const filteredDocuments = computed(() => {
     const term = search.value.trim().toLowerCase();
@@ -75,6 +85,11 @@ const canSubmit = computed(() =>
 );
 
 const goBack = () => {
+    if (isEditMode.value) {
+        router.push(`/solicitudes/prestamos/${editNumber.value}`);
+        return;
+    }
+
     router.push({
         path: '/solicitudes',
         query: { tab: 'prestamos' },
@@ -85,11 +100,37 @@ const fetchCatalog = async () => {
     loading.value = true;
 
     try {
-        const { data } = await axios.get('/api/loans/create/catalog');
+        const { data } = await axios.get('/api/loans/create/catalog', {
+            params: isEditMode.value ? { loan_number: editNumber.value } : {},
+        });
         requester.name = data.requester?.name ?? '';
         requester.unitName = data.requester?.unit_name ?? '';
         additionalForm.unit = requester.unitName;
         availableDocuments.value = data.documents ?? [];
+
+        if (isEditMode.value) {
+            const { data: editData } = await axios.get(`/api/loans/${editNumber.value}/edit-data`);
+            requester.name = editData.requester?.name ?? requester.name;
+            requester.unitName = editData.requester?.unit_name ?? requester.unitName;
+            additionalForm.unit = requester.unitName;
+            selectedSystemIds.value = (editData.system_documents ?? [])
+                .map((document) => Number(document.id))
+                .filter((id) => id > 0);
+            systemDocumentTypes.value = (editData.system_documents ?? []).reduce((types, document) => ({
+                ...types,
+                [document.id]: document.document_type ?? 'Copia',
+            }), {});
+            additionalDocuments.value = (editData.additional_documents ?? []).map((document) => ({
+                id: document.id,
+                name: document.name ?? '',
+                year: document.year ?? '',
+                quantity: document.quantity ?? '',
+                unit: document.unit ?? requester.unitName,
+                observation: document.observation ?? '',
+                documentType: document.document_type ?? 'Copia',
+            }));
+            editObservations.value = editData.observations ?? [];
+        }
     } catch (error) {
         toast.add({
             severity: 'error',
@@ -271,7 +312,7 @@ const submitLoanRequest = async () => {
     submitting.value = true;
 
     try {
-        const { data } = await axios.post('/api/loans', {
+        const payload = {
             requester_name: requester.name,
             unit_name: requester.unitName,
             system_documents: selectedSystemIds.value.map((id) => ({
@@ -286,11 +327,15 @@ const submitLoanRequest = async () => {
                 observation: document.observation,
                 document_type: document.documentType,
             })),
-        });
+            correction_notes: correctionNotes.value.trim(),
+        };
+        const { data } = isEditMode.value
+            ? await axios.put(`/api/loans/${editNumber.value}/resubmit-correction`, payload)
+            : await axios.post('/api/loans', payload);
 
         toast.add({
             severity: 'success',
-            summary: 'Solicitud enviada',
+            summary: isEditMode.value ? 'Solicitud corregida' : 'Solicitud enviada',
             detail: data.message,
             life: 3000,
         });
@@ -324,8 +369,8 @@ watch(showAdditionalForm, (isVisible) => {
                 <i class="pi pi-arrow-left"></i>
             </button>
             <div>
-                <h1 class="prestamo-title m-0">Solicitud de Prestamo</h1>
-                <span class="prestamo-subtitle">Solicita documentos que ya se encuentran en custodia de la UGDA</span>
+                <h1 class="prestamo-title m-0">{{ pageTitle }}</h1>
+                <span class="prestamo-subtitle">{{ pageSubtitle }}</span>
             </div>
         </div>
 
@@ -336,6 +381,22 @@ watch(showAdditionalForm, (isVisible) => {
                 <p>Esta solicitud es para documentos que ya fueron transferidos y se encuentran bajo custodia de la UGDA. El prestamo debe ser autorizado por el Director/Jefe y luego sera revisado por el personal de archivo.</p>
             </div>
         </div>
+
+        <section v-if="isEditMode && editObservations.length > 0" class="prestamo-observations">
+            <div class="prestamo-observations__head">
+                <i class="pi pi-eye"></i>
+                <div>
+                    <h2>Observaciones Registradas</h2>
+                    <p>Atienda las observaciones indicadas por UGDA antes de reenviar la solicitud.</p>
+                </div>
+            </div>
+            <div v-for="observation in editObservations" :key="`${observation.actor}-${observation.dateTime}`" class="prestamo-observation">
+                <strong>{{ observation.actor }} <span>{{ observation.dateTime }}</span></strong>
+                <p>{{ observation.message }}</p>
+            </div>
+            <label class="prestamo-label mt-3">Aclaraciones a UGDA (opcional)</label>
+            <textarea v-model="correctionNotes" rows="3" class="prestamo-textarea mt-2" :maxlength="OBSERVATION_MAX_LENGTH" placeholder="Indique como atendio las observaciones..."></textarea>
+        </section>
 
         <div v-if="loading" class="surface-card shadow-1 border-round-xl p-4 text-center text-gray-500">
             Cargando catalogo de documentos...
@@ -523,7 +584,7 @@ watch(showAdditionalForm, (isVisible) => {
             <div class="prestamo-actions">
                 <button type="button" class="prestamo-secondary" @click="goBack">Cancelar</button>
                 <button type="button" class="prestamo-primary" :disabled="!canSubmit" @click="openConfirm">
-                    Enviar Solicitud
+                    {{ isEditMode ? 'Reenviar Solicitud Corregida' : 'Enviar Solicitud' }}
                 </button>
             </div>
         </template>
@@ -596,7 +657,7 @@ watch(showAdditionalForm, (isVisible) => {
                 <div class="prestamo-confirm__footer">
                     <button type="button" class="prestamo-secondary" :disabled="submitting" @click="confirmVisible = false">Cancelar</button>
                     <button type="button" class="prestamo-primary" :disabled="submitting" @click="submitLoanRequest">
-                        {{ submitting ? 'Enviando...' : 'Confirmar y Enviar' }}
+                        {{ submitting ? (isEditMode ? 'Reenviando...' : 'Enviando...') : (isEditMode ? 'Confirmar y Reenviar' : 'Confirmar y Enviar') }}
                     </button>
                 </div>
             </div>
@@ -651,6 +712,65 @@ watch(showAdditionalForm, (isVisible) => {
     display: flex;
     gap: 0.85rem;
     padding: 1rem 1.1rem;
+}
+
+.prestamo-observations {
+    background: #fff4c7;
+    border: 1px solid #f4b942;
+    border-radius: 1rem;
+    padding: 1.25rem;
+}
+
+.prestamo-observations__head {
+    align-items: flex-start;
+    display: flex;
+    gap: 0.85rem;
+}
+
+.prestamo-observations__head > i {
+    align-items: center;
+    background: #f4b942;
+    border-radius: 0.75rem;
+    color: #fff;
+    display: inline-flex;
+    flex: 0 0 auto;
+    font-size: 1.15rem;
+    height: 2.5rem;
+    justify-content: center;
+    width: 2.5rem;
+}
+
+.prestamo-observations h2 {
+    color: #111827;
+    font-size: 1.25rem;
+    margin: 0;
+}
+
+.prestamo-observations__head p {
+    color: #6b4f00;
+    margin: 0.2rem 0 0;
+}
+
+.prestamo-observation {
+    background: #fff;
+    border-radius: 0.8rem;
+    margin-top: 0.85rem;
+    padding: 0.8rem 1rem;
+}
+
+.prestamo-observation strong {
+    color: #7c5700;
+    font-size: 0.9rem;
+}
+
+.prestamo-observation strong span {
+    font-weight: 400;
+    margin-left: 0.35rem;
+}
+
+.prestamo-observation p {
+    color: #1f2937;
+    margin: 0.35rem 0 0;
 }
 
 .prestamo-info p {

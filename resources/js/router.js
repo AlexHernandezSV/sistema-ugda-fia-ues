@@ -167,6 +167,12 @@ const routes = [
         component: SolicitudPrestamo
     },
 
+    { path: '/solicitudes/prestamos/:number/editar',
+        name: 'solicitudes-prestamo-editar',
+        meta: { title: 'Corregir Solicitud de Prestamo', allowedProfiles: ['Unidad Solicitante'] },
+        component: SolicitudPrestamo
+    },
+
     { path: '/solicitudes/prestamos/pendientes',
         name: 'solicitudes-prestamos-pendientes',
         meta: { title: 'Prestamos Pendientes', allowedProfiles: ['Director/Jefe de Unidad'] },

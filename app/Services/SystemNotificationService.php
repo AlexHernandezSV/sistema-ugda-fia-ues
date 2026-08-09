@@ -240,6 +240,23 @@ class SystemNotificationService
         ]);
     }
 
+    public function loanCorrectionSubmitted(Loan $loan, User $actor): void
+    {
+        $loan->loadMissing('unit');
+
+        $this->notifyUsers($this->ugdaUsers(), $actor, [
+            'type' => 'loan_correction_submitted',
+            'title' => 'Prestamo corregido',
+            'short_message' => 'Prestamo #' . $loan->number . ' fue corregido y reenviado.',
+            'body' => 'La unidad ' . ($loan->unit?->name ?? 'solicitante') . ' atendio las observaciones. Revise nuevamente la solicitud.',
+            'tone' => 'info',
+            'action_url' => '/solicitudes/prestamos/' . $loan->number,
+            'reference_type' => 'loan',
+            'reference_id' => $loan->id,
+            'reference_number' => $loan->number,
+        ]);
+    }
+
     public function loanSearchStarted(Loan $loan, User $actor): void
     {
         $this->notifyUsers([$loan->user_id], $actor, [

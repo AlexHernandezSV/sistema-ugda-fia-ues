@@ -10,6 +10,7 @@ use App\Models\TransferBox;
 use App\Models\TransferDocument;
 use App\Models\Unit;
 use App\Models\User;
+use App\Support\SignedPdfUrl;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -41,6 +42,28 @@ class RequestCatalogTest extends TestCase
             ])
             ->assertJsonPath('documents.0.title', 'Actas de Junta Directiva 2023')
             ->assertJsonPath('history.0.status', 'Creado');
+    }
+
+    public function test_ugda_can_download_the_loan_summary_sheet_after_registering_a_loan(): void
+    {
+        $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
+
+        $response = $this->actingAs($admin)->get(SignedPdfUrl::loanSummarySheet('PREST-007'));
+
+        $response->assertOk()
+            ->assertHeader('content-type', 'application/pdf')
+            ->assertSee('PREST-007', false)
+            ->assertSee('RECIBIDO POR', false)
+            ->assertSee('Firma', false);
+    }
+
+    public function test_requester_cannot_download_the_ugda_loan_summary_sheet(): void
+    {
+        $requester = User::where('email', 'unidad.solicitante@yopmail.com')->firstOrFail();
+
+        $this->actingAs($requester)
+            ->get(SignedPdfUrl::loanSummarySheet('PREST-007'))
+            ->assertNotFound();
     }
 
     public function test_ugda_cannot_register_a_loan_with_due_date_before_loan_date(): void
@@ -281,6 +304,87 @@ class RequestCatalogTest extends TestCase
 
         $this->assertTrue($codes->contains('EXP-GRAD-2024'));
         $this->assertTrue($codes->contains('ACTA-GRAD-2024'));
+    }
+
+    public function test_general_archive_returns_current_box_code_and_active_loan_status(): void
+    {
+        $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
+        $unit = $admin->units()->firstOrFail();
+        $authorizedStatus = RequestStatusCatalog::where('code', 'loan_auth_authorized')->firstOrFail();
+        $loanedStatus = RequestStatusCatalog::where('code', 'loan_status_loaned')->firstOrFail();
+        $transferStatus = RequestStatusCatalog::where('code', 'transfer_status_transferred')->firstOrFail();
+
+        $transfer = Transfer::create([
+            'code' => 'ARCHIVE-TEST-LOAN',
+            'user_id' => $admin->id,
+            'unit_id' => $unit->id,
+            'request_date' => now()->toDateString(),
+            'requested_at' => now(),
+            'status' => 'Aprobada',
+            'authorization_status_id' => null,
+            'workflow_status_id' => $transferStatus->id,
+            'completed_by_user_id' => $admin->id,
+            'completed_at' => now(),
+        ]);
+        $box = $transfer->boxes()->create([
+            'series_name' => 'Actas y Resoluciones',
+            'start_year' => 2026,
+            'end_year' => 2026,
+            'box_number' => 7,
+            'title' => 'Caja #007',
+        ]);
+        $document = $box->documents()->create([
+            'code' => 'ARCHIVE-DOCUMENT-LOAN',
+            'name' => 'Documento actualmente prestado',
+            'series_label' => 'Actas y Resoluciones',
+            'support_type' => 'Fisico',
+            'year_label' => '2026',
+            'sort_order' => 1,
+        ]);
+        $loan = Loan::create([
+            'number' => 'ARCHIVE-LOAN-TEST',
+            'user_id' => $admin->id,
+            'unit_id' => $unit->id,
+            'requested_at' => now(),
+            'authorization_status_id' => $authorizedStatus->id,
+            'workflow_status_id' => $loanedStatus->id,
+        ]);
+        $loanDocument = $loan->documents()->create([
+            'document_kind' => 'system',
+            'group_title' => 'Documentos del Sistema (1)',
+            'title' => $document->name,
+            'series_label' => $document->series_label,
+            'box_code' => $box->boxCode($transfer->code),
+            'year_label' => $document->year_label,
+            'document_type_label' => 'Original',
+            'selected_for_loan' => true,
+            'returned' => false,
+            'sort_order' => 1,
+        ]);
+        $loan->events()->create([
+            'status_catalog_id' => $loanedStatus->id,
+            'actor_user_id' => $admin->id,
+            'event_type' => 'status',
+            'title' => 'Creado',
+            'description' => 'Solicitud de prueba.',
+            'context' => [
+                'document_map' => [[
+                    'loan_document_id' => $loanDocument->id,
+                    'transfer_document_id' => $document->id,
+                ]],
+            ],
+            'occurred_at' => now(),
+        ]);
+
+        $response = $this->actingAs($admin)->getJson('/api/archive/documents?q=ARCHIVE-DOCUMENT-LOAN');
+        $response->assertOk();
+
+        $result = collect($response->json('results'))->firstWhere('id', $document->id);
+
+        $this->assertNotNull($result);
+        $this->assertSame('C-ARCHIVE-TEST-LOAN-007', $result['box']['code']);
+        $this->assertTrue($result['is_loaned']);
+        $this->assertSame('Prestado', $result['loan']['status']);
     }
 
     public function test_general_archive_is_not_available_to_requester_profile(): void

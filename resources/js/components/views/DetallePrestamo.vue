@@ -3,12 +3,20 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 import { useToast } from 'primevue/usetoast';
+import DocumentPreviewDialog from '../shared/DocumentPreviewDialog.vue';
 
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
 
 const OBSERVATION_MAX_LENGTH = 1000;
+
+const today = () => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+
+    return date;
+};
 
 const loan = ref(null);
 const loading = ref(true);
@@ -23,10 +31,13 @@ const finishSearchSubmitting = ref(false);
 const documentModificationsSubmitting = ref(false);
 const decisionSubmitting = ref(false);
 const currentDecisionAction = ref(null);
+const documentPreviewVisible = ref(false);
+const documentPreviewTitle = ref('Documento PDF');
+const documentPreviewSource = ref(null);
 
 const loanForm = reactive({
     selectedIds: [],
-    loanDate: null,
+    loanDate: today(),
     dueDate: null,
     receivedBy: '',
     observations: '',
@@ -65,9 +76,17 @@ const goBack = () => {
     });
 };
 
+const editObservedLoan = () => {
+    if (!loan.value?.observationsRegistered?.canCorrect) {
+        return;
+    }
+
+    router.push(`/solicitudes/prestamos/${loan.value.number}/editar`);
+};
+
 const resetLoanForm = () => {
     loanForm.selectedIds = [];
-    loanForm.loanDate = null;
+    loanForm.loanDate = today();
     loanForm.dueDate = null;
     loanForm.receivedBy = '';
     loanForm.observations = '';
@@ -157,6 +176,20 @@ const showError = (message) => {
         detail: message,
         life: 3600,
     });
+};
+
+const openLoanSummarySheetPreview = (url = loan.value?.loanSummarySheetCard?.url) => {
+    if (!url) {
+        return;
+    }
+
+    documentPreviewTitle.value = `Hoja de préstamo #${loan.value?.number ?? ''}`.trim();
+    documentPreviewSource.value = { url };
+    documentPreviewVisible.value = true;
+};
+
+const clearDocumentPreview = () => {
+    documentPreviewSource.value = null;
 };
 
 const validateObservationLength = (value, label = 'Las observaciones') => {
@@ -533,6 +566,7 @@ const submitLoanRegistration = async () => {
         });
         loanModalVisible.value = false;
         await fetchDetail();
+        openLoanSummarySheetPreview(data.summarySheetUrl);
     } catch (error) {
         showError(error.response?.data?.message || 'No se pudo registrar el prestamo.');
     }
@@ -712,6 +746,13 @@ watch(
                     <p class="detalle-observation-card__message m-0">{{ item.message }}</p>
                 </div>
             </div>
+
+            <div v-if="loan.observationsRegistered.canCorrect" class="detalle-banner__actions">
+                <button type="button" class="detalle-action detalle-action--warning" @click="editObservedLoan">
+                    <i class="pi pi-file-edit"></i>
+                    <span>{{ loan.observationsRegistered.actionLabel }}</span>
+                </button>
+            </div>
         </div>
 
         <div v-if="loan.workflowNotice" class="detalle-notice">
@@ -821,6 +862,7 @@ watch(
                     </ul>
                 </div>
             </div>
+
         </div>
 
         <div v-if="loan.loanSummary" class="detalle-banner detalle-banner--success detalle-loan-summary-banner">
@@ -879,6 +921,26 @@ watch(
                 <div class="detalle-divider"></div>
                 <div class="detalle-small-label mb-2">Observaciones</div>
                 <p class="m-0 detalle-note-text">{{ loan.loanSummary.observations }}</p>
+            </div>
+        </div>
+
+        <div v-if="loan.loanSummarySheetCard" class="surface-card shadow-1 detalle-loan-sheet-card">
+            <div class="detalle-loan-sheet-card__content">
+                <div class="detalle-loan-sheet-card__main">
+                    <div class="detalle-loan-sheet-card__icon">
+                        <i class="pi pi-file-pdf"></i>
+                    </div>
+                    <div>
+                        <h3>{{ loan.loanSummarySheetCard.title }}</h3>
+                        <p>{{ loan.loanSummarySheetCard.description }}</p>
+                    </div>
+                </div>
+                <Button
+                    :label="loan.loanSummarySheetCard.buttonLabel"
+                    icon="pi pi-eye"
+                    class="detalle-loan-sheet-card__button"
+                    @click="openLoanSummarySheetPreview()"
+                />
             </div>
         </div>
 
@@ -1220,6 +1282,13 @@ watch(
             </div>
         </div>
     </div>
+
+    <DocumentPreviewDialog
+        v-model:visible="documentPreviewVisible"
+        :title="documentPreviewTitle"
+        :source="documentPreviewSource"
+        @hide="clearDocumentPreview"
+    />
 
     <Dialog
         v-model:visible="searchStartModalVisible"
@@ -2261,6 +2330,72 @@ watch(
     padding: 0.9rem 1rem;
 }
 
+.detalle-loan-sheet-card {
+    background: #fff7d6;
+    border: 2px solid #e0a619;
+    border-radius: 8px;
+    box-shadow: none;
+    overflow: hidden;
+}
+
+.detalle-loan-sheet-card__content {
+    align-items: center;
+    display: flex;
+    gap: 1.5rem;
+    justify-content: space-between;
+    padding: 1.35rem 1.5rem;
+}
+
+.detalle-loan-sheet-card__main {
+    align-items: center;
+    display: flex;
+    gap: 1rem;
+    min-width: 0;
+}
+
+.detalle-loan-sheet-card__icon {
+    align-items: center;
+    background: #d89614;
+    border-radius: 8px;
+    color: #ffffff;
+    display: inline-flex;
+    flex-shrink: 0;
+    font-size: 1.35rem;
+    height: 3rem;
+    justify-content: center;
+    width: 3rem;
+}
+
+.detalle-loan-sheet-card h3 {
+    color: #3d2a05;
+    font-size: 1.12rem;
+    font-weight: 800;
+    margin: 0;
+}
+
+.detalle-loan-sheet-card p {
+    color: #5d480f;
+    font-size: 0.95rem;
+    line-height: 1.45;
+    margin: 0.35rem 0 0;
+}
+
+.detalle-loan-sheet-card__button {
+    background: #b7790b !important;
+    border: 1px solid #b7790b !important;
+    border-radius: 8px;
+    color: #ffffff !important;
+    flex-shrink: 0;
+    font-weight: 800;
+    min-height: 2.8rem;
+    min-width: 10.5rem;
+}
+
+.detalle-loan-sheet-card__button:hover:not(:disabled) {
+    background: #8f5c06 !important;
+    border-color: #8f5c06 !important;
+}
+
 .detalle-loan-summary-banner .detalle-banner__title {
     color: #004d2a;
 }
@@ -2526,6 +2661,10 @@ watch(
 
 .detalle-document-type--success {
     color: #0c8a66;
+}
+
+.detalle-banner__actions {
+    margin-top: 15px;
 }
 
 .detalle-actions {
@@ -3287,6 +3426,18 @@ watch(
     }
 
     .detalle-document-modifications__button {
+        width: 100%;
+    }
+
+    .detalle-loan-sheet-card__content {
+        align-items: stretch;
+        flex-direction: column;
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    .detalle-loan-sheet-card__button {
+        min-width: 0;
         width: 100%;
     }
 }

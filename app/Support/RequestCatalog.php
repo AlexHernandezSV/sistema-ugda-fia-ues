@@ -454,6 +454,9 @@ class RequestCatalog
             && $workflowCode === 'loan_status_pending'
             && $viewerProfile === 'Director/Jefe de Unidad'
             && in_array($loan->unit_id, $viewerUnitIds, true);
+        $canCorrectObserved = $workflowCode === 'loan_status_observed'
+            && $authCode === 'loan_auth_authorized'
+            && self::viewerCanCorrectObservedLoan($viewer, $loan);
 
         return [
             'number' => $loan->number,
@@ -492,6 +495,8 @@ class RequestCatalog
                     'count' => $observations->count(),
                     'title' => 'Observaciones Registradas',
                     'description' => 'Esta solicitud tiene ' . $observations->count() . ' observación(es) registrada(s)',
+                    'canCorrect' => $canCorrectObserved,
+                    'actionLabel' => 'Editar solicitud y corregir observaciones',
                     'items' => $observations->map(fn ($event) => [
                         'actor' => self::eventActorName($event),
                         'dateTime' => self::formatDateTime($event->occurred_at),
@@ -517,6 +522,14 @@ class RequestCatalog
             'loanSummary' => $workflowCode === 'loan_status_loaned'
                 ? self::buildLoanSummary($loan)
                 : null,
+            'loanSummarySheetCard' => self::viewerCanViewLoanSummarySheet($viewer, $loan)
+                ? [
+                    'title' => 'Hoja de préstamo',
+                    'description' => 'Imprima esta hoja desde UGDA para obtener la firma de la persona que recibe los documentos.',
+                    'buttonLabel' => 'Visualizar PDF',
+                    'url' => SignedPdfUrl::loanSummarySheet($loan->number),
+                ]
+                : null,
             'returnSummary' => $workflowCode === 'loan_status_returned'
                 ? self::buildLoanReturnSummary($loan)
                 : null,
@@ -527,6 +540,48 @@ class RequestCatalog
             'documentModifications' => self::buildLoanDocumentModificationsConfig($loan, $viewer),
             'returnRegistration' => $isManage ? self::buildReturnRegistrationConfig($loan) : null,
             'history' => self::mapHistory($loan->events),
+        ];
+    }
+
+    public static function loanSummarySheet(string $number, ?User $viewer = null): ?array
+    {
+        $loan = Loan::query()
+            ->with([
+                'requester.person',
+                'unit',
+                'latestDispatch.deliveredBy.person',
+                'latestDispatch.items.document',
+            ])
+            ->where('number', $number)
+            ->first();
+
+        if ($loan === null || !self::viewerCanViewLoanSummarySheet($viewer, $loan)) {
+            return null;
+        }
+
+        $dispatch = $loan->latestDispatch;
+
+        return [
+            'number' => $loan->number,
+            'requestedAt' => self::formatDateTime($loan->requested_at) ?: 'N/D',
+            'unit' => $loan->unit?->name ?: 'N/D',
+            'applicant' => self::userDisplayName($loan->requester) ?: 'N/D',
+            'loanDate' => self::formatDate($dispatch->loan_date) ?: 'N/D',
+            'dueDate' => self::formatDate($dispatch->due_date) ?: 'N/D',
+            'receivedBy' => $dispatch->received_by_name ?: 'N/D',
+            'deliveredBy' => self::userDisplayName($dispatch->deliveredBy) ?: 'N/D',
+            'observations' => $dispatch->observations ?: 'Sin observaciones.',
+            'totalDocuments' => $dispatch->items->count(),
+            'documents' => $dispatch->items
+                ->map(fn ($item) => [
+                    'title' => $item->document?->title ?: 'N/D',
+                    'series' => $item->document?->series_label ?: 'N/D',
+                    'box' => $item->document?->box_code ?: 'N/D',
+                    'year' => $item->document?->year_label ?: 'N/D',
+                    'documentType' => $item->document?->document_type_label ?: 'N/D',
+                ])
+                ->values()
+                ->all(),
         ];
     }
 
@@ -1333,6 +1388,14 @@ class RequestCatalog
         return in_array($viewer->activeProfile()?->name, ['Unidad Solicitante', 'Director/Jefe de Unidad'], true);
     }
 
+    private static function viewerCanViewLoanSummarySheet(?User $viewer, ?Loan $loan): bool
+    {
+        return $loan !== null
+            && self::viewerCanManageUgda($viewer)
+            && $loan->workflowStatus?->code === 'loan_status_loaned'
+            && $loan->latestDispatch !== null;
+    }
+
     private static function viewerUnitIds(?User $viewer): array
     {
         return $viewer
@@ -1382,6 +1445,15 @@ class RequestCatalog
         return $viewer->units()
             ->where('units.id', $transfer->unit_id)
             ->exists();
+    }
+
+    private static function viewerCanCorrectObservedLoan(?User $viewer, Loan $loan): bool
+    {
+        if ($viewer?->activeProfile()?->name !== 'Unidad Solicitante') {
+            return false;
+        }
+
+        return self::viewerCanAccessRequestUnit($viewer, $loan->unit_id);
     }
 
     private static function userDisplayName(?User $user): ?string

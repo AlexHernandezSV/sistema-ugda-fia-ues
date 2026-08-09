@@ -35,4 +35,14 @@ class SignedPdfUrl
             false
         );
     }
+
+    public static function loanSummarySheet(string $number): string
+    {
+        return URL::temporarySignedRoute(
+            'loans.summary-sheet',
+            now()->addMinutes(self::PREVIEW_TTL_MINUTES),
+            ['number' => $number],
+            false
+        );
+    }
 }

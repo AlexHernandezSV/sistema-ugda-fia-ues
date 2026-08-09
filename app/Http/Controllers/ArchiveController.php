@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\DocumentarySeries;
+use App\Models\LoanDocument;
 use App\Models\PhysicalLocationShelf;
 use App\Models\RequestStatusCatalog;
 use App\Models\Transfer;
@@ -786,11 +787,12 @@ class ArchiveController extends Controller
             }
 
             $resultsCount = (clone $resultsQuery)->count();
+            $loanedDocuments = $this->loanedDocumentMap();
             $results = $resultsQuery
                 ->orderBy('transfer_box_documents.name')
                 ->limit(100)
                 ->get()
-                ->map(fn (TransferDocument $document) => $this->mapDocument($document))
+                ->map(fn (TransferDocument $document) => $this->mapDocument($document, $loanedDocuments))
                 ->values();
 
             return response()->json([
@@ -1050,11 +1052,13 @@ class ArchiveController extends Controller
         }
     }
 
-    private function mapDocument(TransferDocument $document): array
+    private function mapDocument(TransferDocument $document, array $loanedDocuments = []): array
     {
         $box = $document->box;
         $transfer = $box?->transfer;
         $unit = $transfer?->unit;
+        $boxCode = $box?->boxCode($transfer?->code);
+        $loan = $loanedDocuments[(int) $document->id] ?? null;
         $hasDigitalFile = in_array($document->support_type, ['Digital', 'Mixto'], true)
             && !empty($document->digital_file_name);
         $boxNumber = $box?->box_number !== null
@@ -1075,6 +1079,8 @@ class ArchiveController extends Controller
             'reserved_at' => optional($document->reserved_at)->toDateTimeString(),
             'reserved_at_label' => optional($document->reserved_at)->format('d/m/Y H:i'),
             'reserved_by' => $this->formatUserName($document->reservedBy),
+            'is_loaned' => $loan !== null,
+            'loan' => $loan,
             'digital_available' => $hasDigitalFile,
             'digital_file' => $hasDigitalFile ? $document->digital_file_name : null,
             'digital_url' => $hasDigitalFile && $transfer?->code && $document->code
@@ -1083,6 +1089,7 @@ class ArchiveController extends Controller
             'box' => [
                 'id' => $box?->id,
                 'number' => $boxNumber,
+                'code' => $boxCode,
                 'title' => $box?->title,
                 'period' => $box?->period_label,
                 'start_year' => $box?->start_year,
@@ -1108,6 +1115,38 @@ class ArchiveController extends Controller
                 'responsible' => $this->formatUserName($transfer?->completedBy) ?: $this->formatUserName($transfer?->requester),
             ],
         ];
+    }
+
+    private function loanedDocumentMap(): array
+    {
+        return LoanDocument::query()
+            ->with(['loan.events'])
+            ->where('selected_for_loan', true)
+            ->where('returned', false)
+            ->get()
+            ->reduce(function (array $loanedDocuments, LoanDocument $loanDocument): array {
+                $documentMapEvent = $loanDocument->loan?->events
+                    ->first(fn ($event) => is_array($event->context) && isset($event->context['document_map']));
+
+                foreach ($documentMapEvent?->context['document_map'] ?? [] as $mapping) {
+                    if ((int) ($mapping['loan_document_id'] ?? 0) !== (int) $loanDocument->id) {
+                        continue;
+                    }
+
+                    $transferDocumentId = (int) ($mapping['transfer_document_id'] ?? 0);
+
+                    if ($transferDocumentId > 0) {
+                        $loanedDocuments[$transferDocumentId] = [
+                            'number' => $loanDocument->loan?->number,
+                            'status' => 'Prestado',
+                        ];
+                    }
+
+                    break;
+                }
+
+                return $loanedDocuments;
+            }, []);
     }
 
     private function formatUserName(?User $user): ?string

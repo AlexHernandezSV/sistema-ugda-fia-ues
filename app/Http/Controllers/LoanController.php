@@ -19,23 +19,49 @@ class LoanController extends Controller
 {
     public function createCatalog(Request $request): JsonResponse
     {
-        if (!$this->canRequesterCreate($request)) {
+        $editNumber = trim($request->string('loan_number')->toString());
+
+        if (!$this->canRequesterCreate($request)
+            && ($editNumber === '' || !$this->canRequesterCorrectCatalog($request))) {
             return response()->json([
                 'message' => 'Solo la unidad solicitante puede crear solicitudes de prestamo.',
             ], 403);
         }
 
         $user = $request->user()->load(['person', 'units']);
-        $activeUnit = $user->units
+        $catalogUser = $user;
+
+        if ($editNumber !== '') {
+            $editingLoan = Loan::query()
+                ->with(['authorizationStatus', 'workflowStatus', 'requester.person', 'unit'])
+                ->where('number', $editNumber)
+                ->first();
+
+            if ($editingLoan === null) {
+                return response()->json(['message' => 'Prestamo no encontrado.'], 404);
+            }
+
+            if (!$this->canRequesterCorrectObserved($request, $editingLoan)
+                || $editingLoan->authorizationStatus?->code !== 'loan_auth_authorized'
+                || $editingLoan->workflowStatus?->code !== 'loan_status_observed') {
+                return response()->json([
+                    'message' => 'Este prestamo no esta disponible para correccion.',
+                ], 403);
+            }
+
+            $catalogUser = $editingLoan->requester?->load(['person', 'units']) ?? $user;
+        }
+
+        $activeUnit = $catalogUser->units
             ->first(fn ($unit) => (bool) ($unit->pivot->is_active ?? false))
-            ?? $user->units->first();
+            ?? $catalogUser->units->first();
         $loanedOriginalDocumentIds = $this->loanedOriginalDocumentIds();
 
         $documents = TransferDocument::query()
             ->with(['box.transfer.unit', 'box.transfer.workflowStatus'])
             ->where('is_reserved', false)
-            ->whereHas('box.transfer', function ($query) use ($user) {
-                $query->where('user_id', $user->id)
+            ->whereHas('box.transfer', function ($query) use ($catalogUser) {
+                $query->where('user_id', $catalogUser->id)
                     ->whereHas('workflowStatus', fn ($statusQuery) => $statusQuery->where('code', 'transfer_status_transferred'));
             })
             ->orderBy('name')
@@ -57,7 +83,7 @@ class LoanController extends Controller
 
         return response()->json([
             'requester' => [
-                'name' => $this->userName($user),
+                'name' => $this->userName($catalogUser),
                 'unit_id' => $activeUnit?->id,
                 'unit_name' => $activeUnit?->name,
             ],
@@ -253,6 +279,270 @@ class LoanController extends Controller
             return response()->json([
                 'message' => 'No se pudo registrar la solicitud de prestamo.',
             ], 500);
+        }
+    }
+
+    public function editData(Request $request, string $number): JsonResponse
+    {
+        try {
+            $loan = Loan::query()
+                ->with(['authorizationStatus', 'workflowStatus', 'requester.person', 'unit', 'documents', 'events.actor.person'])
+                ->where('number', $number)
+                ->first();
+
+            if ($loan === null) {
+                return response()->json(['message' => 'Prestamo no encontrado.'], 404);
+            }
+
+            if (!$this->canRequesterCorrectObserved($request, $loan)) {
+                return response()->json([
+                    'message' => 'Solo la unidad solicitante puede editar un prestamo observado de su unidad.',
+                ], 403);
+            }
+
+            if ($loan->authorizationStatus?->code !== 'loan_auth_authorized'
+                || $loan->workflowStatus?->code !== 'loan_status_observed') {
+                return response()->json([
+                    'message' => 'Este prestamo no esta en un estado observable para correccion.',
+                ], 422);
+            }
+
+            $documentMap = collect($loan->events)
+                ->first(fn ($event) => is_array($event->context) && isset($event->context['document_map']))?->context['document_map'] ?? [];
+            $transferDocumentIds = collect($documentMap)
+                ->mapWithKeys(fn (array $item) => [(int) ($item['loan_document_id'] ?? 0) => (int) ($item['transfer_document_id'] ?? 0)]);
+
+            return response()->json([
+                'requester' => [
+                    'name' => $this->userName($loan->requester),
+                    'unit_name' => $loan->unit?->name,
+                ],
+                'system_documents' => $loan->documents
+                    ->where('document_kind', 'system')
+                    ->map(fn (LoanDocument $document) => [
+                        'id' => $transferDocumentIds->get($document->id),
+                        'document_type' => $document->document_type_label ?: 'Copia',
+                    ])
+                    ->filter(fn (array $document) => $document['id'] > 0)
+                    ->values()
+                    ->all(),
+                'additional_documents' => $loan->documents
+                    ->where('document_kind', 'additional')
+                    ->map(fn (LoanDocument $document, $index) => [
+                        'id' => 'existing-' . $document->id,
+                        'name' => $document->title,
+                        'year' => $document->year_label,
+                        'quantity' => $document->quantity_label,
+                        'unit' => $document->unit_name_snapshot ?: $loan->unit?->name,
+                        'observation' => $document->note,
+                        'document_type' => $document->document_type_label ?: 'Copia',
+                    ])
+                    ->values()
+                    ->all(),
+                'observations' => $loan->events
+                    ->where('event_type', 'observation')
+                    ->sortBy('occurred_at')
+                    ->map(fn ($event) => [
+                        'actor' => $this->userName($event->actor) ?: ($event->actor_name_snapshot ?: 'UGDA'),
+                        'dateTime' => optional($event->occurred_at)->format('d/m/Y H:i'),
+                        'message' => $event->description,
+                    ])
+                    ->values()
+                    ->all(),
+            ]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudo cargar el prestamo para edicion.',
+            ], 500);
+        }
+    }
+
+    public function resubmitCorrection(Request $request, string $number): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'requester_name' => ['required', 'string', 'max:255'],
+            'unit_name' => ['required', 'string', 'max:255'],
+            'system_documents' => ['nullable', 'array'],
+            'system_documents.*.id' => ['required_with:system_documents', 'integer'],
+            'system_documents.*.document_type' => ['required_with:system_documents', 'in:Copia,Original'],
+            'additional_documents' => ['nullable', 'array'],
+            'additional_documents.*.name' => ['required_with:additional_documents', 'string', 'max:255'],
+            'additional_documents.*.year' => ['required_with:additional_documents', 'integer', 'min:1900', 'max:' . now()->year],
+            'additional_documents.*.quantity' => ['required_with:additional_documents', 'string', 'max:120'],
+            'additional_documents.*.unit' => ['required_with:additional_documents', 'string', 'max:255'],
+            'additional_documents.*.observation' => ['required_with:additional_documents', 'string', 'max:1000'],
+            'additional_documents.*.document_type' => ['required_with:additional_documents', 'in:Copia,Original'],
+            'correction_notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Los datos de la correccion no son validos.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $user = $request->user()->load('units');
+            $loan = Loan::query()
+                ->with(['authorizationStatus', 'workflowStatus', 'unit'])
+                ->where('number', $number)
+                ->first();
+
+            if ($loan === null) {
+                return response()->json(['message' => 'Prestamo no encontrado.'], 404);
+            }
+
+            if (!$this->canRequesterCorrectObserved($request, $loan)) {
+                return response()->json([
+                    'message' => 'Solo la unidad solicitante puede corregir este prestamo.',
+                ], 403);
+            }
+
+            if ($loan->authorizationStatus?->code !== 'loan_auth_authorized'
+                || $loan->workflowStatus?->code !== 'loan_status_observed') {
+                return response()->json([
+                    'message' => 'Este prestamo no esta en un estado observable para correccion.',
+                ], 422);
+            }
+
+            $activeUnit = $user->units()
+                ->wherePivot('is_active', true)
+                ->where('units.id', $loan->unit_id)
+                ->first()
+                ?? $user->units()->where('units.id', $loan->unit_id)->first();
+
+            if ($activeUnit === null) {
+                return response()->json([
+                    'message' => 'El usuario no tiene asignada la unidad solicitante de este prestamo.',
+                ], 403);
+            }
+
+            $systemDocuments = collect($request->input('system_documents', []))
+                ->filter(fn ($document) => filled($document['id'] ?? null))
+                ->values();
+            $selectedIds = $systemDocuments->pluck('id')->map(fn ($id) => (int) $id)->filter()->unique()->values();
+            $systemDocumentTypes = $systemDocuments->mapWithKeys(fn ($document) => [(int) $document['id'] => $document['document_type'] ?? 'Copia']);
+            $additionalDocuments = collect($request->input('additional_documents', []))
+                ->filter(fn ($document) => filled($document['name'] ?? null))
+                ->values();
+
+            if ($selectedIds->isEmpty() && $additionalDocuments->isEmpty()) {
+                return response()->json(['message' => 'Debe seleccionar o agregar al menos un documento.'], 422);
+            }
+
+            $additionalDocuments = $additionalDocuments
+                ->map(fn (array $document) => array_merge($document, ['unit' => $activeUnit->name]))
+                ->values();
+
+            $transferDocuments = TransferDocument::query()
+                ->with(['box.transfer.unit'])
+                ->whereIn('id', $selectedIds)
+                ->where('is_reserved', false)
+                ->whereHas('box.transfer', function ($query) use ($loan) {
+                    $query->where('user_id', $loan->user_id)
+                        ->whereHas('workflowStatus', fn ($statusQuery) => $statusQuery->where('code', 'transfer_status_transferred'));
+                })
+                ->get();
+
+            if ($transferDocuments->count() !== $selectedIds->count()) {
+                return response()->json(['message' => 'Uno o mas documentos seleccionados no estan disponibles para prestamo.'], 422);
+            }
+
+            $loanedOriginalDocumentIds = $this->loanedOriginalDocumentIds();
+            if ($transferDocuments->contains(fn (TransferDocument $document) => isset($loanedOriginalDocumentIds[$document->id]))) {
+                return response()->json([
+                    'message' => 'Los documentos prestados como Original no estan disponibles para una nueva solicitud.',
+                ], 422);
+            }
+
+            DB::transaction(function () use ($request, $loan, $transferDocuments, $systemDocumentTypes, $additionalDocuments) {
+                $statusPending = $this->statusId('loan_status_pending');
+                $requestedAt = now();
+
+                $loan->update([
+                    'requested_at' => $requestedAt,
+                    'workflow_status_id' => $statusPending,
+                    'search_status_id' => null,
+                    'search_started_by_user_id' => null,
+                    'search_started_at' => null,
+                    'search_completed_by_user_id' => null,
+                    'search_completed_at' => null,
+                    'search_comments' => null,
+                    'view_mode' => 'manage',
+                ]);
+
+                $loan->documents()->delete();
+                $documentMap = [];
+
+                foreach ($transferDocuments->values() as $index => $document) {
+                    $documentType = $systemDocumentTypes->get($document->id, 'Copia');
+                    $loanDocument = $loan->documents()->create([
+                        'document_kind' => 'system',
+                        'group_title' => 'Documentos del Sistema (' . $transferDocuments->count() . ')',
+                        'title' => $document->name,
+                        'series_label' => $document->series_label,
+                        'box_code' => $document->box?->boxCode($document->box?->transfer?->code),
+                        'year_label' => $document->year_label,
+                        'unit_name_snapshot' => $document->box?->transfer?->unit?->name,
+                        'document_type_label' => $documentType,
+                        'document_type_tone' => $documentType === 'Original' ? 'warning' : 'info',
+                        'sort_order' => $index + 1,
+                    ]);
+
+                    $documentMap[] = [
+                        'loan_document_id' => $loanDocument->id,
+                        'transfer_document_id' => $document->id,
+                    ];
+                }
+
+                foreach ($additionalDocuments as $index => $document) {
+                    $documentType = $document['document_type'] ?? 'Copia';
+                    $loan->documents()->create([
+                        'document_kind' => 'additional',
+                        'group_title' => 'Documentos Adicionales (' . $additionalDocuments->count() . ')',
+                        'title' => $document['name'],
+                        'year_label' => $document['year'] ?? null,
+                        'unit_name_snapshot' => $document['unit'] ?? null,
+                        'document_type_label' => $documentType,
+                        'document_type_tone' => $documentType === 'Original' ? 'warning' : 'info',
+                        'quantity_label' => $document['quantity'] ?? null,
+                        'note' => $document['observation'] ?? null,
+                        'sort_order' => $transferDocuments->count() + $index + 1,
+                    ]);
+                }
+
+                $correctionNotes = trim($request->string('correction_notes')->toString());
+                $loan->events()->create([
+                    'status_catalog_id' => $statusPending,
+                    'actor_user_id' => $request->user()->id,
+                    'event_type' => 'status',
+                    'title' => 'Corregido y reenviado',
+                    'description' => 'Solicitud corregida por la unidad solicitante y reenviada a UGDA para revision.'
+                        . ($correctionNotes !== '' ? ' Aclaraciones: ' . $correctionNotes : ''),
+                    'context' => [
+                        'previous_status' => 'loan_status_observed',
+                        'correction_notes' => $correctionNotes !== '' ? $correctionNotes : null,
+                        'system_documents' => $transferDocuments->count(),
+                        'additional_documents' => $additionalDocuments->count(),
+                        'document_map' => $documentMap,
+                    ],
+                    'occurred_at' => now(),
+                ]);
+            });
+
+            app(SystemNotificationService::class)->loanCorrectionSubmitted($loan->fresh(['unit']), $request->user());
+
+            return response()->json([
+                'message' => 'La solicitud de prestamo fue corregida y reenviada a UGDA para revision.',
+                'number' => $loan->number,
+            ]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json(['message' => 'No se pudo guardar la correccion del prestamo.'], 500);
         }
     }
 
@@ -627,6 +917,7 @@ class LoanController extends Controller
 
             return response()->json([
                 'message' => 'El prestamo #' . $number . ' fue registrado por UGDA y entregado a la Unidad solicitante. Fecha de devolución: ' . $request->string('due_date')->toString() . '.',
+                'summarySheetUrl' => \App\Support\SignedPdfUrl::loanSummarySheet($number),
             ]);
         } catch (Throwable $exception) {
             report($exception);
@@ -996,6 +1287,20 @@ class LoanController extends Controller
     private function canRequesterCreate(Request $request): bool
     {
         return $request->user()?->activeProfile()?->name === 'Unidad Solicitante';
+    }
+
+    private function canRequesterCorrectCatalog(Request $request): bool
+    {
+        return $request->user()?->activeProfile()?->name === 'Unidad Solicitante';
+    }
+
+    private function canRequesterCorrectObserved(Request $request, Loan $loan): bool
+    {
+        if (!$this->canRequesterCorrectCatalog($request)) {
+            return false;
+        }
+
+        return in_array((int) $loan->unit_id, $this->userUnitIds($request), true);
     }
 
     private function canUnitDirectorAuthorize(Request $request): bool

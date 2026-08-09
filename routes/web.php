@@ -200,6 +200,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/api/loans/create/catalog', [LoanController::class, 'createCatalog']);
     Route::get('/api/loans/pending-authorization', [LoanController::class, 'pendingAuthorization']);
     Route::post('/api/loans', [LoanController::class, 'store']);
+    Route::get('/api/loans/{number}/edit-data', [LoanController::class, 'editData']);
+    Route::put('/api/loans/{number}/resubmit-correction', [LoanController::class, 'resubmitCorrection']);
     Route::get('/api/loans/{number}', [RequestCatalogController::class, 'showLoan']);
     Route::post('/api/loans/{number}/unit-authorize', [LoanController::class, 'authorizeByUnit']);
     Route::post('/api/loans/{number}/unit-deny', [LoanController::class, 'denyByUnit']);
@@ -209,6 +211,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/api/loans/{number}/search/start', [LoanController::class, 'startSearch']);
     Route::post('/api/loans/{number}/search/finish', [LoanController::class, 'finishSearch']);
     Route::post('/api/loans/{number}/register', [LoanController::class, 'registerLoan']);
+    Route::get('/api/loans/{number}/summary-sheet', [RequestCatalogController::class, 'downloadLoanSummarySheet'])
+        ->middleware('signed:relative')
+        ->name('loans.summary-sheet');
     Route::post('/api/loans/{number}/document-modifications', [LoanController::class, 'registerDocumentModifications']);
     Route::post('/api/loans/{number}/return', [LoanController::class, 'registerReturn']);
 });

@@ -189,6 +189,32 @@ class RequestCatalogController extends Controller
         }
     }
 
+    public function downloadLoanSummarySheet(Request $request, string $number)
+    {
+        try {
+            $summary = RequestCatalog::loanSummarySheet($number, $request->user());
+
+            if ($summary === null) {
+                return response()->json([
+                    'message' => 'Hoja de préstamo no disponible.',
+                ], 404);
+            }
+
+            $fileName = 'hoja-prestamo-' . $number . '.pdf';
+
+            return response($this->buildLoanSummarySheetPdf($summary), 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="' . addslashes($fileName) . '"',
+            ]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudo generar la hoja de préstamo.',
+            ], 500);
+        }
+    }
+
     public function dashboard(Request $request)
     {
         try {
@@ -557,6 +583,230 @@ class RequestCatalogController extends Controller
         $noteLines = $wrapText($finalNote, $pageWidth - ($margin * 2) - 24, 8);
         $noteHeight = 26 + (count($noteLines) * 11);
 
+        $drawRect($margin, $y, $pageWidth - ($margin * 2), $noteHeight, '0.86 0.55 0.08', '1 0.97 0.84', 0.8);
+        $drawText($margin + 10, $y + 16, 'IMPORTANTE:', 9, 'F2', '0.54 0.32 0.03');
+
+        foreach ($noteLines as $index => $line) {
+            $drawText($margin + 10, $y + 32 + ($index * 11), $line, 8, 'F1', '0.27 0.20 0.08');
+        }
+
+        $pages[] = $content;
+
+        return $this->buildPdfFromPages($pages, $pageWidth, $pageHeight);
+    }
+
+    private function buildLoanSummarySheetPdf(array $summary): string
+    {
+        $pageWidth = 612;
+        $pageHeight = 792;
+        $margin = 36;
+        $pages = [];
+        $content = '';
+        $y = 28;
+
+        $addPage = function () use (&$pages, &$content, &$y) {
+            if ($content !== '') {
+                $pages[] = $content;
+            }
+
+            $content = '';
+            $y = 28;
+        };
+
+        $drawText = function (float $x, float $topY, string $text, int $size = 9, string $font = 'F1', string $color = '0 0 0') use (&$content, $pageHeight) {
+            $pdfY = $pageHeight - $topY;
+            $content .= $color . " rg\nBT\n/{$font} {$size} Tf\n" . $x . ' ' . $pdfY . " Td\n(" . $this->escapePdfText($text) . ") Tj\nET\n0 0 0 rg\n";
+        };
+
+        $drawRect = function (float $x, float $topY, float $width, float $height, string $stroke = '0 0 0', ?string $fill = null, float $lineWidth = 0.7) use (&$content, $pageHeight) {
+            $pdfY = $pageHeight - $topY - $height;
+            $content .= $lineWidth . " w\n{$stroke} RG\n";
+
+            if ($fill !== null) {
+                $content .= $fill . " rg\n" . $x . ' ' . $pdfY . ' ' . $width . ' ' . $height . " re B\n0 0 0 rg\n";
+            } else {
+                $content .= $x . ' ' . $pdfY . ' ' . $width . ' ' . $height . " re S\n";
+            }
+        };
+
+        $drawLine = function (float $x1, float $topY1, float $x2, float $topY2, string $stroke = '0 0 0', float $lineWidth = 0.5) use (&$content, $pageHeight) {
+            $content .= $lineWidth . " w\n{$stroke} RG\n" . $x1 . ' ' . ($pageHeight - $topY1) . ' m ' . $x2 . ' ' . ($pageHeight - $topY2) . " l S\n";
+        };
+
+        $estimateTextWidth = function (string $text, float $fontSize): float {
+            return strlen($this->escapePdfText($text)) * $fontSize * 0.54;
+        };
+
+        $wrapText = function (string $text, float $maxWidth, float $fontSize) use ($estimateTextWidth): array {
+            $words = preg_split('/\s+/', trim($text)) ?: [];
+            $lines = [];
+            $line = '';
+
+            foreach ($words as $word) {
+                $candidate = trim($line . ' ' . $word);
+
+                if ($line !== '' && $estimateTextWidth($candidate, $fontSize) > $maxWidth) {
+                    $lines[] = $line;
+                    $line = $word;
+                    continue;
+                }
+
+                $line = $candidate;
+            }
+
+            if ($line !== '') {
+                $lines[] = $line;
+            }
+
+            return $lines ?: [''];
+        };
+
+        $drawFittedText = function (float $x, float $topY, string $text, int $size = 9, string $font = 'F1', string $color = '0 0 0', ?float $maxWidth = null) use ($drawText, $estimateTextWidth) {
+            $fontSize = $size;
+
+            while ($maxWidth !== null && $fontSize > 5 && $estimateTextWidth($text, $fontSize) > $maxWidth) {
+                $fontSize -= 0.5;
+            }
+
+            $drawText($x, $topY, $text, (int) floor($fontSize), $font, $color);
+        };
+
+        $drawCenteredText = function (float $topY, string $text, int $size = 9, string $font = 'F1', string $color = '0 0 0') use ($drawText, $estimateTextWidth, $pageWidth) {
+            $drawText(max(0, ($pageWidth - $estimateTextWidth($text, $size)) / 2), $topY, $text, $size, $font, $color);
+        };
+
+        $drawHeader = function () use (&$y, $drawCenteredText) {
+            $headerColor = '0.07 0.31 0.48';
+            $drawCenteredText($y + 20, 'UNIVERSIDAD DE EL SALVADOR', 9, 'F2', $headerColor);
+            $drawCenteredText($y + 34, 'FACULTAD DE INGENIERIA Y ARQUITECTURA', 9, 'F2', $headerColor);
+            $drawCenteredText($y + 48, 'UNIDAD DE GESTION DOCUMENTAL Y ARCHIVOS', 9, 'F2', $headerColor);
+            $drawCenteredText($y + 62, 'HOJA DE PRESTAMO DE DOCUMENTOS', 9, 'F2', $headerColor);
+            $y += 78;
+        };
+
+        $drawInfoRow = function (array $items) use (&$y, $margin, $pageWidth, $drawRect, $drawText, $drawFittedText, $wrapText) {
+            $cellWidth = ($pageWidth - ($margin * 2)) / count($items);
+            $lineSets = [];
+            $rowHeight = 34;
+
+            foreach ($items as $index => $item) {
+                $lineSets[$index] = $wrapText((string) $item['value'], $cellWidth - 14, 7);
+                $rowHeight = max($rowHeight, 21 + (count($lineSets[$index]) * 9));
+            }
+
+            foreach ($items as $index => $item) {
+                $x = $margin + ($cellWidth * $index);
+                $drawRect($x, $y, $cellWidth, $rowHeight, '0.74 0.78 0.82', '0.96 0.98 0.99', 0.5);
+                $drawText($x + 6, $y + 12, $item['label'], 6, 'F2', '0.27 0.33 0.39');
+
+                foreach ($lineSets[$index] as $lineIndex => $line) {
+                    $drawFittedText($x + 6, $y + 24 + ($lineIndex * 9), $line, 7, 'F2', '0.07 0.31 0.48', $cellWidth - 14);
+                }
+            }
+
+            $y += $rowHeight;
+        };
+
+        $ensureSpace = function (float $height) use (&$y, $pageHeight, $addPage, $drawHeader) {
+            if ($y + $height > $pageHeight - 42) {
+                $addPage();
+                $drawHeader();
+            }
+        };
+
+        $drawTableRow = function (array $widths, array $values, bool $header = false) use (&$y, $margin, $drawRect, $drawFittedText, $wrapText) {
+            $lineSets = [];
+            $fontSize = $header ? 6 : 7;
+            $rowHeight = $header ? 22 : 27;
+            $x = $margin;
+
+            foreach ($values as $index => $value) {
+                $lineSets[$index] = $wrapText((string) $value, max(20, ($widths[$index] ?? 60) - 10), $fontSize);
+                $rowHeight = max($rowHeight, 13 + (count($lineSets[$index]) * 9));
+            }
+
+            foreach ($values as $index => $value) {
+                $width = $widths[$index];
+                $drawRect($x, $y, $width, $rowHeight, '0.70 0.75 0.80', $header ? '0.88 0.91 0.93' : null, 0.45);
+
+                foreach ($lineSets[$index] as $lineIndex => $line) {
+                    $drawFittedText($x + 4, $y + 12 + ($lineIndex * 9), $line, $fontSize, $header ? 'F2' : 'F1', $header ? '0.07 0.31 0.48' : '0.16 0.20 0.24', $width - 9);
+                }
+
+                $x += $width;
+            }
+
+            $y += $rowHeight;
+        };
+
+        $drawHeader();
+        $drawInfoRow([
+            ['label' => 'N. DE PRESTAMO', 'value' => $summary['number'] ?? 'N/D'],
+            ['label' => 'FECHA DE SOLICITUD', 'value' => $summary['requestedAt'] ?? 'N/D'],
+            ['label' => 'UNIDAD SOLICITANTE', 'value' => $summary['unit'] ?? 'N/D'],
+        ]);
+        $drawInfoRow([
+            ['label' => 'SOLICITANTE', 'value' => $summary['applicant'] ?? 'N/D'],
+            ['label' => 'FECHA DE PRESTAMO', 'value' => $summary['loanDate'] ?? 'N/D'],
+            ['label' => 'DEVOLUCION PROGRAMADA', 'value' => $summary['dueDate'] ?? 'N/D'],
+        ]);
+
+        $y += 14;
+        $drawText($margin, $y, 'DOCUMENTOS ENTREGADOS', 11, 'F2', '0.07 0.31 0.48');
+        $y += 12;
+
+        $columns = ['Documento', 'Serie / Subserie', 'Caja', 'Año', 'Tipo'];
+        $widths = [170, 125, 90, 65, 90];
+        $drawTableRow($widths, $columns, true);
+
+        foreach (($summary['documents'] ?? []) as $document) {
+            $ensureSpace(40);
+            $drawTableRow($widths, [
+                $document['title'] ?? 'N/D',
+                $document['series'] ?? 'N/D',
+                $document['box'] ?? 'N/D',
+                $document['year'] ?? 'N/D',
+                $document['documentType'] ?? 'N/D',
+            ]);
+        }
+
+        if (empty($summary['documents'])) {
+            $drawTableRow($widths, ['-', 'Sin documentos registrados', '-', '-', '-']);
+        }
+
+        $y += 12;
+        $drawRect($margin, $y, $pageWidth - ($margin * 2), 32, '0.70 0.75 0.80', '0.96 0.98 0.99', 0.5);
+        $drawText($margin + 8, $y + 20, 'Total de documentos: ' . ($summary['totalDocuments'] ?? 0), 8, 'F2', '0.07 0.31 0.48');
+        $y += 46;
+
+        $observationLines = $wrapText((string) ($summary['observations'] ?? 'Sin observaciones.'), $pageWidth - ($margin * 2) - 20, 8);
+        $observationHeight = 28 + (count($observationLines) * 11);
+        $ensureSpace($observationHeight + 126);
+        $drawRect($margin, $y, $pageWidth - ($margin * 2), $observationHeight, '0.74 0.78 0.82', '0.98 0.99 0.99', 0.5);
+        $drawText($margin + 10, $y + 16, 'OBSERVACIONES', 8, 'F2', '0.07 0.31 0.48');
+
+        foreach ($observationLines as $index => $line) {
+            $drawText($margin + 10, $y + 30 + ($index * 11), $line, 8, 'F1', '0.27 0.33 0.39');
+        }
+
+        $y += $observationHeight + 16;
+        $signatureColor = '0.07 0.31 0.48';
+        $signatureWidth = ($pageWidth - ($margin * 2)) / 2;
+        $drawRect($margin, $y, $signatureWidth, 78, $signatureColor, null, 0.5);
+        $drawRect($margin + $signatureWidth, $y, $signatureWidth, 78, $signatureColor, null, 0.5);
+        $drawFittedText($margin + 8, $y + 14, 'ENTREGADO POR UGDA', 8, 'F2', $signatureColor, $signatureWidth - 16);
+        $drawFittedText($margin + 8, $y + 29, $summary['deliveredBy'] ?? 'N/D', 7, 'F1', '0.27 0.33 0.39', $signatureWidth - 16);
+        $drawText($margin + $signatureWidth + 8, $y + 14, 'RECIBIDO POR', 8, 'F2', $signatureColor);
+        $drawFittedText($margin + $signatureWidth + 8, $y + 29, $summary['receivedBy'] ?? 'N/D', 7, 'F1', '0.27 0.33 0.39', $signatureWidth - 16);
+        $drawLine($margin + 18, $y + 61, $margin + $signatureWidth - 18, $y + 61, $signatureColor);
+        $drawLine($margin + $signatureWidth + 18, $y + 61, $pageWidth - $margin - 18, $y + 61, $signatureColor);
+        $drawText($margin + 18, $y + 72, 'Firma y sello', 6, 'F2', $signatureColor);
+        $drawText($margin + $signatureWidth + 18, $y + 72, 'Firma', 6, 'F2', $signatureColor);
+
+        $y += 94;
+        $note = 'La persona que recibe declara que recibe los documentos indicados y se compromete a devolverlos en la fecha programada, conservando su integridad y orden documental.';
+        $noteLines = $wrapText($note, $pageWidth - ($margin * 2) - 20, 8);
+        $noteHeight = 26 + (count($noteLines) * 11);
         $drawRect($margin, $y, $pageWidth - ($margin * 2), $noteHeight, '0.86 0.55 0.08', '1 0.97 0.84', 0.8);
         $drawText($margin + 10, $y + 16, 'IMPORTANTE:', 9, 'F2', '0.54 0.32 0.03');
 

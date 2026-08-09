@@ -256,14 +256,20 @@ onMounted(() => fetchArchive());
                                     <h3>{{ document.title }}</h3>
                                     <p>Código: {{ document.code || 'N/D' }}</p>
                                 </div>
-                                <span class="archive-document__support">{{ document.support || 'Sin soporte' }}</span>
+                                <div class="archive-document__badges">
+                                    <span class="archive-document__support">{{ document.support || 'Sin soporte' }}</span>
+                                    <span v-if="document.is_loaned" class="archive-document__loaned">
+                                        <i class="pi pi-arrow-up-right"></i>
+                                        Prestado
+                                    </span>
+                                </div>
                             </div>
 
                             <div class="archive-document__meta">
                                 <div>
                                     <i class="pi pi-box"></i>
                                     <span>Caja</span>
-                                    <strong>#{{ document.box?.number || 'N/D' }}</strong>
+                                    <strong>{{ document.box?.code || (document.box?.number ? '#' + document.box.number : 'N/D') }}</strong>
                                 </div>
                                 <div>
                                     <i class="pi pi-clone"></i>
@@ -402,6 +408,13 @@ onMounted(() => fetchArchive());
                                 <span>Tipo de soporte</span>
                                 <strong class="archive-document-modal__badge">{{ formatDocumentSupport(selectedDocument.support) }}</strong>
                             </div>
+                            <div class="archive-document-modal__field" v-if="selectedDocument.is_loaned">
+                                <span>Estado del documento</span>
+                                <strong class="archive-document-modal__badge archive-document-modal__badge--loaned">
+                                    <i class="pi pi-arrow-up-right"></i>
+                                    Prestado
+                                </strong>
+                            </div>
                             <div class="archive-document-modal__field">
                                 <span>Archivo digital</span>
                                 <button
@@ -429,7 +442,7 @@ onMounted(() => fetchArchive());
                         <div class="archive-document-modal__grid archive-document-modal__grid--two">
                             <div class="archive-document-modal__field">
                                 <span>Número de caja</span>
-                                <strong>#{{ selectedDocument.box?.number || 'N/D' }}</strong>
+                                <strong>{{ selectedDocument.box?.code || (selectedDocument.box?.number ? '#' + selectedDocument.box.number : 'N/D') }}</strong>
                             </div>
                             <div class="archive-document-modal__field">
                                 <span>Serie documental</span>
@@ -811,6 +824,14 @@ onMounted(() => fetchArchive());
     justify-content: space-between;
 }
 
+.archive-document__badges {
+    align-items: flex-end;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    gap: 0.45rem;
+}
+
 .archive-document__main h3 {
     color: #0f172a;
     font-size: 1rem;
@@ -829,6 +850,19 @@ onMounted(() => fetchArchive());
     flex-shrink: 0;
     font-size: 0.78rem;
     font-weight: 800;
+    padding: 0.35rem 0.75rem;
+}
+
+.archive-document__loaned {
+    align-items: center;
+    background: #fff1f2;
+    border: 1px solid #fecdd3;
+    border-radius: 999px;
+    color: #be123c;
+    display: inline-flex;
+    font-size: 0.78rem;
+    font-weight: 800;
+    gap: 0.35rem;
     padding: 0.35rem 0.75rem;
 }
 
@@ -1136,6 +1170,12 @@ onMounted(() => fetchArchive());
     width: fit-content;
 }
 
+.archive-document-modal__badge--loaned {
+    background: #fff1f2;
+    color: #be123c !important;
+    gap: 0.35rem;
+}
+
 .archive-document-modal__link {
     color: #2f6f9f !important;
 }
@@ -1228,6 +1268,10 @@ onMounted(() => fetchArchive());
     .archive-document__location {
         align-items: flex-start;
         flex-direction: column;
+    }
+
+    .archive-document__badges {
+        align-items: flex-start;
     }
 
     .archive-document-modal__header,

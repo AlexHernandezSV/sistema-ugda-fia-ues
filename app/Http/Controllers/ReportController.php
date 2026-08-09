@@ -15,6 +15,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Throwable;
 
 class ReportController extends Controller
@@ -326,27 +327,10 @@ class ReportController extends Controller
             );
             $filteredDocumentsCount = (clone $filteredQuery)->count();
             $totalDocumentsCount = $this->classificationDocumentBaseQuery()->count();
-            $seriesExpression = "COALESCE(NULLIF(TRIM(transfer_box_documents.series_label), ''), 'Sin serie')";
-            $seriesCountsQuery = (clone $filteredQuery)
-                ->join('transfer_boxes', 'transfer_box_documents.transfer_box_id', '=', 'transfer_boxes.id')
-                ->join('transfers', 'transfer_boxes.transfer_id', '=', 'transfers.id')
-                ->select([])
-                ->selectRaw("{$seriesExpression} as label")
-                ->selectRaw('COUNT(*) as documents_count')
-                ->selectRaw('COUNT(DISTINCT transfers.unit_id) as units_count')
-                ->groupByRaw($seriesExpression)
-                ->orderByDesc('documents_count')
-                ->orderBy('label');
-            $chartRows = (clone $seriesCountsQuery)
-                ->get()
-                ->map(fn ($row) => $this->mapClassificationSeriesCount($row))
+            $seriesRows = $this->classificationSeriesRows($filteredQuery);
+            $seriesCountsData = $seriesRows
+                ->forPage($subseriesPage, $subseriesPerPage)
                 ->values();
-            $seriesCountsPaginator = $seriesCountsQuery->paginate(
-                $subseriesPerPage,
-                ['*'],
-                'subseries_page',
-                $subseriesPage
-            );
             $documentsPaginator = (clone $filteredQuery)
                 ->orderBy('transfer_box_documents.name')
                 ->orderBy('transfer_box_documents.code')
@@ -359,14 +343,15 @@ class ReportController extends Controller
                     'total_documents' => $totalDocumentsCount,
                 ],
                 'charts' => [
-                    'series' => $chartRows,
+                    'series' => $seriesRows,
                 ],
                 'series_counts' => [
-                    'data' => $seriesCountsPaginator
-                        ->getCollection()
-                        ->map(fn ($row) => $this->mapClassificationSeriesCount($row))
-                        ->values(),
-                    'meta' => $this->paginationMeta($seriesCountsPaginator),
+                    'data' => $seriesCountsData,
+                    'meta' => $this->collectionPaginationMeta(
+                        $seriesRows->count(),
+                        $subseriesPerPage,
+                        $subseriesPage
+                    ),
                 ],
                 'documents' => [
                     'data' => $documentsPaginator
@@ -490,17 +475,11 @@ class ReportController extends Controller
         }
 
         if (!empty($filters['series'])) {
-            $query->whereRaw(
-                "COALESCE(NULLIF(TRIM(transfer_box_documents.series_label), ''), 'Sin serie') = ?",
-                [$filters['series']]
-            );
+            $this->whereDocumentarySeriesLabelMatches($query, $filters['series']);
         }
 
         if (!empty($filters['support'])) {
-            $query->whereRaw(
-                "COALESCE(NULLIF(TRIM(transfer_box_documents.support_type), ''), 'Sin soporte') = ?",
-                [$filters['support']]
-            );
+            $this->applySupportFilter($query, $filters['support']);
         }
 
         $term = trim((string) ($filters['search'] ?? ''));
@@ -551,18 +530,12 @@ class ReportController extends Controller
 
         if (!empty($filters['series'])) {
             $query->whereHas('box', fn (Builder $boxQuery) =>
-                $boxQuery->whereRaw(
-                    "COALESCE(NULLIF(TRIM(transfer_boxes.series_name), ''), 'Sin serie') = ?",
-                    [$filters['series']]
-                )
+                $this->whereDelimitedSeriesLabelMatches($boxQuery, 'transfer_boxes.series_name', $filters['series'])
             );
         }
 
         if (!empty($filters['support'])) {
-            $query->whereRaw(
-                "COALESCE(NULLIF(TRIM(transfer_box_documents.support_type), ''), 'Sin soporte') = ?",
-                [$filters['support']]
-            );
+            $this->applySupportFilter($query, $filters['support']);
         }
 
         $term = trim((string) ($filters['search'] ?? ''));
@@ -618,28 +591,10 @@ class ReportController extends Controller
                     'value' => $unit->id,
                 ])
                 ->values(),
-            'series' => TransferDocument::query()
-                ->select([])
-                ->selectRaw("COALESCE(NULLIF(TRIM(series_label), ''), 'Sin serie') as label")
-                ->groupByRaw("COALESCE(NULLIF(TRIM(series_label), ''), 'Sin serie')")
-                ->orderBy('label')
-                ->get()
-                ->map(fn ($row) => [
-                    'label' => $row->label,
-                    'value' => $row->label,
-                ])
-                ->values(),
-            'support' => TransferDocument::query()
-                ->select([])
-                ->selectRaw("COALESCE(NULLIF(TRIM(support_type), ''), 'Sin soporte') as label")
-                ->groupByRaw("COALESCE(NULLIF(TRIM(support_type), ''), 'Sin soporte')")
-                ->orderBy('label')
-                ->get()
-                ->map(fn ($row) => [
-                    'label' => $row->label,
-                    'value' => $row->label,
-                ])
-                ->values(),
+            'series' => $this->documentarySeriesFilterOptions(
+                TransferDocument::query()->pluck('series_label')
+            ),
+            'support' => $this->supportFilterOptions(),
         ];
     }
 
@@ -657,29 +612,12 @@ class ReportController extends Controller
                     'value' => $unit->id,
                 ])
                 ->values(),
-            'series' => TransferBox::query()
-                ->whereHas('documents')
-                ->select([])
-                ->selectRaw("COALESCE(NULLIF(TRIM(series_name), ''), 'Sin serie') as label")
-                ->groupByRaw("COALESCE(NULLIF(TRIM(series_name), ''), 'Sin serie')")
-                ->orderBy('label')
-                ->get()
-                ->map(fn ($row) => [
-                    'label' => $row->label,
-                    'value' => $row->label,
-                ])
-                ->values(),
-            'support' => TransferDocument::query()
-                ->select([])
-                ->selectRaw("COALESCE(NULLIF(TRIM(support_type), ''), 'Sin soporte') as label")
-                ->groupByRaw("COALESCE(NULLIF(TRIM(support_type), ''), 'Sin soporte')")
-                ->orderBy('label')
-                ->get()
-                ->map(fn ($row) => [
-                    'label' => $row->label,
-                    'value' => $row->label,
-                ])
-                ->values(),
+            'series' => $this->documentarySeriesFilterOptions(
+                TransferBox::query()
+                    ->whereHas('documents')
+                    ->pluck('series_name')
+            ),
+            'support' => $this->supportFilterOptions(),
         ];
     }
 
@@ -693,17 +631,178 @@ class ReportController extends Controller
         }
     }
 
-    private function mapClassificationSeriesCount($row): array
+    private function supportFilterOptions(): array
     {
-        $documentsCount = (int) $row->documents_count;
-        $unitsCount = (int) $row->units_count;
+        return TransferDocument::query()
+            ->pluck('support_type')
+            ->map(fn ($support) => $this->normalizeSupportLabel($support))
+            ->unique()
+            ->sort()
+            ->values()
+            ->map(fn (string $label) => [
+                'label' => $label,
+                'value' => $label,
+            ])
+            ->all();
+    }
+
+    private function applySupportFilter(Builder $query, string $support): void
+    {
+        $normalizedSupport = $this->normalizeSupportLabel($support);
+
+        if ($normalizedSupport === 'Sin soporte') {
+            $query->where(function (Builder $supportQuery) {
+                $supportQuery
+                    ->whereNull('transfer_box_documents.support_type')
+                    ->orWhereRaw("TRIM(transfer_box_documents.support_type) = ''");
+            });
+
+            return;
+        }
+
+        $query->whereRaw(
+            $this->supportComparisonExpression('transfer_box_documents.support_type') . ' = ?',
+            [mb_strtolower(Str::ascii($normalizedSupport))]
+        );
+    }
+
+    private function supportComparisonExpression(string $column): string
+    {
+        $expression = "TRIM(COALESCE({$column}, ''))";
+
+        foreach ([
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'Á' => 'A',
+            'É' => 'E',
+            'Í' => 'I',
+            'Ó' => 'O',
+            'Ú' => 'U',
+        ] as $accented => $plain) {
+            $expression = "REPLACE({$expression}, '{$accented}', '{$plain}')";
+        }
+
+        return "LOWER({$expression})";
+    }
+
+    private function normalizeSupportLabel(?string $support): string
+    {
+        $label = trim((string) $support);
+
+        if ($label === '') {
+            return 'Sin soporte';
+        }
+
+        return match (mb_strtolower(Str::ascii($label))) {
+            'fisico' => 'Físico',
+            'digital' => 'Digital',
+            'mixto' => 'Mixto',
+            default => $label,
+        };
+    }
+
+    private function classificationSeriesRows(Builder $filteredQuery): \Illuminate\Support\Collection
+    {
+        return (clone $filteredQuery)
+            ->get(['transfer_box_documents.id', 'transfer_box_documents.series_label', 'transfer_box_documents.transfer_box_id'])
+            ->flatMap(function (TransferDocument $document) {
+                $unitId = $document->box?->transfer?->unit_id;
+
+                return collect($this->splitDocumentarySeriesLabels($document->series_label))
+                    ->map(fn (string $label) => [
+                        'label' => $label,
+                        'document_id' => $document->id,
+                        'unit_id' => $unitId,
+                    ]);
+            })
+            ->groupBy('label')
+            ->map(function ($rows, string $label) {
+                $documentsCount = $rows->pluck('document_id')->unique()->count();
+                $unitsCount = $rows->pluck('unit_id')->filter()->unique()->count();
+
+                return [
+                    'label' => $label,
+                    'documents_count' => $documentsCount,
+                    'units_count' => $unitsCount,
+                    'documents_label' => $documentsCount === 1 ? '1 documento' : "{$documentsCount} documentos",
+                    'units_label' => $unitsCount === 1 ? '1 unidad productora' : "{$unitsCount} unidades productoras",
+                ];
+            })
+            ->sortBy([
+                ['documents_count', 'desc'],
+                ['label', 'asc'],
+            ])
+            ->values();
+    }
+
+    private function documentarySeriesFilterOptions($values): array
+    {
+        return collect($values)
+            ->flatMap(fn ($value) => $this->splitDocumentarySeriesLabels($value))
+            ->unique()
+            ->sort()
+            ->values()
+            ->map(fn (string $label) => [
+                'label' => $label,
+                'value' => $label,
+            ])
+            ->all();
+    }
+
+    private function splitDocumentarySeriesLabels(?string $value): array
+    {
+        $labels = collect(explode(';', (string) $value))
+            ->map(fn ($label) => trim((string) $label))
+            ->filter()
+            ->values();
+
+        return $labels->isNotEmpty() ? $labels->all() : ['Sin serie'];
+    }
+
+    private function whereDocumentarySeriesLabelMatches(Builder $query, string $label): void
+    {
+        $this->whereDelimitedSeriesLabelMatches($query, 'transfer_box_documents.series_label', $label);
+    }
+
+    private function whereDelimitedSeriesLabelMatches(Builder $query, string $column, string $label): void
+    {
+        if (mb_strtolower(trim($label)) === 'sin serie') {
+            $query->where(function (Builder $nullQuery) use ($column) {
+                $nullQuery
+                    ->whereNull($column)
+                    ->orWhereRaw("TRIM({$column}) = ''");
+            });
+
+            return;
+        }
+
+        $normalizedLabel = mb_strtolower(preg_replace('/\\s+/', '', trim($label)) ?? '');
+        $escapedLabel = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $normalizedLabel);
+        $normalizedColumn = "REPLACE(REPLACE(LOWER(COALESCE({$column}, '')), ' ', ''), ';', '|')";
+
+        $query->whereRaw(
+            "('|' || {$normalizedColumn} || '|') LIKE ? ESCAPE '\\\\'",
+            ["%|{$escapedLabel}|%"]
+        );
+    }
+
+    private function collectionPaginationMeta(int $total, int $perPage, int $currentPage): array
+    {
+        $lastPage = max(1, (int) ceil($total / $perPage));
+        $currentPage = min(max(1, $currentPage), $lastPage);
+        $from = $total === 0 ? null : (($currentPage - 1) * $perPage) + 1;
+        $to = $total === 0 ? null : min($currentPage * $perPage, $total);
 
         return [
-            'label' => $row->label ?: 'Sin serie',
-            'documents_count' => $documentsCount,
-            'units_count' => $unitsCount,
-            'documents_label' => $documentsCount === 1 ? '1 documento' : "{$documentsCount} documentos",
-            'units_label' => $unitsCount === 1 ? '1 unidad productora' : "{$unitsCount} unidades productoras",
+            'current_page' => $currentPage,
+            'last_page' => $lastPage,
+            'per_page' => $perPage,
+            'total' => $total,
+            'from' => $from,
+            'to' => $to,
         ];
     }
 
@@ -765,7 +864,7 @@ class ReportController extends Controller
             'entered_by' => $this->formatUserName($transfer?->requester),
             'date' => $date?->toDateString(),
             'date_label' => $date?->format('d/m/Y H:i') ?: 'Sin fecha',
-            'support' => $document->support_type ?: 'Sin soporte',
+            'support' => $this->normalizeSupportLabel($document->support_type),
             'year' => $document->year_label ?: 'N/D',
             'pages' => $document->pages_label ?: 'N/D',
             'transfer_code' => $transfer?->code ?: 'N/D',
@@ -790,14 +889,18 @@ class ReportController extends Controller
             'box' => $box?->boxCode($transfer?->code) ?: 'N/D',
             'box_number' => $box?->formattedBoxNumber() ?: 'N/D',
             'box_series' => $box?->series_name ?: 'Sin serie',
-            'support' => $document->support_type ?: 'Sin soporte',
+            'support' => $this->normalizeSupportLabel($document->support_type),
         ];
     }
 
     private function groupDocumentsForChart($documents, string $key, string $fallback): array
     {
         return $documents
-            ->groupBy(fn (array $document) => $document[$key] ?: $fallback)
+            ->groupBy(function (array $document) use ($key, $fallback) {
+                $label = $document[$key] ?: $fallback;
+
+                return $key === 'support' ? $this->normalizeSupportLabel($label) : $label;
+            })
             ->map(fn ($group, string $label) => [
                 'label' => $label,
                 'total' => $group->count(),
