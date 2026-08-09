@@ -20,6 +20,8 @@ use Throwable;
 
 class ReportController extends Controller
 {
+    private const TRANSFERRED_WORKFLOW_STATUS = 'transfer_status_transferred';
+
     private const ACCESS_HISTORY_STATUSES = [
         'pending' => 'Pendiente',
         'authorized' => 'Autorizado',
@@ -30,9 +32,9 @@ class ReportController extends Controller
     public function summary(): JsonResponse
     {
         try {
-            $documentsCount = TransferDocument::query()->count();
-            $transfersCount = Transfer::query()->count();
-            $boxesCount = TransferBox::query()->count();
+            $documentsCount = $this->transferredDocumentsQuery()->count();
+            $transfersCount = $this->transferredTransfersQuery()->count();
+            $boxesCount = $this->transferredBoxesQuery()->count();
             $unitsCount = Unit::query()->count();
             $loansCount = Loan::query()->count();
             $loanedDocumentsCount = LoanDocument::query()
@@ -44,7 +46,7 @@ class ReportController extends Controller
                 ->count();
             $seriesCount = DocumentarySeries::query()->count();
             $subseriesCount = DocumentarySubseries::query()->count();
-            $locatedBoxesCount = TransferBox::query()
+            $locatedBoxesCount = $this->transferredBoxesQuery()
                 ->whereNotNull('location_code')
                 ->where('location_code', '<>', '')
                 ->count();
@@ -89,10 +91,16 @@ class ReportController extends Controller
             'year' => ['nullable', 'integer', 'min:1900', 'max:2100'],
             'month' => ['nullable', 'integer', 'min:1', 'max:12'],
             'date' => ['nullable', 'date_format:Y-m-d'],
+            'start_date' => ['nullable', 'date_format:Y-m-d'],
+            'end_date' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:start_date'],
+        ], [
+            'start_date.date_format' => 'La fecha de inicio no tiene un formato válido.',
+            'end_date.date_format' => 'La fecha fin no tiene un formato válido.',
+            'end_date.after_or_equal' => 'La fecha fin debe ser posterior o igual a la fecha inicio.',
         ]);
 
         try {
-            $baseQuery = TransferDocument::query()
+            $baseQuery = $this->transferredDocumentsQuery()
                 ->with(['box.transfer.unit', 'box.transfer.requester.person'])
                 ->whereNotNull('created_at');
 
@@ -137,7 +145,7 @@ class ReportController extends Controller
                 ],
                 'summary' => [
                     'filtered_documents' => $mappedDocuments->count(),
-                    'total_documents' => TransferDocument::query()->count(),
+                    'total_documents' => $this->transferredDocumentsQuery()->count(),
                     'units' => $mappedDocuments->pluck('unit')->filter()->unique()->count(),
                     'series' => $mappedDocuments->pluck('series')->filter()->unique()->count(),
                 ],
@@ -164,7 +172,7 @@ class ReportController extends Controller
             $loans = Loan::query()
                 ->with([
                     'documents',
-                    'latestDispatch',
+                    'latestDispatch.items',
                     'requester.person',
                     'returns.items',
                     'unit',
@@ -443,9 +451,36 @@ class ReportController extends Controller
 
     private function classificationDocumentBaseQuery(): Builder
     {
-        return TransferDocument::query()
+        return $this->transferredDocumentsQuery()
             ->with(['box.transfer.unit', 'box.transfer.requester.person'])
             ->whereNotNull('transfer_box_documents.created_at');
+    }
+
+    private function transferredDocumentsQuery(): Builder
+    {
+        return TransferDocument::query()
+            ->whereHas('box.transfer', fn (Builder $query) => $this->whereTransferredTransfer($query));
+    }
+
+    private function transferredTransfersQuery(): Builder
+    {
+        return Transfer::query()
+            ->whereHas('workflowStatus', fn (Builder $query) =>
+                $query->where('code', self::TRANSFERRED_WORKFLOW_STATUS)
+            );
+    }
+
+    private function transferredBoxesQuery(): Builder
+    {
+        return TransferBox::query()
+            ->whereHas('transfer', fn (Builder $query) => $this->whereTransferredTransfer($query));
+    }
+
+    private function whereTransferredTransfer(Builder $query): void
+    {
+        $query->whereHas('workflowStatus', fn (Builder $statusQuery) =>
+            $statusQuery->where('code', self::TRANSFERRED_WORKFLOW_STATUS)
+        );
     }
 
     private function unclassifiedDocumentBaseQuery(): Builder
@@ -581,7 +616,7 @@ class ReportController extends Controller
     {
         return [
             'units' => Unit::query()
-                ->whereIn('id', Transfer::query()
+                ->whereIn('id', $this->transferredTransfersQuery()
                     ->whereHas('boxes.documents')
                     ->select('unit_id'))
                 ->orderBy('name')
@@ -592,7 +627,7 @@ class ReportController extends Controller
                 ])
                 ->values(),
             'series' => $this->documentarySeriesFilterOptions(
-                TransferDocument::query()->pluck('series_label')
+                $this->transferredDocumentsQuery()->pluck('series_label')
             ),
             'support' => $this->supportFilterOptions(),
         ];
@@ -602,7 +637,7 @@ class ReportController extends Controller
     {
         return [
             'units' => Unit::query()
-                ->whereIn('id', Transfer::query()
+                ->whereIn('id', $this->transferredTransfersQuery()
                     ->whereHas('boxes.documents')
                     ->select('unit_id'))
                 ->orderBy('name')
@@ -613,7 +648,7 @@ class ReportController extends Controller
                 ])
                 ->values(),
             'series' => $this->documentarySeriesFilterOptions(
-                TransferBox::query()
+                $this->transferredBoxesQuery()
                     ->whereHas('documents')
                     ->pluck('series_name')
             ),
@@ -633,7 +668,7 @@ class ReportController extends Controller
 
     private function supportFilterOptions(): array
     {
-        return TransferDocument::query()
+        return $this->transferredDocumentsQuery()
             ->pluck('support_type')
             ->map(fn ($support) => $this->normalizeSupportLabel($support))
             ->unique()
@@ -844,6 +879,14 @@ class ReportController extends Controller
             $query->whereDate('created_at', $filters['date']);
         }
 
+        if (!empty($filters['start_date'])) {
+            $query->whereDate('created_at', '>=', $filters['start_date']);
+        }
+
+        if (!empty($filters['end_date'])) {
+            $query->whereDate('created_at', '<=', $filters['end_date']);
+        }
+
         return $query;
     }
 
@@ -923,7 +966,7 @@ class ReportController extends Controller
             ->flatMap(fn ($return) => $return->items->pluck('loan_document_id'))
             ->unique()
             ->values();
-        $selectedDocuments = $this->accessConsultationDocumentsForLoan($loan);
+        $selectedDocuments = $this->accessConsultationLoanedDocumentsForLoan($loan);
 
         if ($selectedDocuments->isEmpty()) {
             return null;
@@ -991,6 +1034,24 @@ class ReportController extends Controller
             ->filter(fn (LoanDocument $document) => $this->loanDocumentExistsInArchive($document, $archiveDocumentNames));
     }
 
+    private function accessConsultationLoanedDocumentsForLoan(Loan $loan)
+    {
+        $archiveDocumentNames = $this->archiveDocumentNames();
+        $dispatchDocumentIds = $loan->latestDispatch?->items
+            ->pluck('loan_document_id')
+            ->unique()
+            ->values();
+
+        if ($dispatchDocumentIds === null || $dispatchDocumentIds->isEmpty()) {
+            return collect();
+        }
+
+        return $loan->documents
+            ->filter(fn (LoanDocument $document) => $dispatchDocumentIds->contains($document->id))
+            ->filter(fn (LoanDocument $document) => $this->loanDocumentExistsInArchive($document, $archiveDocumentNames))
+            ->values();
+    }
+
     private function archiveDocumentNames()
     {
         static $names = null;
@@ -999,8 +1060,7 @@ class ReportController extends Controller
             return $names;
         }
 
-        $names = TransferDocument::query()
-            ->whereHas('box.transfer', fn (Builder $query) => $query->whereNotNull('completed_at'))
+        $names = $this->transferredDocumentsQuery()
             ->pluck('name')
             ->map(fn (?string $name) => $this->normalizeDocumentTitle($name))
             ->filter()

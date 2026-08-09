@@ -825,11 +825,11 @@ onMounted(() => fetchArchive());
 }
 
 .archive-document__badges {
-    align-items: flex-end;
+    align-items: center;
     display: flex;
-    flex-direction: column;
     flex-shrink: 0;
     gap: 0.45rem;
+    flex-wrap: wrap;
 }
 
 .archive-document__main h3 {

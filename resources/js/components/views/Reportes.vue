@@ -149,6 +149,13 @@ const filters = reactive({
     search: "",
 });
 
+const entryFilters = reactive({
+    mode: "date",
+    date: null,
+    startDate: null,
+    endDate: null,
+});
+
 const accessFilters = reactive({
     status: null,
     unit: null,
@@ -171,6 +178,11 @@ const accessResponseTimeFilters = reactive({
 const accessDocumentAnalysisOptions = [
     { label: "Más Consultados", value: "most" },
     { label: "Menos Consultados", value: "least" },
+];
+
+const entryPeriodModeOptions = [
+    { label: "Fecha específica", value: "date" },
+    { label: "Rango de fechas", value: "range" },
 ];
 
 const expandedAccessUsers = ref(new Set());
@@ -313,6 +325,12 @@ const hasActiveFilters = computed(() =>
             accessFilters.startDate ||
             accessFilters.endDate
         )
+        : isEntryReport.value
+        ? Boolean(
+            entryFilters.mode === "date"
+                ? entryFilters.date
+                : entryFilters.startDate || entryFilters.endDate
+        )
         : Boolean(filters.unit || filters.series || filters.support || filters.search.trim())
 );
 
@@ -427,6 +445,7 @@ const visibleDocuments = computed(() => {
         const matchesUnit = !filters.unit || document.unit_id === filters.unit;
         const matchesSeries = !filters.series || document.series === filters.series;
         const matchesSupport = !filters.support || document.support === filters.support;
+        const matchesPeriod = !isEntryReport.value || entryPeriodMatches(document.date);
         const matchesSearch = !searchTerm || [
             document.code,
             document.name,
@@ -441,7 +460,7 @@ const visibleDocuments = computed(() => {
         ]
             .some((value) => String(value ?? "").toLowerCase().includes(searchTerm));
 
-        return matchesUnit && matchesSeries && matchesSupport && matchesSearch;
+        return matchesUnit && matchesSeries && matchesSupport && matchesSearch && matchesPeriod;
     });
 });
 
@@ -467,6 +486,41 @@ const toReportDate = (value) => {
     const day = String(value.getDate()).padStart(2, "0");
 
     return `${year}-${month}-${day}`;
+};
+
+const entryPeriodParams = () => {
+    if (entryFilters.mode === "date") {
+        return {
+            date: toReportDate(entryFilters.date),
+            start_date: null,
+            end_date: null,
+        };
+    }
+
+    return {
+        date: null,
+        start_date: toReportDate(entryFilters.startDate),
+        end_date: toReportDate(entryFilters.endDate),
+    };
+};
+
+const entryPeriodMatches = (documentDate) => {
+    const params = entryPeriodParams();
+
+    if (!params.date && !params.start_date && !params.end_date) {
+        return true;
+    }
+
+    if (!documentDate) {
+        return false;
+    }
+
+    if (params.date) {
+        return documentDate === params.date;
+    }
+
+    return (!params.start_date || documentDate >= params.start_date) &&
+        (!params.end_date || documentDate <= params.end_date);
 };
 
 const visibleAccessLoans = computed(() => {
@@ -1063,7 +1117,9 @@ const fetchEntryRegistryReport = async () => {
     hoveredPoint.value = null;
 
     try {
-        const { data } = await axios.get("/api/reports/entry-registry");
+        const { data } = await axios.get("/api/reports/entry-registry", {
+            params: entryPeriodParams(),
+        });
 
         registryReport.value = {
             filters: {
@@ -1192,6 +1248,13 @@ const resetDocumentFilters = () => {
     filters.series = null;
     filters.support = null;
     filters.search = "";
+};
+
+const resetEntryFilters = () => {
+    entryFilters.mode = "date";
+    entryFilters.date = null;
+    entryFilters.startDate = null;
+    entryFilters.endDate = null;
 };
 
 const fetchClassificationSeriesSubseries = async ({ resetPages = false } = {}) => {
@@ -1391,6 +1454,11 @@ const clearFilters = () => {
         accessFilters.user = null;
         accessFilters.startDate = null;
         accessFilters.endDate = null;
+        return;
+    }
+
+    if (isEntryReport.value) {
+        resetEntryFilters();
         return;
     }
 
@@ -1889,6 +1957,15 @@ watch(
     () => queueClassificationReportFetch()
 );
 
+watch(
+    () => [entryFilters.mode, entryFilters.date, entryFilters.startDate, entryFilters.endDate],
+    () => {
+        if (isEntryReport.value) {
+            fetchEntryRegistryReport();
+        }
+    }
+);
+
 onMounted(fetchReportSummary);
 </script>
 
@@ -1999,11 +2076,6 @@ onMounted(fetchReportSummary);
                     :disabled="isCurrentExportDisabled"
                     @click="exportCurrentTable"
                 />
-            </div>
-
-            <div v-if="registryErrorMessage" class="reports-message reports-message--error">
-                <i class="pi pi-exclamation-triangle"></i>
-                <span>{{ registryErrorMessage }}</span>
             </div>
 
             <article class="reports-filter-panel">
@@ -2152,6 +2224,58 @@ onMounted(fetchReportSummary);
                 </div>
 
                 <div v-else class="reports-filter-grid reports-filter-grid--dynamic">
+                    <template v-if="isEntryReport">
+                        <label>
+                            <span>Tipo de periodo</span>
+                            <Dropdown
+                                v-model="entryFilters.mode"
+                                :options="entryPeriodModeOptions"
+                                optionLabel="label"
+                                optionValue="value"
+                                class="w-full"
+                            />
+                        </label>
+
+                        <label v-if="entryFilters.mode === 'date'">
+                            <span>Fecha específica</span>
+                            <DatePicker
+                                v-model="entryFilters.date"
+                                dateFormat="dd/mm/yy"
+                                placeholder="dd/mm/aaaa"
+                                showIcon
+                                iconDisplay="input"
+                                :manualInput="false"
+                                class="w-full reports-datepicker"
+                            />
+                        </label>
+
+                        <label v-else>
+                            <span>Fecha inicio</span>
+                            <DatePicker
+                                v-model="entryFilters.startDate"
+                                dateFormat="dd/mm/yy"
+                                placeholder="dd/mm/aaaa"
+                                showIcon
+                                iconDisplay="input"
+                                :manualInput="false"
+                                class="w-full reports-datepicker"
+                            />
+                        </label>
+
+                        <label v-if="entryFilters.mode === 'range'">
+                            <span>Fecha fin</span>
+                            <DatePicker
+                                v-model="entryFilters.endDate"
+                                dateFormat="dd/mm/yy"
+                                placeholder="dd/mm/aaaa"
+                                showIcon
+                                iconDisplay="input"
+                                :manualInput="false"
+                                class="w-full reports-datepicker"
+                            />
+                        </label>
+                    </template>
+
                     <label>
                         <span>Unidad Productora</span>
                         <Dropdown
@@ -2202,6 +2326,11 @@ onMounted(fetchReportSummary);
                             />
                         </span>
                     </label>
+                </div>
+
+                <div v-if="registryErrorMessage" class="reports-message reports-message--error">
+                    <i class="pi pi-exclamation-triangle"></i>
+                    <span>{{ registryErrorMessage }}</span>
                 </div>
 
                 <div class="reports-filter-panel__footer">
@@ -3286,6 +3415,18 @@ onMounted(fetchReportSummary);
     flex-direction: column;
     font-size: 0.82rem;
     gap: 0.45rem;
+    min-width: 0;
+}
+
+.reports-filter-grid :deep(.p-datepicker),
+.reports-filter-grid :deep(.p-datepicker-input),
+.reports-filter-grid :deep(.reports-datepicker .p-inputtext) {
+    min-width: 0;
+    width: 100%;
+}
+
+.reports-filter-panel > .reports-message {
+    margin-top: 1rem;
 }
 
 .reports-search-control {
