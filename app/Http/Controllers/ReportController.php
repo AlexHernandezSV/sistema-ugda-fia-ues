@@ -532,6 +532,7 @@ class ReportController extends Controller
 
                 $searchQuery->orWhereHas('box', function (Builder $boxQuery) use ($term) {
                     $this->addReportSearchClauses($boxQuery, [
+                        'transfer_boxes.box_code',
                         'transfer_boxes.series_name',
                         'transfer_boxes.box_number',
                     ], $term);
@@ -587,6 +588,7 @@ class ReportController extends Controller
 
                 $searchQuery->orWhereHas('box', function (Builder $boxQuery) use ($term) {
                     $this->addReportSearchClauses($boxQuery, [
+                        'transfer_boxes.box_code',
                         'transfer_boxes.series_name',
                         'transfer_boxes.box_number',
                         'transfer_boxes.title',

@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import axios from 'axios';
+import QRCode from 'qrcode';
 
 const router = useRouter();
 const toast = useToast();
@@ -72,7 +73,34 @@ const openDocuments = (box) => {
     documentsDialogVisible.value = true;
 };
 
-const printLabel = (box) => {
+const currentDateLabel = () => {
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+
+    return `${day}/${month}/${year}`;
+};
+
+const buildQrDataUrl = async (seed) => QRCode.toDataURL(seed, {
+    errorCorrectionLevel: 'M',
+    type: 'image/png',
+    margin: 1,
+    width: 180,
+    color: {
+        dark: '#111827',
+        light: '#ffffff',
+    },
+});
+
+const escapeHtml = (value = '') => String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+
+const printLabel = async (box) => {
     const popup = window.open('', '_blank', 'width=800,height=600');
 
     if (!popup) {
@@ -85,28 +113,96 @@ const printLabel = (box) => {
         return;
     }
 
+    const labelCode = box.box_code || box.boxCode || box.code || `C-AG-${box.number}`;
+    const label = {
+        boxLabel: labelCode,
+        labelCode,
+        transferNumber: 'Archivo General',
+        transferDate: currentDateLabel(),
+        unit: box.unit?.name ?? 'Unidad no registrada',
+        content: box.series ?? box.title ?? 'Serie documental no registrada',
+        locationCode: box.location ?? 'Pendiente',
+        assignedBy: box.assigned_by ?? 'UGDA',
+        assignedAt: box.created_at_label?.split(' ')[0] ?? currentDateLabel(),
+    };
+
+    try {
+        label.qrDataUrl = await buildQrDataUrl(JSON.stringify({
+            type: 'archivo-general-box',
+            box: label.boxLabel,
+            location: label.locationCode,
+        }));
+    } catch (error) {
+        popup.close();
+        toast.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: 'No se pudo generar el código QR de la etiqueta.',
+            life: 3500,
+        });
+        return;
+    }
+
+    const safeLabel = Object.fromEntries(
+        Object.entries(label).map(([key, value]) => [key, escapeHtml(value)]),
+    );
+
+    popup.document.open();
     popup.document.write(`
-        <html>
+        <!DOCTYPE html>
+        <html lang="es">
             <head>
-                <title>Etiqueta Caja ${box.number}</title>
+                <meta charset="utf-8" />
+                <title>Etiqueta ${safeLabel.labelCode}</title>
                 <style>
-                    body { font-family: 'Instrument Sans', Arial, Helvetica, sans-serif; padding: 24px; }
-                    .label { border: 2px solid #1560bd; padding: 24px; width: 360px; }
-                    h1 { color: #1560bd; margin: 0 0 12px; }
-                    p { margin: 8px 0; font-size: 14px; }
-                    strong { display: block; font-size: 18px; margin-top: 6px; }
+                    * { box-sizing: border-box; }
+                    @page { size: 10cm 18cm; margin: 0; }
+                    body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #0f172a; }
+                    .transfer-label { background: #ffffff; border: 2px solid #1f2937; border-radius: 0.5cm; display: flex; flex-direction: column; height: 18cm; overflow: hidden; width: 10cm; }
+                    .transfer-label__header { align-items: flex-start; border-bottom: 1px solid #dbe5ee; display: grid; grid-template-columns: 1fr auto; padding: 0.58cm 0.55cm 0.36cm; }
+                    .transfer-label__university { font-size: 0.44cm; font-weight: 700; line-height: 1.15; }
+                    .transfer-label__faculty, .transfer-label__date span, .transfer-label__box span, .transfer-label__details span, .transfer-label__assigned, .transfer-label__qr span { color: #64748b; font-size: 0.25cm; line-height: 1.25; }
+                    .transfer-label__date { min-width: 2.25cm; text-align: right; }
+                    .transfer-label__date strong { display: block; font-size: 0.34cm; margin-top: 0.12cm; }
+                    .transfer-label__hero { align-items: center; border-bottom: 1px solid #dbe5ee; display: grid; grid-template-columns: 1fr; padding: 0.42cm 0.55cm; }
+                    .transfer-label__qr { text-align: center; }
+                    .transfer-label__qr img { display: block; height: 2.8cm; margin: 0 auto 0.12cm; width: 2.8cm; }
+                    .transfer-label__location { background: #2f6f9f; border-radius: 0.32cm; color: #ffffff; padding: 0.34cm 0.36cm; text-align: center; }
+                    .transfer-label__location span { display: block; font-size: 0.25cm; font-weight: 700; }
+                    .transfer-label__location strong { display: block; font-size: 0.7cm; line-height: 1.05; margin-top: 0.14cm; }
+                    .transfer-label__box { background: #edf3fa; border-radius: 0.28cm; margin-top: 0.28cm; padding: 0.3cm 0.36cm; }
+                    .transfer-label__box strong { display: block; font-size: 0.58cm; line-height: 1.1; margin-top: 0.1cm; }
+                    .transfer-label__details { display: grid; gap: 0.35cm; padding: 0.42cm 0.55cm 0.24cm; }
+                    .transfer-label__details strong { display: block; font-size: 0.33cm; line-height: 1.25; margin-top: 0.08cm; }
+                    .transfer-label__assigned { border-top: 1px solid #dbe5ee; margin: 0 0.55cm; padding: 0.3cm 0; }
+                    .transfer-label__footer { background: #fff7db; color: #b45309; font-size: 0.24cm; font-weight: 700; line-height: 1.3; margin-top: auto; padding: 0.28cm 0.55cm; }
                 </style>
             </head>
             <body>
-                <section class="label">
-                    <h1>UGDA FIA UES</h1>
-                    <p>Caja <strong>#${box.number}</strong></p>
-                    <p>Serie <strong>${box.series ?? 'Sin serie'}</strong></p>
-                    <p>Unidad <strong>${box.unit?.name ?? 'Sin unidad'}</strong></p>
-                    <p>Periodo <strong>${box.period ?? 'N/D'}</strong></p>
-                    <p>Ubicación <strong>${box.location ?? 'Pendiente'}</strong></p>
-                </section>
-                <script>window.print();<\/script>
+                <article class="transfer-label">
+                    <div class="transfer-label__header">
+                        <div>
+                            <div class="transfer-label__university">UNIVERSIDAD DE EL SALVADOR</div>
+                            <div class="transfer-label__faculty">Facultad de Ingenieria y Arquitectura - UGDA</div>
+                        </div>
+                        <div class="transfer-label__date"><span>Fecha</span><strong>${safeLabel.transferDate}</strong></div>
+                    </div>
+                    <div class="transfer-label__hero">
+                        <div class="transfer-label__qr"><img src="${label.qrDataUrl}" alt="Codigo QR ${safeLabel.labelCode}" /><span>Codigo: ${safeLabel.labelCode}</span></div>
+                        <div>
+                            <div class="transfer-label__location"><span>CÓDIGO DE UBICACIÓN</span><strong>${safeLabel.locationCode}</strong></div>
+                            <div class="transfer-label__box"><span>N de caja</span><strong>${safeLabel.boxLabel}</strong></div>
+                        </div>
+                    </div>
+                    <div class="transfer-label__details">
+                        <div><span>N de transferencia</span><strong>${safeLabel.transferNumber}</strong></div>
+                        <div><span>Unidad productora</span><strong>${safeLabel.unit}</strong></div>
+                        <div><span>Contenido de la caja</span><strong>${safeLabel.content}</strong></div>
+                    </div>
+                    <div class="transfer-label__assigned">Ubicación reasignada por ${safeLabel.assignedBy} el ${safeLabel.assignedAt}</div>
+                    <div class="transfer-label__footer">Instrucciones: Adherir esta etiqueta en la parte frontal de la caja de forma visible. Mantener limpia y legible para facilitar su ubicación.</div>
+                </article>
+                <script>window.onload = () => { window.focus(); window.print(); };<\/script>
             </body>
         </html>
     `);

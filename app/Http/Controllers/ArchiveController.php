@@ -36,6 +36,7 @@ class ArchiveController extends Controller
 
             return response()->json([
                 'next_box_number' => $nextBoxNumber,
+                'next_box_code' => $this->nextArchiveBoxCode(),
                 'units' => Unit::query()
                     ->where('is_active', true)
                     ->orderBy('name')
@@ -85,9 +86,58 @@ class ArchiveController extends Controller
 
             if ($term !== '') {
                 $boxesQuery->where(function (Builder $query) use ($term) {
+                    if (preg_match('/^C-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+$/', $term) === 1) {
+                        $query->whereRaw('LOWER(transfer_boxes.box_code) = ?', [mb_strtolower($term)])
+                            ->orWhere(function (Builder $legacyQuery) use ($term) {
+                                if (preg_match('/^C-(.+)-(\d+)$/i', $term, $matches) !== 1) {
+                                    return;
+                                }
+
+                                $transferCode = mb_strtolower($matches[1]);
+                                $boxNumber = (int) $matches[2];
+
+                                $legacyQuery->where('transfer_boxes.box_number', $boxNumber)
+                                    ->whereHas('transfer', function (Builder $transferQuery) use ($transferCode) {
+                                        if ($transferCode === 'ag') {
+                                            $transferQuery->where('transfers.view_mode', 'archive');
+
+                                            return;
+                                        }
+
+                                        $transferQuery->whereRaw('LOWER(transfers.code) = ?', [$transferCode]);
+                                    });
+                            });
+
+                        return;
+                    }
+
+                    if (preg_match('/^C-(.+)-(\d+)$/i', $term, $matches) === 1) {
+                        $transferCode = mb_strtolower($matches[1]);
+                        $boxNumber = (int) $matches[2];
+
+                        $query->where('transfer_boxes.box_number', $boxNumber)
+                            ->whereHas('transfer', function (Builder $transferQuery) use ($transferCode) {
+                                if ($transferCode === 'ag') {
+                                    $transferQuery->where('transfers.view_mode', 'archive');
+
+                                    return;
+                                }
+
+                                $transferQuery->whereRaw('LOWER(transfers.code) = ?', [$transferCode]);
+                            });
+
+                        return;
+                    }
+
+                    if (preg_match('/^\d+$/', $term) === 1) {
+                        $query->where('transfer_boxes.box_number', (int) $term);
+
+                        return;
+                    }
+
                     $this->addSearchClauses($query, [
+                        'transfer_boxes.box_code',
                         'transfer_boxes.series_name',
-                        'transfer_boxes.box_number',
                         'transfer_boxes.title',
                         'transfer_boxes.period_label',
                         'transfer_boxes.location_code',
@@ -96,6 +146,10 @@ class ArchiveController extends Controller
 
                     $query->orWhereHas('transfer.unit', function (Builder $unitQuery) use ($term) {
                         $this->addSearchClauses($unitQuery, ['units.code', 'units.name'], $term);
+                    });
+
+                    $query->orWhereHas('transfer', function (Builder $transferQuery) use ($term) {
+                        $this->addSearchClauses($transferQuery, ['transfers.code'], $term);
                     });
 
                     $query->orWhereHas('documents', function (Builder $documentQuery) use ($term) {
@@ -137,10 +191,25 @@ class ArchiveController extends Controller
             ], 403);
         }
 
+        $request->merge([
+            'box_code' => mb_strtoupper(trim((string) $request->input('box_code'))),
+            'series_ids' => collect($request->input('series_ids', []))
+                ->when(
+                    $request->filled('series_id'),
+                    fn ($seriesIds) => $seriesIds->push($request->input('series_id'))
+                )
+                ->map(fn ($seriesId) => (int) $seriesId)
+                ->filter()
+                ->unique()
+                ->values()
+                ->all(),
+        ]);
+
         $validator = Validator::make($request->all(), [
-            'box_number' => ['required', 'integer', 'min:1'],
+            'box_code' => ['required', 'string', 'max:120', 'regex:/^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$/', 'unique:transfer_boxes,box_code'],
             'unit_id' => ['required', 'exists:units,id'],
-            'series_id' => ['required', 'exists:documentary_series,id'],
+            'series_ids' => ['required', 'array', 'min:1'],
+            'series_ids.*' => ['required', 'integer', 'distinct', 'exists:documentary_series,id'],
             'start_year' => ['required', 'integer', 'min:1900', 'max:2100'],
             'end_year' => ['required', 'integer', 'min:1900', 'max:2100', 'gte:start_year'],
             'office_id' => ['required', 'integer', 'exists:physical_location_offices,id'],
@@ -158,9 +227,12 @@ class ArchiveController extends Controller
             'existing_document_ids' => ['nullable', 'array'],
             'existing_document_ids.*' => ['integer', 'exists:transfer_box_documents,id'],
         ], [
-            'box_number.required' => 'El numero de caja es obligatorio.',
+            'box_code.required' => 'El numero de caja es obligatorio.',
+            'box_code.regex' => 'El numero de caja solo puede contener letras, numeros y guiones.',
+            'box_code.unique' => 'El numero de caja ya existe.',
             'unit_id.required' => 'Debe seleccionar la unidad productora.',
-            'series_id.required' => 'Debe seleccionar la serie documental.',
+            'series_ids.required' => 'Debe seleccionar al menos una serie documental.',
+            'series_ids.min' => 'Debe seleccionar al menos una serie documental.',
             'office_id.required' => 'Debe seleccionar la oficina.',
             'aisle_id.required' => 'Debe seleccionar el pasillo.',
             'shelf_id.required' => 'Debe seleccionar el estante.',
@@ -174,6 +246,27 @@ class ArchiveController extends Controller
                 'errors' => $validator->errors(),
             ], 422);
         }
+
+        $seriesIds = collect($request->input('series_ids', []))->map(fn ($id) => (int) $id)->values();
+        $selectedSeries = DocumentarySeries::query()
+            ->whereIn('id', $seriesIds)
+            ->where('is_active', true)
+            ->get(['id', 'name'])
+            ->keyBy('id');
+
+        if ($selectedSeries->count() !== $seriesIds->count()) {
+            return response()->json([
+                'message' => 'Los datos de la caja no son validos.',
+                'errors' => [
+                    'series_ids' => ['Una o mas series documentales no existen o no estan habilitadas.'],
+                ],
+            ], 422);
+        }
+
+        $selectedSeriesName = $seriesIds
+            ->map(fn (int $seriesId) => $selectedSeries->get($seriesId)?->name)
+            ->filter()
+            ->implode('; ');
 
         $allowedSeriesNames = DocumentarySeries::query()
             ->where('is_active', true)
@@ -213,9 +306,9 @@ class ArchiveController extends Controller
         }
 
         try {
-            $box = DB::transaction(function () use ($request, $selectedShelf) {
-                $series = DocumentarySeries::query()->findOrFail((int) $request->input('series_id'));
+            $box = DB::transaction(function () use ($request, $selectedShelf, $selectedSeriesName) {
                 $now = now();
+                $this->lockArchiveBoxCodeSequence($now);
                 $transferredStatus = RequestStatusCatalog::query()
                     ->where('code', 'transfer_status_transferred')
                     ->value('id');
@@ -242,22 +335,24 @@ class ArchiveController extends Controller
                     'description' => 'Caja creada directamente desde Archivo General.',
                 ]);
 
-                $boxNumber = (int) $request->input('box_number');
+                $boxNumber = ((int) TransferBox::query()->max('box_number')) + 1;
+                $boxCode = mb_strtoupper(trim((string) $request->input('box_code')));
                 $startYear = (int) $request->input('start_year');
                 $endYear = (int) $request->input('end_year');
                 $locationCode = $this->buildLocationCode($selectedShelf);
 
                 $box = $transfer->boxes()->create([
-                    'series_name' => $series->name,
+                    'series_name' => $selectedSeriesName,
                     'start_year' => $startYear,
                     'end_year' => $endYear,
                     'box_number' => $boxNumber,
-                    'title' => 'Caja #' . str_pad((string) $boxNumber, 3, '0', STR_PAD_LEFT),
+                    'box_code' => $boxCode,
+                    'title' => 'Caja ' . $boxCode,
                     'period_label' => '01/01/' . $startYear . ' - 31/12/' . $endYear,
                     'location_code' => $locationCode,
                     'assigned_by_user_id' => $request->user()->id,
                     'assigned_at' => $now,
-                    'content_description' => $series->name,
+                    'content_description' => $selectedSeriesName,
                 ]);
 
                 $sortOrder = 1;
@@ -281,7 +376,7 @@ class ArchiveController extends Controller
 
                 foreach ($request->input('documents', []) as $documentPayload) {
                     $documentSeries = trim((string) ($documentPayload['series'] ?? ''));
-                    $resolvedSeries = $documentSeries !== '' ? $documentSeries : $series->name;
+                    $resolvedSeries = $documentSeries !== '' ? $documentSeries : $selectedSeriesName;
                     $digitalDocument = $this->storeDigitalDocumentPayload($documentPayload, $transfer->code . '-' . str_pad((string) $sortOrder, 3, '0', STR_PAD_LEFT));
 
                     $box->documents()->create([
@@ -305,6 +400,7 @@ class ArchiveController extends Controller
                     'description' => 'Caja registrada directamente en Archivo General.',
                     'context' => [
                         'box_number' => $boxNumber,
+                        'box_code' => $boxCode,
                         'location_code' => $locationCode,
                     ],
                     'occurred_at' => $now,
@@ -407,8 +503,6 @@ class ArchiveController extends Controller
 
                 $box->update([
                     'location_code' => $locationCode,
-                    'assigned_by_user_id' => $request->user()->id,
-                    'assigned_at' => now(),
                 ]);
 
                 $box->transfer?->events()->create([
@@ -743,6 +837,7 @@ class ArchiveController extends Controller
 
                     $query->orWhereHas('box', function (Builder $boxQuery) use ($term, $searchDate) {
                         $this->addSearchClauses($boxQuery, [
+                            'transfer_boxes.box_code',
                             'transfer_boxes.series_name',
                             'transfer_boxes.box_number',
                             'transfer_boxes.title',
@@ -844,6 +939,7 @@ class ArchiveController extends Controller
 
                     $searchQuery->orWhereHas('box', function (Builder $boxQuery) use ($term) {
                         $this->addSearchClauses($boxQuery, [
+                            'transfer_boxes.box_code',
                             'transfer_boxes.box_number',
                             'transfer_boxes.series_name',
                             'transfer_boxes.location_code',
@@ -1175,11 +1271,15 @@ class ArchiveController extends Controller
     {
         $transfer = $box->transfer;
         $unit = $transfer?->unit;
+        $boxCode = $box->boxCode($transfer?->code);
 
         return [
             'id' => $box->id,
             'number' => str_pad((string) $box->box_number, 3, '0', STR_PAD_LEFT),
             'box_number' => $box->box_number,
+            'box_code' => $boxCode,
+            'boxCode' => $boxCode,
+            'code' => $boxCode,
             'title' => $box->title,
             'series' => $box->series_name,
             'unit' => [
@@ -1237,6 +1337,35 @@ class ArchiveController extends Controller
             ->max();
 
         return $prefix . str_pad((string) (($last ?? 0) + 1), 4, '0', STR_PAD_LEFT);
+    }
+
+    private function nextArchiveBoxCode(?Carbon $date = null): string
+    {
+        $date ??= now();
+        $prefix = 'C-' . $date->format('dmy') . '-';
+        $last = TransferBox::query()
+            ->whereNotNull('box_code')
+            ->where('box_code', 'like', $prefix . '%')
+            ->whereHas('transfer', fn (Builder $query) => $query->where('view_mode', 'archive'))
+            ->whereDate('transfer_boxes.created_at', $date->toDateString())
+            ->pluck('box_code')
+            ->map(function ($code) use ($prefix) {
+                $suffix = substr((string) $code, strlen($prefix));
+
+                return ctype_digit($suffix) ? (int) $suffix : 0;
+            })
+            ->max();
+
+        return $prefix . str_pad((string) (($last ?? 0) + 1), 3, '0', STR_PAD_LEFT);
+    }
+
+    private function lockArchiveBoxCodeSequence(Carbon $date): void
+    {
+        if (DB::getDriverName() === 'pgsql') {
+            DB::select("SELECT pg_advisory_xact_lock(hashtext(?))", [
+                'archive-box-code-' . $date->toDateString(),
+            ]);
+        }
     }
 
     private function locationOptions(): array

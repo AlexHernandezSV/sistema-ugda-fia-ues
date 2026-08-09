@@ -15,6 +15,7 @@ class TransferBox extends Model
         'start_year',
         'end_year',
         'box_number',
+        'box_code',
         'title',
         'period_label',
         'location_code',
@@ -34,6 +35,10 @@ class TransferBox extends Model
 
     public function boxCode(?string $transferCode = null): string
     {
+        if (filled($this->box_code)) {
+            return (string) $this->box_code;
+        }
+
         $code = $transferCode ?: $this->transfer?->code ?: 'PENDIENTE';
 
         return 'C-' . $code . '-' . $this->formattedBoxNumber();

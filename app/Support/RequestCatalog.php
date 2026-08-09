@@ -514,8 +514,8 @@ class RequestCatalog
                 && $workflowCode === 'loan_status_authorized'
                 ? self::buildLoanSearchCompleted($loan)
                 : null,
-            'readyForPickup' => !$canManageUgda
-                && in_array($searchCode, ['loan_search_completed', 'loan_search_not_found'], true)
+            'readyForPickup' => self::viewerCanViewLoanReadyNotice($viewer, $loan)
+                && $searchCode === 'loan_search_completed'
                 && $workflowCode === 'loan_status_authorized'
                 ? self::buildLoanReadyForPickup($loan)
                 : null,
@@ -1394,6 +1394,19 @@ class RequestCatalog
             && self::viewerCanManageUgda($viewer)
             && $loan->workflowStatus?->code === 'loan_status_loaned'
             && $loan->latestDispatch !== null;
+    }
+
+    private static function viewerCanViewLoanReadyNotice(?User $viewer, Loan $loan): bool
+    {
+        if (!in_array($viewer?->activeProfile()?->name, ['Unidad Solicitante', 'Director/Jefe de Unidad'], true)) {
+            return false;
+        }
+
+        if (!self::viewerCanAccessRequestUnit($viewer, $loan->unit_id)) {
+            return false;
+        }
+
+        return $loan->documents->contains(fn ($document) => (bool) $document->found_in_search);
     }
 
     private static function viewerUnitIds(?User $viewer): array

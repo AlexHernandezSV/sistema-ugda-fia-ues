@@ -26,11 +26,11 @@ const locationOptions = ref({
 });
 
 const form = ref({
-    box_number: '',
+    box_code: '',
     unit_id: null,
-    series_id: null,
-    start_year: '',
-    end_year: '',
+    series_ids: [],
+    start_year: null,
+    end_year: null,
     office_id: null,
     aisle_id: null,
     shelf_id: null,
@@ -75,6 +75,8 @@ const labelSize = {
     heightMm: 180,
 };
 const currentYear = new Date().getFullYear();
+const currentDate = new Date();
+const minimumYearDate = new Date(1900, 0, 1);
 
 const docForm = ref({
     series_id: null,
@@ -85,9 +87,13 @@ const docForm = ref({
     pages: '',
 });
 
-const selectedSeriesName = computed(() => (
-    seriesOptions.value.find((item) => item.value === form.value.series_id)?.label ?? ''
-));
+const selectedSeriesOptions = computed(() => seriesOptions.value.filter((item) => (
+    form.value.series_ids.includes(item.value)
+)));
+
+const selectedSeriesName = computed(() => selectedSeriesOptions.value
+    .map((item) => item.label)
+    .join('; '));
 
 const requiresDigitalDocFile = computed(() => ['Digital', 'Mixto'].includes(docForm.value.support));
 
@@ -174,10 +180,6 @@ const sanitizePositiveInteger = (value) => {
     return number > 0 ? String(number) : '';
 };
 
-const onBoxYearInput = (field, event) => {
-    form.value[field] = sanitizeYear(event.target.value);
-};
-
 const onDocumentYearInput = (event) => {
     docForm.value.year = sanitizeYear(event.target.value);
 };
@@ -186,9 +188,11 @@ const onDocumentPagesInput = (event) => {
     docForm.value.pages = sanitizePositiveInteger(event.target.value);
 };
 
-// Sanitiza el número de caja para que solo sea un entero positivo
+// Permite letras, numeros y guiones en el numero visible de caja.
 const onBoxNumberInput = (event) => {
-    form.value.box_number = sanitizePositiveInteger(event.target.value);
+    form.value.box_code = String(event.target.value ?? '')
+        .toUpperCase()
+        .replace(/[^A-Z0-9-]/g, '');
 };
 
 const escapeHtml = (value = '') => String(value)
@@ -207,6 +211,18 @@ const currentDateLabel = () => {
     return `${day}/${month}/${year}`;
 };
 
+const getYearString = (value) => {
+    if (!value) {
+        return '';
+    }
+
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return String(value.getFullYear());
+    }
+
+    return String(value).match(/\d{4}/)?.[0] ?? '';
+};
+
 const buildQrDataUrl = async (seed) => QRCode.toDataURL(seed, {
     errorCorrectionLevel: 'M',
     type: 'image/png',
@@ -218,7 +234,7 @@ const buildQrDataUrl = async (seed) => QRCode.toDataURL(seed, {
     },
 });
 
-const buildBoxLabelCode = () => `C-AG-${String(Number(form.value.box_number) || form.value.box_number || 0).padStart(3, '0')}`;
+const buildBoxLabelCode = () => form.value.box_code || 'NUEVA-CAJA';
 
 const buildLabelSeed = () => JSON.stringify({
     type: 'archivo-general-box-preview',
@@ -228,11 +244,11 @@ const buildLabelSeed = () => JSON.stringify({
 
 const buildLabelPreviewItem = async () => ({
     boxLabel: buildBoxLabelCode(),
-    transferNumber: 'Archivo General',
+    transferNumber: 'N/A',
     transferDate: currentDateLabel(),
     unit: selectedUnitName.value || 'Unidad no seleccionada',
     content: selectedSeriesName.value || 'Serie documental no seleccionada',
-    period: [form.value.start_year, form.value.end_year].filter(Boolean).join(' - ') || 'Periodo no definido',
+    period: [getYearString(form.value.start_year), getYearString(form.value.end_year)].filter(Boolean).join(' - ') || 'Periodo no definido',
     locationCode: generatedLocationCode.value,
     labelCode: buildBoxLabelCode(),
     assignedBy: 'UGDA',
@@ -242,7 +258,7 @@ const buildLabelPreviewItem = async () => ({
 
 const resetDocForm = () => {
     docForm.value = {
-        series_id: form.value.series_id,
+        series_id: form.value.series_ids[0] ?? null,
         code: '',
         name: '',
         year: '',
@@ -270,7 +286,7 @@ const fetchCatalog = async () => {
             aisles: data.locations?.aisles ?? [],
             shelves: data.locations?.shelves ?? [],
         };
-        form.value.box_number = data.next_box_number ? String(data.next_box_number) : '';
+        form.value.box_code = data.next_box_code || '';
     } catch (error) {
         console.error('Error cargando catalogo:', error);
         showError(error.response?.data?.message ?? 'No se pudo cargar la información para crear la caja.');
@@ -707,7 +723,7 @@ const downloadLabelsPdf = async () => {
         });
 
         pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, labelSize.widthMm, labelSize.heightMm, undefined, 'FAST');
-        pdf.save(`etiqueta-caja-archivo-${form.value.box_number || 'nueva'}.pdf`);
+        pdf.save(`etiqueta-caja-archivo-${form.value.box_code || 'nueva'}.pdf`);
     } catch (error) {
         console.error('Error generando PDF de etiqueta:', error);
         showError('Ocurrio un problema al generar el PDF de la etiqueta.');
@@ -719,22 +735,30 @@ const downloadLabelsPdf = async () => {
 };
 
 const validateForm = () => {
-    if (!form.value.box_number || !form.value.unit_id || !form.value.series_id || !form.value.start_year || !form.value.end_year) {
+    if (!form.value.box_code || !form.value.unit_id || form.value.series_ids.length === 0 || !form.value.start_year || !form.value.end_year) {
         showError('Complete la información obligatoria de la caja.');
         return false;
     }
 
-    if (form.value.start_year.length !== 4 || form.value.end_year.length !== 4) {
+    if (!/^[A-Z0-9]+(?:-[A-Z0-9]+)*$/.test(form.value.box_code)) {
+        showError('El numero de caja solo puede contener letras, numeros y guiones.');
+        return false;
+    }
+
+    const startYear = getYearString(form.value.start_year);
+    const endYear = getYearString(form.value.end_year);
+
+    if (!/^\d{4}$/.test(startYear) || !/^\d{4}$/.test(endYear)) {
         showError('Los anos de la caja deben tener 4 digitos.');
         return false;
     }
 
-    if (Number(form.value.start_year) > currentYear || Number(form.value.end_year) > currentYear) {
+    if (Number(startYear) > currentYear || Number(endYear) > currentYear) {
         showError(`El ano de la caja no puede ser mayor que ${currentYear}.`);
         return false;
     }
 
-    if (Number(form.value.end_year) < Number(form.value.start_year)) {
+    if (Number(endYear) < Number(startYear)) {
         showError('El año final no puede ser menor que el año inicial.');
         return false;
     }
@@ -756,11 +780,11 @@ const submitBox = async () => {
 
     try {
         const payload = {
-            box_number: Number(form.value.box_number),
+            box_code: form.value.box_code,
             unit_id: form.value.unit_id,
-            series_id: form.value.series_id,
-            start_year: Number(form.value.start_year),
-            end_year: Number(form.value.end_year),
+            series_ids: form.value.series_ids,
+            start_year: Number(getYearString(form.value.start_year)),
+            end_year: Number(getYearString(form.value.end_year)),
             office_id: form.value.office_id,
             aisle_id: form.value.aisle_id,
             shelf_id: form.value.shelf_id,
@@ -815,12 +839,12 @@ onMounted(fetchCatalog);
                     <label>
                         <span>N de Caja <b>*</b></span>
                         <InputText
-                            v-model="form.box_number"
-                            type="number"
+                            v-model="form.box_code"
+                            type="text"
                             class="w-full"
                             :disabled="isLoading"
-                            min="1"
-                            step="1"
+                            maxlength="120"
+                            placeholder="Ej: C-090826-001"
                             @input="onBoxNumberInput"
                         />
                     </label>
@@ -839,13 +863,17 @@ onMounted(fetchCatalog);
                 </div>
 
                 <label class="create-box-field">
-                    <span>Serie Documental <b>*</b></span>
-                    <Dropdown
-                        v-model="form.series_id"
+                    <span>Series Documentales <b>*</b></span>
+                    <MultiSelect
+                        v-model="form.series_ids"
                         :options="seriesOptions"
                         optionLabel="label"
                         optionValue="value"
-                        placeholder="Seleccionar serie documental"
+                        placeholder="Seleccionar series documentales"
+                        display="chip"
+                        filter
+                        :maxSelectedLabels="3"
+                        selectedItemsLabel="{0} series seleccionadas"
                         class="w-full"
                         :disabled="isLoading"
                     />
@@ -854,26 +882,32 @@ onMounted(fetchCatalog);
                 <div class="create-box-grid create-box-grid--two">
                     <label>
                         <span>Ano Inicial <b>*</b></span>
-                        <InputText
+                        <DatePicker
                             v-model="form.start_year"
-                            inputmode="numeric"
-                            maxlength="4"
-                            :max="currentYear"
-                            placeholder="Ej: 2024"
+                            view="year"
+                            dateFormat="yy"
+                            showIcon
+                            iconDisplay="input"
+                            readonlyInput
+                            :minDate="minimumYearDate"
+                            :maxDate="currentDate"
+                            placeholder="Seleccionar año"
                             class="w-full"
-                            @input="onBoxYearInput('start_year', $event)"
                         />
                     </label>
                     <label>
                         <span>Ano Final <b>*</b></span>
-                        <InputText
+                        <DatePicker
                             v-model="form.end_year"
-                            inputmode="numeric"
-                            maxlength="4"
-                            :max="currentYear"
-                            placeholder="Ej: 2024"
+                            view="year"
+                            dateFormat="yy"
+                            showIcon
+                            iconDisplay="input"
+                            readonlyInput
+                            :minDate="form.start_year || minimumYearDate"
+                            :maxDate="currentDate"
+                            placeholder="Seleccionar año"
                             class="w-full"
-                            @input="onBoxYearInput('end_year', $event)"
                         />
                     </label>
                 </div>
@@ -1012,7 +1046,7 @@ onMounted(fetchCatalog);
         >
             <template #header>
                 <div>
-                    <h2>Documentos de la Caja #{{ form.box_number || '---' }}</h2>
+                    <h2>Documentos de la Caja {{ form.box_code || '---' }}</h2>
                 </div>
             </template>
 
@@ -1023,7 +1057,7 @@ onMounted(fetchCatalog);
                     <span>Serie Documental <b>*</b></span>
                     <Dropdown
                         v-model="docForm.series_id"
-                        :options="seriesOptions"
+                        :options="selectedSeriesOptions"
                         optionLabel="label"
                         optionValue="value"
                         placeholder="Seleccionar serie documental"
@@ -1254,7 +1288,7 @@ onMounted(fetchCatalog);
                         <div>
                             <h2 class="detalle-labels-modal__title m-0">Etiquetas de Identificacion</h2>
                             <p class="detalle-labels-modal__subtitle m-0">
-                                Vista previa de 1 etiqueta para la caja #{{ form.box_number || '---' }}
+                                Vista previa de 1 etiqueta para la caja {{ form.box_code || '---' }}
                             </p>
                         </div>
                     </div>

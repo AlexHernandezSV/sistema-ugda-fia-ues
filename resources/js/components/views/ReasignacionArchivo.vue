@@ -63,6 +63,9 @@ const generatedLocationCode = computed(() => {
     return [office?.code, aisle?.code, shelf?.code].filter(Boolean).join('-');
 });
 
+const getBoxCode = (box) => box?.box_code || box?.boxCode || box?.code || null;
+const displayBoxCode = (box) => getBoxCode(box) || (box?.number ? `Caja #${box.number}` : '---');
+
 let boxSearchTimeout = null;
 let documentSearchTimeout = null;
 let destinationBoxSearchTimeout = null;
@@ -110,7 +113,9 @@ const buildQrDataUrl = async (seed) => QRCode.toDataURL(seed, {
 });
 
 const buildReassignedLabel = async (box) => {
-    const boxLabel = `C-AG-${String(Number(box.box_number ?? box.number) || box.number || 0).padStart(3, '0')}`;
+    const boxLabel = getBoxCode(box)
+        || getBoxCode(selectedBox.value)
+        || `C-AG-${String(Number(box.box_number ?? box.number) || box.number || 0).padStart(3, '0')}`;
     const locationCode = box.location ?? generatedLocationCode.value;
 
     return {
@@ -267,7 +272,7 @@ const onBoxSearchInput = () => {
 const selectBox = (box) => {
     selectedBoxId.value = box.id;
     selectedBoxRecord.value = box;
-    boxSearch.value = `Caja #${box.number} - ${box.series}`;
+    boxSearch.value = `${displayBoxCode(box)} - ${box.series}`;
     boxes.value = [];
 };
 
@@ -376,7 +381,7 @@ const onDestinationBoxSearchInput = () => {
 const selectDestinationBox = (box) => {
     selectedDestinationBoxId.value = box.id;
     selectedDestinationBoxRecord.value = box;
-    destinationBoxSearch.value = `Caja #${box.number} - ${box.series}`;
+    destinationBoxSearch.value = `${displayBoxCode(box)} - ${box.series}`;
     destinationBoxes.value = [];
 };
 
@@ -424,10 +429,10 @@ const submitBoxLocation = async () => {
             shelf_id: locationForm.value.shelf_id,
         });
 
-        const movedBox = data.box?.number ?? selectedBox.value.number;
+        const movedBox = getBoxCode(data.box) || getBoxCode(selectedBox.value) || displayBoxCode(selectedBox.value);
         reassignedLabel.value = await buildReassignedLabel(data.box ?? selectedBox.value);
         labelDialogVisible.value = true;
-        showToast('success', 'Caja movida', `Se movio la caja #${movedBox} correctamente.`);
+        showToast('success', 'Caja movida', `Se movio la caja ${movedBox} correctamente.`);
         resetBoxReassignment();
     } catch (error) {
         showToast('error', 'Error', error.response?.data?.message ?? 'No se pudo reasignar la ubicación.');
@@ -465,12 +470,12 @@ const submitDocumentReassignment = async () => {
 
     try {
         const movedDocument = selectedDocument.value.title;
-        const destinationBoxNumber = selectedDestinationBox.value.number;
+        const destinationBoxCode = displayBoxCode(selectedDestinationBox.value);
         const { data } = await axios.put(`/api/archive/documents/${selectedDocument.value.id}/box`, {
             box_id: selectedDestinationBox.value.id,
         });
 
-        showToast('success', 'Documento movido', `Se movio el documento "${movedDocument}" a la caja #${destinationBoxNumber}.`);
+        showToast('success', 'Documento movido', `Se movio el documento "${movedDocument}" a la caja ${destinationBoxCode}.`);
         resetDocumentReassignment();
     } catch (error) {
         showToast('error', 'Error', error.response?.data?.message ?? 'No se pudo reasignar el documento.');
@@ -534,7 +539,7 @@ onMounted(async () => {
                         <i class="pi pi-search"></i>
                         <InputText
                             v-model="boxSearch"
-                            placeholder="Buscar por numero de caja, serie o unidad productora..."
+                            placeholder="Buscar por código de caja, número, serie o unidad productora..."
                             @input="onBoxSearchInput"
                         />
                     </form>
@@ -548,7 +553,7 @@ onMounted(async () => {
                             class="reassign-result-item"
                             @click="selectBox(box)"
                         >
-                            <strong>Caja #{{ box.number }}</strong>
+                            <strong>{{ displayBoxCode(box) }}</strong>
                             <span>Serie: {{ box.series }}</span>
                             <span>Ubicación Actual: {{ box.location ?? 'Pendiente' }}</span>
                             <span>Unidad: {{ box.unit?.name ?? 'Sin unidad' }}</span>
@@ -564,7 +569,7 @@ onMounted(async () => {
 
                     <div class="reassign-current">
                         <strong>Informacion Actual</strong>
-                        <span>Caja: #{{ selectedBox?.number ?? '---' }}</span>
+                        <span>Código de caja: {{ displayBoxCode(selectedBox) }}</span>
                         <span>Serie: {{ selectedBox?.series ?? 'Seleccione una caja' }}</span>
                         <span>Unidad productora: {{ selectedBox?.unit?.name ?? '---' }}</span>
                         <span>Ubicación Actual: {{ selectedBox?.location ?? 'Pendiente' }}</span>
@@ -648,7 +653,7 @@ onMounted(async () => {
                         >
                             <strong>{{ document.title }}</strong>
                             <span>Codigo: {{ document.code }}</span>
-                            <span>Caja Actual: #{{ document.box?.number ?? '---' }} - {{ document.box?.series ?? 'Sin serie' }}</span>
+                            <span>Caja Actual: {{ displayBoxCode(document.box) }} - {{ document.box?.series ?? 'Sin serie' }}</span>
                             <span>Ubicación: {{ document.box?.location ?? 'Pendiente' }}</span>
                         </button>
                     </div>
@@ -664,14 +669,14 @@ onMounted(async () => {
                         <strong>Informacion del Documento</strong>
                         <span>Documento: {{ selectedDocument?.title ?? 'Seleccione un documento' }}</span>
                         <span>Codigo: {{ selectedDocument?.code ?? '---' }}</span>
-                        <span>Caja Actual: #{{ selectedDocument?.box?.number ?? '---' }} - {{ selectedDocument?.box?.series ?? '---' }}</span>
+                        <span>Caja Actual: {{ displayBoxCode(selectedDocument?.box) }} - {{ selectedDocument?.box?.series ?? '---' }}</span>
                     </div>
 
                     <form class="reassign-search" @submit.prevent="searchDestinationBoxes">
                         <i class="pi pi-search"></i>
                         <InputText
                             v-model="destinationBoxSearch"
-                            placeholder="Buscar caja de destino..."
+                            placeholder="Buscar código de caja de destino..."
                             @input="onDestinationBoxSearchInput"
                         />
                     </form>
@@ -685,7 +690,7 @@ onMounted(async () => {
                             class="reassign-result-item"
                             @click="selectDestinationBox(box)"
                         >
-                            <strong>Caja #{{ box.number }}</strong>
+                            <strong>{{ displayBoxCode(box) }}</strong>
                             <span>Serie: {{ box.series }}</span>
                             <span>Ubicación: {{ box.location ?? 'Pendiente' }}</span>
                         </button>
@@ -696,7 +701,7 @@ onMounted(async () => {
 
                     <div v-if="selectedDestinationBox" class="reassign-destination">
                         <strong>Caja de Destino Seleccionada</strong>
-                        <span>Caja: #{{ selectedDestinationBox.number }}</span>
+                        <span>Caja: {{ displayBoxCode(selectedDestinationBox) }}</span>
                         <span>Serie: {{ selectedDestinationBox.series }}</span>
                         <span>Ubicación: {{ selectedDestinationBox.location ?? 'Sin ubicación' }}</span>
                     </div>
@@ -721,7 +726,7 @@ onMounted(async () => {
             :style="{ width: 'min(480px, 94vw)' }"
         >
             <p class="reassign-confirm-text">
-                Se movera la caja #{{ selectedBox?.number }} de
+                Se movera la caja {{ displayBoxCode(selectedBox) }} de
                 <strong>{{ selectedBox?.location ?? 'Pendiente' }}</strong>
                 a
                 <strong>{{ generatedLocationCode }}</strong>.
@@ -748,8 +753,8 @@ onMounted(async () => {
             <p class="reassign-confirm-text">
                 Se movera el documento
                 <strong>"{{ selectedDocument?.title }}"</strong>
-                de la caja #{{ selectedDocument?.box?.number ?? '---' }}
-                a la caja #{{ selectedDestinationBox?.number ?? '---' }}.
+                de la caja {{ displayBoxCode(selectedDocument?.box) }}
+                a la caja {{ displayBoxCode(selectedDestinationBox) }}.
             </p>
             <template #footer>
                 <div class="reassign-dialog-footer">
@@ -778,7 +783,7 @@ onMounted(async () => {
             </template>
 
             <article v-if="reassignedLabel" class="reassign-label-card">
-                <div class="reassign-label-card__top">
+                <div class="reassign-label-card__header">
                     <div>
                         <strong>UNIVERSIDAD DE EL SALVADOR</strong>
                         <span>Facultad de Ingenieria y Arquitectura - UGDA</span>
@@ -788,22 +793,29 @@ onMounted(async () => {
                         <strong>{{ reassignedLabel.transferDate }}</strong>
                     </div>
                 </div>
-                <div class="reassign-label-card__body">
-                    <img :src="reassignedLabel.qrDataUrl" :alt="`Codigo QR ${reassignedLabel.labelCode}`" />
-                    <div>
-                        <span>CÓDIGO DE UBICACIÓN</span>
-                        <strong>{{ reassignedLabel.locationCode }}</strong>
+                <div class="reassign-label-card__hero">
+                    <div class="reassign-label-card__qr">
+                        <img :src="reassignedLabel.qrDataUrl" :alt="`Codigo QR ${reassignedLabel.labelCode}`" />
+                        <span>Codigo: {{ reassignedLabel.labelCode }}</span>
                     </div>
-                    <div>
-                        <span>N de caja</span>
-                        <strong>{{ reassignedLabel.boxLabel }}</strong>
+                    <div class="reassign-label-card__hero-main">
+                        <div class="reassign-label-card__location">
+                            <span>CÓDIGO DE UBICACIÓN</span>
+                            <strong>{{ reassignedLabel.locationCode }}</strong>
+                        </div>
+                        <div class="reassign-label-card__box">
+                            <span>N de caja</span>
+                            <strong>{{ reassignedLabel.boxLabel }}</strong>
+                        </div>
                     </div>
                 </div>
                 <div class="reassign-label-card__details">
-                    <span>Unidad productora: <strong>{{ reassignedLabel.unit }}</strong></span>
-                    <span>Contenido: <strong>{{ reassignedLabel.content }}</strong></span>
-                    <span>Periodo: <strong>{{ reassignedLabel.period }}</strong></span>
+                    <div><span>N de transferencia</span><strong>{{ reassignedLabel.transferNumber }}</strong></div>
+                    <div><span>Unidad productora</span><strong>{{ reassignedLabel.unit }}</strong></div>
+                    <div><span>Contenido de la caja</span><strong>{{ reassignedLabel.content }}</strong></div>
                 </div>
+                <div class="reassign-label-card__assigned">Ubicación reasignada por {{ reassignedLabel.assignedBy }} el {{ reassignedLabel.assignedAt }}</div>
+                <div class="reassign-label-card__footer">Instrucciones: Adherir esta etiqueta en la parte frontal de la caja de forma visible. Mantener limpia y legible para facilitar su ubicación.</div>
             </article>
 
             <template #footer>
@@ -1178,68 +1190,142 @@ onMounted(async () => {
     overflow: hidden;
 }
 
-.reassign-label-card__top {
+.reassign-label-card__header {
     align-items: flex-start;
     border-bottom: 1px solid #dbe5ee;
-    display: flex;
-    justify-content: space-between;
-    gap: 1rem;
-    padding: 1rem;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    padding: 1rem 0.95rem 0.65rem;
 }
 
-.reassign-label-card__top div {
+.reassign-label-card__header > div:first-child {
     display: grid;
     gap: 0.25rem;
 }
 
-.reassign-label-card__top span,
-.reassign-label-card__body span,
-.reassign-label-card__details span {
+.reassign-label-card__header > div:first-child strong {
+    font-size: 1.05rem;
+    line-height: 1.15;
+}
+
+.reassign-label-card__header > div:first-child span,
+.reassign-label-card__header > div:last-child span,
+.reassign-label-card__hero span,
+.reassign-label-card__details span,
+.reassign-label-card__assigned {
     color: #64748b;
-    font-size: 0.78rem;
+    font-size: 0.6rem;
+    line-height: 1.25;
 }
 
-.reassign-label-card__body {
+.reassign-label-card__header > div:last-child {
+    min-width: 5.25rem;
+    text-align: right;
+}
+
+.reassign-label-card__header > div:last-child strong {
+    display: block;
+    font-size: 0.8rem;
+    margin-top: 0.28rem;
+}
+
+.reassign-label-card__hero {
+    align-items: center;
+    border-bottom: 1px solid #dbe5ee;
     display: grid;
-    gap: 0.85rem;
-    padding: 1rem;
+    gap: 0.75rem;
+    grid-template-columns: 1fr;
+    padding: 0.85rem 0.95rem;
 }
 
-.reassign-label-card__body img {
-    height: 112px;
-    justify-self: center;
-    width: 112px;
-}
-
-.reassign-label-card__body div {
-    background: #edf3fa;
-    border-radius: 0.45rem;
-    display: grid;
-    gap: 0.25rem;
-    padding: 0.8rem;
-}
-
-.reassign-label-card__body div:first-of-type {
-    background: #2f6f9f;
-    color: #ffffff;
+.reassign-label-card__qr {
     text-align: center;
 }
 
-.reassign-label-card__body div:first-of-type span,
-.reassign-label-card__body div:first-of-type strong {
+.reassign-label-card__qr img {
+    display: block;
+    height: 112px;
+    margin: 0 auto 0.3rem;
+    width: 112px;
+}
+
+.reassign-label-card__hero-main {
+    min-width: 0;
+}
+
+.reassign-label-card__location {
+    background: #2f6f9f;
+    border-radius: 0.45rem;
+    color: #ffffff;
+    padding: 0.65rem 0.7rem;
+    text-align: center;
+}
+
+.reassign-label-card__location span,
+.reassign-label-card__location strong {
     color: #ffffff;
 }
 
-.reassign-label-card__body strong {
+.reassign-label-card__location span {
+    display: block;
+    font-size: 0.6rem;
+    font-weight: 700;
+}
+
+.reassign-label-card__location strong {
+    display: block;
+    font-size: 1.45rem;
+    line-height: 1.05;
+    margin-top: 0.25rem;
+}
+
+.reassign-label-card__box {
+    background: #edf3fa;
+    border-radius: 0.4rem;
+    margin-top: 0.55rem;
+    padding: 0.6rem 0.7rem;
+}
+
+.reassign-label-card__box span {
+    display: block;
+}
+
+.reassign-label-card__box strong {
     color: #0f172a;
+    display: block;
     font-size: 1.2rem;
+    line-height: 1.1;
+    margin-top: 0.2rem;
 }
 
 .reassign-label-card__details {
-    border-top: 1px solid #dbe5ee;
     display: grid;
-    gap: 0.4rem;
-    padding: 1rem;
+    gap: 0.55rem;
+    padding: 0.85rem 0.95rem 0.5rem;
+}
+
+.reassign-label-card__details strong {
+    color: #0f172a;
+    display: block;
+    font-size: 0.78rem;
+    line-height: 1.25;
+    margin-top: 0.15rem;
+}
+
+.reassign-label-card__assigned {
+    border-top: 1px solid #dbe5ee;
+    margin: 0 0.95rem;
+    padding: 0.6rem 0;
+}
+
+.reassign-label-card__footer {
+    background: #fff7db;
+    color: #b45309;
+    font-size: 0.58rem;
+    font-weight: 700;
+    line-height: 1.3;
+    margin-top: auto;
+    padding: 0.55rem 0.95rem;
 }
 
 button:disabled {
