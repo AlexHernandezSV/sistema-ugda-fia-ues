@@ -755,6 +755,25 @@ watch(
             </div>
         </div>
 
+        <div v-if="loan.subsanationSummary" class="detalle-banner detalle-banner--blue">
+            <div class="detalle-banner__head">
+                <div class="detalle-banner__icon detalle-banner__icon--blue">
+                    <i class="pi pi-check-circle"></i>
+                </div>
+                <div>
+                    <h2 class="detalle-banner__title m-0">{{ loan.subsanationSummary.title }}</h2>
+                    <p class="detalle-banner__text m-0">{{ loan.subsanationSummary.description }}</p>
+                </div>
+            </div>
+
+            <div class="detalle-banner__panel">
+                <p class="m-0">{{ loan.subsanationSummary.message }}</p>
+                <div class="detalle-banner__divider"></div>
+                <div class="font-semibold mb-2 text-900">{{ loan.subsanationSummary.notesLabel }}</div>
+                <div class="detalle-banner__notes">{{ loan.subsanationSummary.notes }}</div>
+            </div>
+        </div>
+
         <div v-if="loan.workflowNotice" class="detalle-notice">
             <div class="detalle-notice__icon">
                 <i class="pi pi-exclamation-triangle"></i>
@@ -2127,6 +2146,11 @@ watch(
     border-left: 4px solid #f6ad3c;
 }
 
+.detalle-banner--blue {
+    background: #dbeafe;
+    border-left: 4px solid #1d4ed8;
+}
+
 .detalle-banner--danger {
     background: #fee2e2;
     border-left: 4px solid #ef4444;
@@ -2159,6 +2183,10 @@ watch(
     background: #f6ad3c;
 }
 
+.detalle-banner__icon--blue {
+    background: #1d4ed8;
+}
+
 .detalle-banner__icon--danger {
     background: #ef4444;
 }
@@ -2178,6 +2206,18 @@ watch(
     background: #ffffff;
     border-radius: 1rem;
     padding: 1rem 1.15rem;
+}
+
+.detalle-banner__divider {
+    border-top: 1px solid #c7d2fe;
+    margin: 1rem 0;
+}
+
+.detalle-banner__notes {
+    background: #edf4ff;
+    border-radius: 0.7rem;
+    color: #0f3f91;
+    padding: 0.9rem 1rem;
 }
 
 .detalle-banner__panel--danger {

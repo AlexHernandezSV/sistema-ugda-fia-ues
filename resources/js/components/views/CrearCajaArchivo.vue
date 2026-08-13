@@ -27,8 +27,8 @@ const locationOptions = ref({
 
 const form = ref({
     box_code: '',
-    unit_id: null,
-    series_ids: [],
+    unit_ids: [],
+    classification_ids: [],
     start_year: null,
     end_year: null,
     office_id: null,
@@ -55,6 +55,7 @@ const selectedExistingDocuments = ref([]);
 const documentPreviewVisible = ref(false);
 const documentPreviewTitle = ref('Documento PDF');
 const documentPreviewSource = ref(null);
+const shouldRestoreAddDocumentDialog = ref(false);
 
 // Control de visibilidad de modales
 watch(
@@ -62,10 +63,20 @@ watch(
     (newValue) => {
         if (newValue) {
             // Ocultar el modal del documento cuando se abre el preview del PDF
+            shouldRestoreAddDocumentDialog.value = addDocumentDialogVisible.value;
             addDocumentDialogVisible.value = false;
         }
     },
 );
+
+const restoreAddDocumentDialog = () => {
+    documentPreviewSource.value = null;
+
+    if (shouldRestoreAddDocumentDialog.value) {
+        shouldRestoreAddDocumentDialog.value = false;
+        addDocumentDialogVisible.value = true;
+    }
+};
 const documentDigitalFile = ref(null);
 const documentDigitalFileName = ref('');
 const labelSize = {
@@ -79,7 +90,7 @@ const currentDate = new Date();
 const minimumYearDate = new Date(1900, 0, 1);
 
 const docForm = ref({
-    series_id: null,
+    classification_id: null,
     code: '',
     name: '',
     year: '',
@@ -88,7 +99,7 @@ const docForm = ref({
 });
 
 const selectedSeriesOptions = computed(() => seriesOptions.value.filter((item) => (
-    form.value.series_ids.includes(item.value)
+    form.value.classification_ids.includes(item.value)
 )));
 
 const selectedSeriesName = computed(() => selectedSeriesOptions.value
@@ -97,8 +108,24 @@ const selectedSeriesName = computed(() => selectedSeriesOptions.value
 
 const requiresDigitalDocFile = computed(() => ['Digital', 'Mixto'].includes(docForm.value.support));
 
+watch(() => docForm.value.support, (support) => {
+    if (support !== 'Fisico') {
+        return;
+    }
+
+    documentDigitalFile.value = null;
+    documentDigitalFileName.value = '';
+
+    if (documentFileInputRef.value) {
+        documentFileInputRef.value.value = '';
+    }
+});
+
 const selectedUnitName = computed(() => (
-    units.value.find((item) => item.value === form.value.unit_id)?.label ?? ''
+    units.value
+        .filter((item) => form.value.unit_ids.includes(item.value))
+        .map((item) => item.label)
+        .join('; ')
 ));
 
 const allDocuments = computed(() => [
@@ -223,6 +250,46 @@ const getYearString = (value) => {
     return String(value).match(/\d{4}/)?.[0] ?? '';
 };
 
+const normalizeDocumentValue = (value) => String(value ?? '')
+    .trim()
+    .replace(/[–—−]/g, '-')
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+
+const getDocumentCodeKey = (document) => normalizeDocumentValue(document?.code);
+
+const isPdfFile = (file) => (
+    file
+    && (
+        file.type === 'application/pdf'
+        || String(file.name ?? '').toLowerCase().endsWith('.pdf')
+    )
+);
+
+const isPdfFileName = (fileName) => String(fileName ?? '').toLowerCase().endsWith('.pdf');
+
+const createPdfPreviewUrl = (file) => URL.createObjectURL(new Blob([file], { type: 'application/pdf' }));
+
+const findDuplicateDocumentCode = (documentList) => {
+    const seen = new Set();
+
+    for (const document of documentList) {
+        const codeKey = getDocumentCodeKey(document);
+
+        if (!codeKey) {
+            continue;
+        }
+
+        if (seen.has(codeKey)) {
+            return String(document.code ?? '').trim();
+        }
+
+        seen.add(codeKey);
+    }
+
+    return '';
+};
+
 const buildQrDataUrl = async (seed) => QRCode.toDataURL(seed, {
     errorCorrectionLevel: 'M',
     type: 'image/png',
@@ -258,7 +325,7 @@ const buildLabelPreviewItem = async () => ({
 
 const resetDocForm = () => {
     docForm.value = {
-        series_id: form.value.series_ids[0] ?? null,
+        classification_id: form.value.classification_ids[0] ?? null,
         code: '',
         name: '',
         year: '',
@@ -336,6 +403,43 @@ const onDocumentDigitalFileSelect = async (event) => {
     documentDigitalFileName.value = file.name;
 };
 
+const onNewDocumentFileSelect = async (documentEntry, event) => {
+    const file = event.target.files?.[0] ?? null;
+
+    if (!file) {
+        return;
+    }
+
+    if (!isPdfFile(file)) {
+        showError('Seleccione un archivo PDF.');
+        event.target.value = '';
+        return;
+    }
+
+    const documentIndex = documents.value.findIndex((document) => document.id === documentEntry.id);
+
+    if (documentIndex < 0) {
+        return;
+    }
+
+    if (documents.value[documentIndex].file_url) {
+        URL.revokeObjectURL(documents.value[documentIndex].file_url);
+    }
+
+    documents.value[documentIndex] = {
+        ...documents.value[documentIndex],
+        file,
+        file_name: file.name,
+        digital_file_name: file.name,
+        digital_file_base64: await readFileAsBase64(file),
+        file_url: createPdfPreviewUrl(file),
+    };
+};
+
+const openNewDocumentFilePicker = (documentId, context = 'main') => {
+    document.getElementById(`newDocumentFile-${context}-${documentId}`)?.click();
+};
+
 const previewDocumentFile = () => {
     if (!documentDigitalFile.value) {
         showError('Adjunte primero un archivo PDF para visualizarlo.');
@@ -348,6 +452,20 @@ const previewDocumentFile = () => {
 };
 
 const previewStoredDocument = (documentEntry) => {
+    if (isPdfFile(documentEntry?.file)) {
+        documentPreviewTitle.value = documentEntry.file_name || documentEntry.file.name || documentEntry.name || 'Documento PDF';
+        documentPreviewSource.value = { file: documentEntry.file };
+        documentPreviewVisible.value = true;
+        return;
+    }
+
+    if (documentEntry?.file_url) {
+        documentPreviewTitle.value = documentEntry.file_name || documentEntry.name || 'Documento PDF';
+        documentPreviewSource.value = { url: documentEntry.file_url, fileName: documentEntry.file_name };
+        documentPreviewVisible.value = true;
+        return;
+    }
+
     if (!documentEntry?.digital_file_base64) {
         showError('Este documento no tiene un archivo PDF adjunto.');
         return;
@@ -368,13 +486,60 @@ const previewStoredDocument = (documentEntry) => {
     documentPreviewVisible.value = true;
 };
 
+const validateDocumentForBox = (document, requireDigitalFile = true) => {
+    const documentName = String(document?.name ?? 'documento').trim() || 'documento';
+    const documentSeries = normalizeDocumentValue(document?.series);
+    const boxSeries = new Set(selectedSeriesOptions.value.map((item) => normalizeDocumentValue(item.label)));
+
+    if (!documentSeries || !boxSeries.has(documentSeries)) {
+        return `La serie "${document.series || 'Sin serie'}" del documento "${documentName}" no existe o no forma parte de la caja.`;
+    }
+
+    const year = String(document?.year ?? document?.date ?? '').trim();
+    const startYear = Number(getYearString(form.value.start_year));
+    const endYear = Number(getYearString(form.value.end_year));
+
+    if (!/^\d{4}$/.test(year) || Number(year) < startYear || Number(year) > endYear) {
+        return `El anio del documento "${documentName}" debe estar dentro del rango de la caja (${startYear} - ${endYear}).`;
+    }
+
+    const pages = String(document?.pages ?? '').trim();
+
+    if (pages !== '' && (!/^\d+$/.test(pages) || Number(pages) < 1)) {
+        return `La cantidad de paginas del documento "${documentName}" debe ser un entero positivo.`;
+    }
+
+    if (requireDigitalFile && ['Digital', 'Mixto'].includes(document?.support)
+        && (!document?.digital_file_base64 || !isPdfFileName(document?.digital_file_name))) {
+        return `El documento "${documentName}" requiere un archivo PDF para el soporte ${document.support}.`;
+    }
+
+    return '';
+};
+
+const validateDocumentCollection = (documentList, requireDigitalFile = true) => {
+    for (const document of documentList) {
+        const message = validateDocumentForBox(document, requireDigitalFile);
+
+        if (message) {
+            return message;
+        }
+    }
+
+    const duplicateCode = findDuplicateDocumentCode(documentList);
+
+    return duplicateCode
+        ? `El codigo "${duplicateCode}" esta repetido dentro de esta caja. Cada codigo debe ser unico por caja.`
+        : '';
+};
+
 const addDocument = async () => {
-    const selectedDocSeries = seriesOptions.value.find((item) => item.value === docForm.value.series_id);
+    const selectedDocSeries = seriesOptions.value.find((item) => item.value === docForm.value.classification_id);
     const documentYear = Number(docForm.value.year);
     const pages = docForm.value.pages === '' ? null : Number(docForm.value.pages);
 
-    if (!docForm.value.series_id || !docForm.value.name || !docForm.value.code || !docForm.value.year || !docForm.value.support || !docForm.value.pages) {
-        showError('Complete los campos obligatorios del documento, incluyendo la serie documental.');
+    if (!docForm.value.classification_id || !docForm.value.name || !docForm.value.code || !docForm.value.year || !docForm.value.support) {
+        showError('Complete los campos obligatorios del documento, incluyendo la serie o subserie documental.');
         return;
     }
 
@@ -383,8 +548,13 @@ const addDocument = async () => {
         return;
     }
 
-    if (!Number.isInteger(pages) || pages <= 0) {
+    if (pages !== null && (!Number.isInteger(pages) || pages <= 0)) {
         showError('El numero de paginas debe ser un entero positivo mayor que 0.');
+        return;
+    }
+
+    if (requiresDigitalDocFile.value && (!documentDigitalFile.value || !isPdfFile(documentDigitalFile.value))) {
+        showError('Adjunte un archivo PDF para documentos digitales o mixtos.');
         return;
     }
 
@@ -394,17 +564,28 @@ const addDocument = async () => {
         digitalFileBase64 = await readFileAsBase64(documentDigitalFile.value);
     }
 
-    documents.value.push({
+    const documentEntry = {
         id: `manual-${Date.now()}`,
         series: selectedDocSeries?.label ?? selectedSeriesName.value,
         code: docForm.value.code,
         name: docForm.value.name,
         year: String(documentYear),
         support: docForm.value.support,
-        pages: String(pages),
+        pages: pages === null ? '' : String(pages),
         digital_file_name: documentDigitalFileName.value || null,
         digital_file_base64: digitalFileBase64,
-    });
+        file: documentDigitalFile.value,
+        file_name: documentDigitalFileName.value || null,
+        file_url: documentDigitalFile.value ? createPdfPreviewUrl(documentDigitalFile.value) : null,
+    };
+    const validationMessage = validateDocumentCollection([...allDocuments.value, documentEntry], false);
+
+    if (validationMessage) {
+        showError(validationMessage);
+        return;
+    }
+
+    documents.value.push(documentEntry);
 
     toast.add({
         severity: 'success',
@@ -419,6 +600,12 @@ const removeDocument = (document) => {
     if (document.source === 'existente') {
         selectedExistingDocuments.value = selectedExistingDocuments.value.filter((item) => item.id !== document.id);
         return;
+    }
+
+    const documentToRemove = documents.value.find((item) => item.id === document.id);
+
+    if (documentToRemove?.file_url) {
+        URL.revokeObjectURL(documentToRemove.file_url);
     }
 
     documents.value = documents.value.filter((item) => item.id !== document.id);
@@ -479,15 +666,36 @@ const importDocuments = async () => {
 
         const imported = Array.isArray(data.documents) ? data.documents : [];
 
-        documents.value.push(...imported.map((document, index) => ({
+        if (imported.length === 0) {
+            showError('El archivo no contiene filas con documentos.');
+            return;
+        }
+
+        const importedDocuments = imported.map((document, index) => ({
             id: `excel-${Date.now()}-${index}`,
             series: document.series || selectedSeriesName.value,
-            code: document.code,
-            name: document.name,
-            year: document.date,
+            code: String(document.code ?? '').trim(),
+            name: String(document.name ?? '').trim(),
+            year: String(document.date ?? '').trim(),
             support: document.support,
-            pages: document.pages,
-        })));
+            pages: String(document.pages ?? '').trim(),
+            digital_file_name: null,
+            digital_file_base64: null,
+            file: null,
+            file_name: null,
+            file_url: null,
+        }));
+        const importValidationMessage = validateDocumentCollection([
+            ...allDocuments.value,
+            ...importedDocuments,
+        ], false);
+
+        if (importValidationMessage) {
+            showError(importValidationMessage);
+            return;
+        }
+
+        documents.value.push(...importedDocuments);
 
         excelFile.value = null;
         resetExcelInput();
@@ -735,7 +943,7 @@ const downloadLabelsPdf = async () => {
 };
 
 const validateForm = () => {
-    if (!form.value.box_code || !form.value.unit_id || form.value.series_ids.length === 0 || !form.value.start_year || !form.value.end_year) {
+    if (!form.value.box_code || form.value.unit_ids.length === 0 || form.value.classification_ids.length === 0 || !form.value.start_year || !form.value.end_year) {
         showError('Complete la información obligatoria de la caja.');
         return false;
     }
@@ -763,6 +971,23 @@ const validateForm = () => {
         return false;
     }
 
+    const documentValidationMessage = validateDocumentCollection(allDocuments.value, false);
+
+    if (documentValidationMessage) {
+        showError(documentValidationMessage);
+        return false;
+    }
+
+    const documentWithoutPdf = documents.value.find((document) => (
+        ['Digital', 'Mixto'].includes(document.support)
+        && (!document.digital_file_base64 || !isPdfFileName(document.digital_file_name))
+    ));
+
+    if (documentWithoutPdf) {
+        showError(`El documento "${documentWithoutPdf.name}" requiere un archivo PDF para el soporte ${documentWithoutPdf.support}.`);
+        return false;
+    }
+
     if (!generatedLocationCode.value) {
         showError('Complete la ubicación física de la caja.');
         return false;
@@ -781,8 +1006,8 @@ const submitBox = async () => {
     try {
         const payload = {
             box_code: form.value.box_code,
-            unit_id: form.value.unit_id,
-            series_ids: form.value.series_ids,
+            unit_ids: form.value.unit_ids,
+            classification_ids: form.value.classification_ids,
             start_year: Number(getYearString(form.value.start_year)),
             end_year: Number(getYearString(form.value.end_year)),
             office_id: form.value.office_id,
@@ -849,13 +1074,17 @@ onMounted(fetchCatalog);
                         />
                     </label>
                     <label>
-                        <span>Unidad Productora <b>*</b></span>
-                        <Dropdown
-                            v-model="form.unit_id"
+                        <span>Unidades Productoras <b>*</b></span>
+                        <MultiSelect
+                            v-model="form.unit_ids"
                             :options="units"
                             optionLabel="label"
                             optionValue="value"
-                            placeholder="Seleccionar unidad productora"
+                            placeholder="Seleccionar unidades productoras"
+                            display="chip"
+                            filter
+                            :maxSelectedLabels="2"
+                            selectedItemsLabel="{0} unidades seleccionadas"
                             class="w-full"
                             :disabled="isLoading"
                         />
@@ -863,17 +1092,17 @@ onMounted(fetchCatalog);
                 </div>
 
                 <label class="create-box-field">
-                    <span>Series Documentales <b>*</b></span>
+                    <span>Series / Subseries <b>*</b></span>
                     <MultiSelect
-                        v-model="form.series_ids"
+                        v-model="form.classification_ids"
                         :options="seriesOptions"
                         optionLabel="label"
                         optionValue="value"
-                        placeholder="Seleccionar series documentales"
+                        placeholder="Seleccionar series o subseries"
                         display="chip"
                         filter
                         :maxSelectedLabels="3"
-                        selectedItemsLabel="{0} series seleccionadas"
+                        selectedItemsLabel="{0} series/subseries seleccionadas"
                         class="w-full"
                         :disabled="isLoading"
                     />
@@ -1017,6 +1246,24 @@ onMounted(fetchCatalog);
                                 >
                                     <i class="pi pi-eye"></i>
                                 </button>
+                                <template v-if="(data.source !== 'existente' && (data.support === 'Digital' || data.support === 'Mixto'))">
+                                    <button
+                                        v-if="!data.digital_file_base64"
+                                        type="button"
+                                        class="create-box-outline"
+                                        title="Adjuntar PDF"
+                                        @click="openNewDocumentFilePicker(data.id, 'main')"
+                                    >
+                                        <i class="pi pi-upload"></i>
+                                    </button>
+                                    <input
+                                        :id="`newDocumentFile-main-${data.id}`"
+                                        type="file"
+                                        accept=".pdf"
+                                        class="archive-doc-form__file-input"
+                                        @change="onNewDocumentFileSelect(data, $event)"
+                                    />
+                                </template>
                                 <button type="button" class="create-box-remove" @click="removeDocument(data)">
                                     <i class="pi pi-trash"></i>
                                 </button>
@@ -1054,9 +1301,9 @@ onMounted(fetchCatalog);
                 <h3>Agregar Documento</h3>
 
                 <label class="create-box-field">
-                    <span>Serie Documental <b>*</b></span>
+                    <span>Serie / Subserie <b>*</b></span>
                     <Dropdown
-                        v-model="docForm.series_id"
+                        v-model="docForm.classification_id"
                         :options="selectedSeriesOptions"
                         optionLabel="label"
                         optionValue="value"
@@ -1168,6 +1415,24 @@ onMounted(fetchCatalog);
                                 >
                                     <i class="pi pi-eye"></i>
                                 </button>
+                                <template v-if="data.support === 'Digital' || data.support === 'Mixto'">
+                                    <button
+                                        v-if="!data.digital_file_base64"
+                                        type="button"
+                                        class="create-box-outline"
+                                        title="Adjuntar PDF"
+                                        @click="openNewDocumentFilePicker(data.id, 'modal')"
+                                    >
+                                        <i class="pi pi-upload"></i>
+                                    </button>
+                                    <input
+                                        :id="`newDocumentFile-modal-${data.id}`"
+                                        type="file"
+                                        accept=".pdf"
+                                        class="archive-doc-form__file-input"
+                                        @change="onNewDocumentFileSelect(data, $event)"
+                                    />
+                                </template>
                                 <button type="button" class="create-box-remove" @click="removeDocument({ ...data, source: 'manual' })">
                                     <i class="pi pi-trash"></i>
                                 </button>
@@ -1190,6 +1455,16 @@ onMounted(fetchCatalog);
         <Dialog v-model:visible="importDialogVisible" modal :draggable="false" header="Importar documentos desde Excel" :style="{ width: 'min(560px, 94vw)' }">
             <div class="archive-import-box">
                 <p>Use la plantilla vigente para importar documentos a esta caja.</p>
+                <div class="archive-import-validation">
+                    <strong>Validaciones aplicadas:</strong>
+                    <ul>
+                        <li>Nombre, código, año y soporte son obligatorios.</li>
+                        <li>La serie o subserie debe pertenecer a esta caja.</li>
+                        <li>El año debe estar entre {{ getYearString(form.start_year) }} y {{ getYearString(form.end_year) }}.</li>
+                        <li>No se permiten códigos repetidos dentro de la caja.</li>
+                        <li>Los PDF de documentos Digitales o Mixtos se adjuntan después de importar.</li>
+                    </ul>
+                </div>
                 <button type="button" class="create-box-outline" @click="downloadTemplate">
                     Descargar plantilla
                 </button>
@@ -1237,7 +1512,7 @@ onMounted(fetchCatalog);
             v-model:visible="documentPreviewVisible"
             :title="documentPreviewTitle"
             :source="documentPreviewSource"
-            @hide="addDocumentDialogVisible = true"
+            @hide="restoreAddDocumentDialog"
         />
 
         <Dialog v-model:visible="searchDialogVisible" modal :draggable="false" header="Buscar documentos existentes" :style="{ width: 'min(900px, 94vw)' }">
@@ -1720,6 +1995,29 @@ onMounted(fetchCatalog);
     display: flex;
     flex-direction: column;
     gap: 1rem;
+}
+
+.archive-import-validation {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 0.6rem;
+    color: #1e3a5f;
+    font-size: 0.88rem;
+    padding: 0.85rem 1rem;
+}
+
+.archive-import-validation strong {
+    display: block;
+    margin-bottom: 0.35rem;
+}
+
+.archive-import-validation ul {
+    margin: 0;
+    padding-left: 1.15rem;
+}
+
+.archive-import-validation li + li {
+    margin-top: 0.2rem;
 }
 
 .archive-import-dropzone {

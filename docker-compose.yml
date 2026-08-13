@@ -40,6 +40,35 @@ services:
       - "8000:8000"
     command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"] # Comando estándar para levantar Laravel
 
+  scheduler:
+    image: sistema-ugda-fia-ues-app:latest
+    working_dir: /var/www/html
+    volumes:
+      - .:/var/www/html
+      - scheduler_vendor:/var/www/html/vendor
+    environment:
+      APP_NAME: "Sistema UGDA"
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:8000
+      APP_TIMEZONE: America/El_Salvador
+      APP_LOCALE: es
+      APP_FALLBACK_LOCALE: es
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: sistema_ugda
+      DB_USERNAME: root
+      DB_PASSWORD: root
+      CACHE_STORE: file
+      QUEUE_CONNECTION: database
+      FILESYSTEM_DISK: local
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    command: ["sh", "-lc", "if [ ! -f vendor/autoload.php ]; then composer install --no-interaction --prefer-dist; fi; exec php artisan schedule:work"]
+
   vite:
     image: node:20-alpine # Cambiamos la imagen de PHP por una de Node oficial para Vite
     working_dir: /var/www/html
@@ -80,4 +109,5 @@ services:
       - "8025:8025"
 
 volumes:
+  scheduler_vendor:
   postgres_data: # Únicamente dejamos el volumen de la Base de Datos para que no pierdas tu información

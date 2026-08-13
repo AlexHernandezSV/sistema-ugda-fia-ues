@@ -13,6 +13,7 @@ const selectedCategory = ref(null);
 const selectedReport = ref(null);
 const hoveredPoint = ref(null);
 const classificationSearchTimeout = ref(null);
+const rowsPerPageOptions = ref([5, 10, 25, 50]);
 
 const reportSummary = ref({
     categories: {
@@ -308,6 +309,12 @@ const isAccessResponseTimeReport = computed(() =>
     selectedReport.value === "average-response-times"
 );
 const isUnitsReport = computed(() => currentReport.value.key === "units");
+const hasDocumentFilters = () => Boolean(
+    filters.unit ||
+    filters.series ||
+    filters.support ||
+    filters.search.trim()
+);
 const hasActiveFilters = computed(() =>
     isAccessResponseTimeReport.value
         ? Boolean(accessResponseTimeFilters.startDate || accessResponseTimeFilters.endDate)
@@ -330,8 +337,8 @@ const hasActiveFilters = computed(() =>
             entryFilters.mode === "date"
                 ? entryFilters.date
                 : entryFilters.startDate || entryFilters.endDate
-        )
-        : Boolean(filters.unit || filters.series || filters.support || filters.search.trim())
+        ) || hasDocumentFilters()
+        : hasDocumentFilters()
 );
 
 const documents = computed(() => registryReport.value.documents ?? []);
@@ -572,7 +579,7 @@ const filteredClassificationDocumentsCount = computed(() =>
         : classificationSeriesReport.value.summary.filtered_documents ?? 0
 );
 const filteredAccessLoansCount = computed(() => visibleAccessLoans.value.length);
-const accessDocumentRows = computed(() => {
+const accessDocumentTableRows = computed(() => {
     const grouped = new Map();
 
     visibleAccessDocumentConsultations.value.forEach((document) => {
@@ -600,10 +607,10 @@ const accessDocumentRows = computed(() => {
             const totalComparison = (a.total - b.total) * direction;
 
             return totalComparison || a.title.localeCompare(b.title);
-        })
-        .slice(0, 12);
+        });
 });
-const filteredAccessDocumentsCount = computed(() => accessDocumentRows.value.length);
+const accessDocumentRows = computed(() => accessDocumentTableRows.value.slice(0, 12));
+const filteredAccessDocumentsCount = computed(() => accessDocumentTableRows.value.length);
 const filteredAccessResponseTimeCount = computed(() => visibleAccessResponseTimeRows.value.length);
 const reportTotalDocumentsCount = computed(() =>
     isUnitsReport.value ? documents.value.length : registryReport.value.summary.total_documents
@@ -1435,33 +1442,17 @@ const goBackToReports = () => {
 };
 
 const clearFilters = () => {
-    if (isAccessResponseTimeReport.value) {
-        accessResponseTimeFilters.startDate = null;
-        accessResponseTimeFilters.endDate = null;
-        return;
-    }
-
-    if (isAccessDocumentsReport.value) {
-        accessDocumentFilters.analysisType = "most";
-        accessDocumentFilters.startDate = null;
-        accessDocumentFilters.endDate = null;
-        return;
-    }
-
-    if (isAccessHistoryReport.value) {
-        accessFilters.status = null;
-        accessFilters.unit = null;
-        accessFilters.user = null;
-        accessFilters.startDate = null;
-        accessFilters.endDate = null;
-        return;
-    }
-
-    if (isEntryReport.value) {
-        resetEntryFilters();
-        return;
-    }
-
+    accessResponseTimeFilters.startDate = null;
+    accessResponseTimeFilters.endDate = null;
+    accessDocumentFilters.analysisType = "most";
+    accessDocumentFilters.startDate = null;
+    accessDocumentFilters.endDate = null;
+    accessFilters.status = null;
+    accessFilters.unit = null;
+    accessFilters.user = null;
+    accessFilters.startDate = null;
+    accessFilters.endDate = null;
+    resetEntryFilters();
     resetDocumentFilters();
 };
 
@@ -1561,7 +1552,7 @@ const isCurrentExportDisabled = computed(() =>
         : isAccessResponseTimeReport.value
         ? visibleAccessResponseTimeRows.value.length === 0
         : isAccessDocumentsReport.value
-        ? accessDocumentRows.value.length === 0
+        ? accessDocumentTableRows.value.length === 0
         : isAccessHistoryReport.value
         ? visibleAccessLoans.value.length === 0
         : visibleDocuments.value.length === 0)
@@ -1741,7 +1732,7 @@ const exportCurrentTable = () => {
     }
 
     if (isAccessDocumentsReport.value) {
-        const rows = accessDocumentRows.value
+        const rows = accessDocumentTableRows.value
             .map((document) => `
                 <tr>
                     <td>${escapeHtml(document.title)}</td>
@@ -2776,11 +2767,12 @@ onMounted(fetchReportSummary);
                     <DataTable
                         :value="classificationDocuments"
                         :loading="loadingRegistry"
-                        :paginator="classificationDocumentsMeta.total > classificationDocumentsMeta.per_page"
+                        :paginator="true"
                         lazy
                         :first="classificationDocumentsFirst"
                         :rows="classificationDocumentsMeta.per_page"
                         :totalRecords="classificationDocumentsMeta.total"
+                        :rowsPerPageOptions="rowsPerPageOptions"
                         responsiveLayout="scroll"
                         stripedRows
                         class="reports-table"
@@ -2816,11 +2808,12 @@ onMounted(fetchReportSummary);
                 <DataTable
                     :value="unclassifiedDocuments"
                     :loading="loadingRegistry"
-                    :paginator="unclassifiedDocumentsMeta.total > unclassifiedDocumentsMeta.per_page"
+                    :paginator="true"
                     lazy
                     :first="unclassifiedDocumentsFirst"
                     :rows="unclassifiedDocumentsMeta.per_page"
                     :totalRecords="unclassifiedDocumentsMeta.total"
+                    :rowsPerPageOptions="rowsPerPageOptions"
                     responsiveLayout="scroll"
                     stripedRows
                     class="reports-table"
@@ -2874,6 +2867,9 @@ onMounted(fetchReportSummary);
                     <DataTable
                         :value="visibleAccessResponseTimeRows"
                         :loading="loadingRegistry"
+                        :paginator="true"
+                        :rows="5"
+                        :rowsPerPageOptions="rowsPerPageOptions"
                         responsiveLayout="scroll"
                         stripedRows
                         class="reports-table"
@@ -2907,12 +2903,15 @@ onMounted(fetchReportSummary);
             <article v-else-if="isAccessDocumentsReport" class="reports-table-panel">
                 <div class="reports-panel-title">
                     <h2 class="m-0">Listado de Documentos Consultados</h2>
-                    <span>{{ accessDocumentRows.length }} registros</span>
+                    <span>{{ accessDocumentTableRows.length }} registros</span>
                 </div>
 
                 <DataTable
-                    :value="accessDocumentRows"
+                    :value="accessDocumentTableRows"
                     :loading="loadingRegistry"
+                    :paginator="true"
+                    :rows="5"
+                    :rowsPerPageOptions="rowsPerPageOptions"
                     responsiveLayout="scroll"
                     stripedRows
                     class="reports-table"
@@ -3052,8 +3051,9 @@ onMounted(fetchReportSummary);
                 <DataTable
                     :value="visibleDocuments"
                     :loading="loadingRegistry"
-                    :paginator="visibleDocuments.length > 50"
-                    :rows="50"
+                    :paginator="true"
+                    :rows="5"
+                    :rowsPerPageOptions="rowsPerPageOptions"
                     responsiveLayout="scroll"
                     stripedRows
                     class="reports-table"
@@ -3075,9 +3075,6 @@ onMounted(fetchReportSummary);
                     </template>
                 </DataTable>
 
-                <p v-if="visibleDocuments.length > 50" class="reports-table-note m-0">
-                    Mostrando los primeros 50 resultados por pagina. Usa los filtros para refinar tu busqueda.
-                </p>
             </article>
         </section>
     </div>

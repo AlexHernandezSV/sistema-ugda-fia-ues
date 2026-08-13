@@ -123,7 +123,7 @@ const buildReassignedLabel = async (box) => {
         labelCode: boxLabel,
         transferNumber: 'Archivo General',
         transferDate: currentDateLabel(),
-        unit: box.unit?.name ?? selectedBox.value?.unit?.name ?? 'Unidad no registrada',
+        unit: box.units_label ?? box.unit?.name ?? selectedBox.value?.units_label ?? selectedBox.value?.unit?.name ?? 'Unidad no registrada',
         content: box.series ?? selectedBox.value?.series ?? 'Serie documental no registrada',
         period: box.period ?? selectedBox.value?.period ?? 'Periodo no definido',
         locationCode,
@@ -250,7 +250,7 @@ const searchBoxes = async () => {
 
     try {
         const { data } = await axios.get('/api/archive/boxes', {
-            params: { q: term },
+            params: { q: term, page: 1, per_page: 50 },
         });
 
         boxes.value = Array.isArray(data.boxes) ? data.boxes : [];
@@ -299,7 +299,7 @@ const searchDocuments = async () => {
 
     try {
         const { data } = await axios.get('/api/archive/documents', {
-            params: { q: term },
+            params: { q: term, page: 1, per_page: 50 },
         });
 
         documents.value = Array.isArray(data.results) ? data.results : [];
@@ -556,7 +556,7 @@ onMounted(async () => {
                             <strong>{{ displayBoxCode(box) }}</strong>
                             <span>Serie: {{ box.series }}</span>
                             <span>Ubicación Actual: {{ box.location ?? 'Pendiente' }}</span>
-                            <span>Unidad: {{ box.unit?.name ?? 'Sin unidad' }}</span>
+                            <span>Unidad: {{ box.units_label ?? box.unit?.name ?? 'Sin unidad' }}</span>
                         </button>
                     </div>
                     <div v-else-if="boxSearch.trim() && !selectedBox" class="reassign-results-state">
@@ -571,7 +571,7 @@ onMounted(async () => {
                         <strong>Informacion Actual</strong>
                         <span>Código de caja: {{ displayBoxCode(selectedBox) }}</span>
                         <span>Serie: {{ selectedBox?.series ?? 'Seleccione una caja' }}</span>
-                        <span>Unidad productora: {{ selectedBox?.unit?.name ?? '---' }}</span>
+                        <span>Unidad productora: {{ selectedBox?.units_label ?? selectedBox?.unit?.name ?? '---' }}</span>
                         <span>Ubicación Actual: {{ selectedBox?.location ?? 'Pendiente' }}</span>
                     </div>
 

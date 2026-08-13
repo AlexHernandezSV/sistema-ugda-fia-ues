@@ -3,8 +3,10 @@
 namespace App\Services;
 
 use App\Models\Loan;
+use App\Models\LoanDispatch;
 use App\Models\SystemNotification;
 use App\Models\Transfer;
+use Carbon\Carbon;
 use App\Models\User;
 use Illuminate\Support\Collection;
 
@@ -330,6 +332,81 @@ class SystemNotificationService
             'reference_id' => $loan->id,
             'reference_number' => $loan->number,
         ]);
+    }
+
+    public function loanDueDateReminder(Loan $loan, LoanDispatch $dispatch, Carbon $today): bool
+    {
+        $dueDate = $dispatch->due_date?->copy()->startOfDay();
+
+        if ($dueDate === null) {
+            return false;
+        }
+
+        $daysUntilDue = $today->copy()->startOfDay()->diffInDays($dueDate, false);
+        $daysOverdue = $daysUntilDue < 0 ? abs($daysUntilDue) : 0;
+
+        if ($daysUntilDue === 3) {
+            $type = 'loan_due_in_3_days';
+            $title = 'Devolución próxima';
+            $shortMessage = 'El préstamo #' . $loan->number . ' vence en 3 días.';
+            $body = 'La devolución programada del préstamo #' . $loan->number . ' es el ' . $dueDate->format('d/m/Y') . '. Por favor, gestione la devolución de los documentos a tiempo.';
+            $tone = 'info';
+        } elseif ($daysUntilDue === 2) {
+            $type = 'loan_due_in_2_days';
+            $title = 'Devolución próxima';
+            $shortMessage = 'El préstamo #' . $loan->number . ' vence en 2 días.';
+            $body = 'La devolución programada del préstamo #' . $loan->number . ' es el ' . $dueDate->format('d/m/Y') . '. Recuerde devolver los documentos dentro del plazo establecido.';
+            $tone = 'warning';
+        } elseif ($daysUntilDue === 0) {
+            $type = 'loan_due_today';
+            $title = 'Devolución vence hoy';
+            $shortMessage = 'El préstamo #' . $loan->number . ' vence hoy.';
+            $body = 'El plazo de devolución del préstamo #' . $loan->number . ' vence hoy, ' . $dueDate->format('d/m/Y') . '. Registre la devolución de los documentos con UGDA.';
+            $tone = 'warning';
+        } elseif ($daysOverdue > 0 && $daysOverdue % 3 === 1) {
+            $type = 'loan_overdue_reminder';
+            $title = 'Devolución vencida';
+            $dayLabel = $daysOverdue === 1 ? 'día' : 'días';
+            $shortMessage = 'El préstamo #' . $loan->number . ' tiene ' . $daysOverdue . ' ' . $dayLabel . ' de atraso.';
+            $body = 'La fecha de devolución del préstamo #' . $loan->number . ' caducó hace ' . $daysOverdue . ' ' . $dayLabel . '. Registre la devolución de los documentos con UGDA.';
+            $tone = 'danger';
+        } else {
+            return false;
+        }
+
+        $notificationKey = $type . ':' . $loan->id . ':' . $dispatch->id . ':' . $today->toDateString();
+
+        $alreadySent = SystemNotification::query()
+            ->where('user_id', $loan->user_id)
+            ->where('type', $type)
+            ->where('reference_type', 'loan')
+            ->where('reference_id', $loan->id)
+            ->whereJsonContains('metadata', ['notification_key' => $notificationKey])
+            ->exists();
+
+        if ($alreadySent) {
+            return false;
+        }
+
+        $this->notifyUsers([$loan->user_id], null, [
+            'type' => $type,
+            'title' => $title,
+            'short_message' => $shortMessage,
+            'body' => $body,
+            'tone' => $tone,
+            'action_url' => '/solicitudes/prestamos/' . $loan->number,
+            'reference_type' => 'loan',
+            'reference_id' => $loan->id,
+            'reference_number' => $loan->number,
+            'metadata' => [
+                'notification_key' => $notificationKey,
+                'due_date' => $dueDate->toDateString(),
+                'days_until_due' => $daysUntilDue,
+                'days_overdue' => $daysOverdue,
+            ],
+        ]);
+
+        return true;
     }
 
     public function loanReturned(Loan $loan, User $actor): void

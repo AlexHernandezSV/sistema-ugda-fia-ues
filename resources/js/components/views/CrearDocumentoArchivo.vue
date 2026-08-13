@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import axios from 'axios';
@@ -15,6 +15,7 @@ const boxes = ref([]);
 const seriesOptions = ref([]);
 const supportOptions = ref(['Fisico', 'Digital', 'Mixto']);
 const boxSearch = ref('');
+const boxDropdownRef = ref(null);
 const documentFileInputRef = ref(null);
 const documentDigitalFile = ref(null);
 const documentDigitalFileName = ref('');
@@ -22,6 +23,8 @@ const documentPreviewVisible = ref(false);
 const documentPreviewTitle = ref('Documento PDF');
 const documentPreviewSource = ref(null);
 const currentYear = new Date().getFullYear();
+const currentDate = new Date();
+const minimumYearDate = new Date(1900, 0, 1);
 
 const form = ref({
     box_id: null,
@@ -35,6 +38,15 @@ const form = ref({
 
 const selectedBox = computed(() => boxes.value.find((box) => box.id === form.value.box_id) ?? null);
 const requiresDigitalFile = computed(() => ['Digital', 'Mixto'].includes(form.value.support));
+const getBoxCode = (box) => box?.box_code || box?.boxCode || box?.code || 'Sin codigo';
+const selectedYear = computed({
+    get: () => form.value.year ? new Date(Number(form.value.year), 0, 1) : null,
+    set: (value) => {
+        form.value.year = value instanceof Date && !Number.isNaN(value.getTime())
+            ? String(value.getFullYear())
+            : '';
+    },
+});
 
 watch(() => form.value.support, (support) => {
     if (support === 'Fisico') {
@@ -52,7 +64,9 @@ watch(selectedBox, (box) => {
         return;
     }
 
-    const matchingSeries = seriesOptions.value.find((series) => series.label === box.series);
+    const matchingSeries = seriesOptions.value.find((series) => (
+        series.label === box.series || series.name === box.series
+    ));
 
     if (matchingSeries) {
         form.value.series_id = matchingSeries.value;
@@ -70,16 +84,6 @@ const showError = (detail) => {
 
 const onlyDigits = (value) => String(value ?? '').replace(/\D/g, '');
 
-const sanitizeYear = (value) => {
-    const digits = onlyDigits(value).slice(0, 4);
-
-    if (digits.length < 4) {
-        return digits;
-    }
-
-    return String(Math.min(Number(digits), currentYear));
-};
-
 const sanitizePositiveInteger = (value) => {
     const digits = onlyDigits(value);
 
@@ -90,10 +94,6 @@ const sanitizePositiveInteger = (value) => {
     const number = Number(digits);
 
     return number > 0 ? String(number) : '';
-};
-
-const onYearInput = (event) => {
-    form.value.year = sanitizeYear(event.target.value);
 };
 
 const onPagesInput = (event) => {
@@ -128,14 +128,29 @@ const fetchCatalog = async () => {
 };
 
 const searchBoxes = async () => {
+    const term = boxSearch.value.trim();
+
+    if (!term) {
+        boxes.value = [];
+        form.value.box_id = null;
+        showError('Ingrese el codigo o numero de la caja que desea buscar.');
+        return;
+    }
+
     isSearchingBoxes.value = true;
 
     try {
         const { data } = await axios.get('/api/archive/boxes', {
-            params: boxSearch.value.trim() ? { q: boxSearch.value.trim() } : {},
+            params: { q: term, page: 1, per_page: 50 },
         });
 
         boxes.value = Array.isArray(data.boxes) ? data.boxes : [];
+        form.value.box_id = null;
+
+        if (boxes.value.length > 0) {
+            await nextTick();
+            boxDropdownRef.value?.show();
+        }
     } catch (error) {
         showError(error.response?.data?.message ?? 'No se pudieron cargar las cajas registradas.');
     } finally {
@@ -260,7 +275,6 @@ const submitDocument = async () => {
 
 onMounted(async () => {
     await fetchCatalog();
-    await searchBoxes();
 });
 </script>
 
@@ -281,7 +295,7 @@ onMounted(async () => {
 
                 <div class="create-document-grid create-document-grid--two">
                     <label>
-                        <span>Serie Documental <b>*</b></span>
+                        <span>Serie / Subserie <b>*</b></span>
                         <Dropdown
                             v-model="form.series_id"
                             :options="seriesOptions"
@@ -308,12 +322,17 @@ onMounted(async () => {
                 <div class="create-document-grid create-document-grid--three">
                     <label>
                         <span>Ano <b>*</b></span>
-                        <InputText
-                            v-model="form.year"
-                            inputmode="numeric"
-                            maxlength="4"
-                            placeholder="YYYY"
-                            @input="onYearInput"
+                        <DatePicker
+                            v-model="selectedYear"
+                            view="year"
+                            dateFormat="yy"
+                            showIcon
+                            iconDisplay="input"
+                            readonlyInput
+                            :minDate="minimumYearDate"
+                            :maxDate="currentDate"
+                            placeholder="Seleccionar año"
+                            class="w-full"
                         />
                     </label>
 
@@ -378,24 +397,24 @@ onMounted(async () => {
                 </form>
 
                 <Dropdown
+                    ref="boxDropdownRef"
                     v-model="form.box_id"
                     :options="boxes"
                     optionLabel="title"
                     optionValue="id"
-                    filter
                     placeholder="Seleccionar caja"
                     class="w-full"
                     :loading="isSearchingBoxes"
                 >
                     <template #option="{ option }">
                         <div class="create-document-box-option">
-                            <strong>Caja #{{ option.number }}</strong>
+                            <strong>{{ getBoxCode(option) }}</strong>
                             <span>{{ option.series }} - {{ option.unit?.name ?? 'Sin unidad' }} - {{ option.location ?? 'Sin ubicación' }}</span>
                         </div>
                     </template>
                     <template #value="{ value, placeholder }">
                         <span v-if="selectedBox">
-                            Caja #{{ selectedBox.number }} - {{ selectedBox.series }} - {{ selectedBox.location ?? 'Sin ubicación' }}
+                            {{ getBoxCode(selectedBox) }} - {{ selectedBox.series }} - {{ selectedBox.location ?? 'Sin ubicación' }}
                         </span>
                         <span v-else>{{ placeholder }}</span>
                     </template>

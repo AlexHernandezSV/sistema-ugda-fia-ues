@@ -159,6 +159,10 @@ class SystemNotificationController extends Controller
             'loan_search_started' => 'Busqueda iniciada',
             'loan_pending_delivery' => 'Prestamo para entrega',
             'loan_registered' => 'Prestamo registrado',
+            'loan_due_in_3_days' => 'Devolución en 3 días',
+            'loan_due_in_2_days' => 'Devolución en 2 días',
+            'loan_due_today' => 'Devolución vence hoy',
+            'loan_overdue_reminder' => 'Devolución vencida',
             'loan_returned' => 'Devolución registrada',
             default => 'Notificacion del sistema',
         };

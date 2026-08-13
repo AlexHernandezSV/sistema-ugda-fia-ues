@@ -439,6 +439,14 @@ class RequestCatalog
 
         $observations = $loan->events->where('event_type', 'observation')->sortBy('occurred_at')->values();
         $latestDecision = $loan->events->where('event_type', 'decision')->sortByDesc('occurred_at')->first();
+        $latestObservation = $observations->sortByDesc('occurred_at')->first();
+        $latestApplicantClarification = $loan->events
+            ->filter(fn ($event) => $event->title === 'Corregido y reenviado')
+            ->sortByDesc('occurred_at')
+            ->first();
+        $hasApplicantClarificationAfterObservation = $latestObservation
+            && $latestApplicantClarification
+            && $latestApplicantClarification->occurred_at?->greaterThan($latestObservation->occurred_at);
         $workflowCode = $loan->workflowStatus?->code;
         $authCode = $loan->authorizationStatus?->code;
         $searchCode = $loan->searchStatus?->code;
@@ -490,7 +498,7 @@ class RequestCatalog
                     'description' => 'Esta solicitud ha sido autorizada por el Director y requiere su gestión.',
                 ]
                 : null),
-            'observationsRegistered' => $observations->isNotEmpty()
+            'observationsRegistered' => $workflowCode === 'loan_status_observed' && $observations->isNotEmpty()
                 ? [
                     'count' => $observations->count(),
                     'title' => 'Observaciones Registradas',
@@ -504,7 +512,17 @@ class RequestCatalog
                     ])->values()->all(),
                 ]
                 : null,
-            'searchProgress' => $isManage && $searchCode === 'loan_search_in_progress'
+            'subsanationSummary' => $hasApplicantClarificationAfterObservation
+                && $workflowCode === 'loan_status_pending'
+                ? [
+                    'title' => 'Aclaraciones del solicitante',
+                    'notesLabel' => 'Aclaraciones del solicitante:',
+                    'notes' => $latestApplicantClarification->context['correction_notes'] ?? 'Sin aclaraciones registradas.',
+                    'description' => 'El solicitante ha atendido las observaciones de UGDA y reenviado la solicitud para nueva validación',
+                    'message' => 'Se han recibido las aclaraciones del solicitante. Revise la respuesta antes de continuar con la autorización o gestión de la solicitud.',
+                ]
+                : null,
+            'searchProgress' => $searchCode === 'loan_search_in_progress'
                 ? [
                     'title' => 'Busqueda En proceso',
                     'description' => 'Los documentos estan siendo localizados en el archivo',
@@ -1034,7 +1052,7 @@ class RequestCatalog
             'description' => 'Los documentos fueron entregados y deben ser devueltos en la fecha indicada.',
             'loanDate' => self::formatDate($dispatch->loan_date),
             'dueDate' => self::formatDate($dispatch->due_date),
-            'responsible' => $dispatch->received_by_name,
+            'responsible' => self::userDisplayName($loan->requester),
             'receivedBy' => $dispatch->received_by_name,
             'deliveredBy' => self::userDisplayName($dispatch->deliveredBy),
             'groups' => $groups,

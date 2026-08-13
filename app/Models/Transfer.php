@@ -49,6 +49,13 @@ class Transfer extends Model
         return $this->belongsTo(Unit::class);
     }
 
+    public function units()
+    {
+        return $this->belongsToMany(Unit::class, 'transfer_unit')
+            ->withTimestamps()
+            ->orderBy('name');
+    }
+
     public function authorizationStatus()
     {
         return $this->belongsTo(RequestStatusCatalog::class, 'authorization_status_id');
