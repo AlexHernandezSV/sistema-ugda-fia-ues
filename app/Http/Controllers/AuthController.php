@@ -141,7 +141,7 @@ class AuthController extends Controller
             $user,
             null,
             'temporary_password_changed',
-            'Contrasena temporal cambiada',
+            'Contraseña temporal cambiada',
             'El usuario actualizo la contrasena temporal durante el inicio de sesion.',
             $request
         );

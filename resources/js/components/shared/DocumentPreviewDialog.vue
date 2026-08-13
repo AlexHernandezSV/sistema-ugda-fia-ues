@@ -352,7 +352,7 @@ watch(
                         :disabled="loading || currentPage <= 1"
                         @click="goToPage(-1)"
                     />
-                    <span>Pagina {{ currentPage }} de {{ totalPages || 1 }}</span>
+                    <span>Página {{ currentPage }} de {{ totalPages || 1 }}</span>
                     <Button
                         icon="pi pi-chevron-right"
                         outlined

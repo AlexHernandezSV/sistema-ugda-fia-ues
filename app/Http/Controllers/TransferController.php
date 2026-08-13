@@ -68,7 +68,7 @@ class TransferController extends Controller
 
         if ($validator->fails()) {
             return response()->json([
-                'message' => 'Debe seleccionar un archivo Excel valido en formato .xlsx.',
+                'message' => 'Debe seleccionar un archivo Excel válido en formato .xlsx.',
                 'errors' => $validator->errors(),
             ], 422);
         }
@@ -173,7 +173,7 @@ class TransferController extends Controller
 
         if ($validator->fails()) {
             return response()->json([
-                'message' => 'Los comentarios no son validos.',
+                'message' => 'Los comentarios no son válidos.',
                 'errors' => $validator->errors(),
             ], 422);
         }
@@ -342,7 +342,7 @@ class TransferController extends Controller
 
             if (!in_array($transfer->workflowStatus?->code, ['transfer_status_observed', 'transfer_status_physical_observed'], true)) {
                 return response()->json([
-                    'message' => 'Esta transferencia no esta en un estado observable para correccion.',
+                        'message' => 'Esta transferencia no está en un estado observable para corrección.',
                 ], 422);
             }
 
@@ -465,13 +465,13 @@ class TransferController extends Controller
 
             if (!in_array($previousWorkflowCode, ['transfer_status_observed', 'transfer_status_physical_observed'], true)) {
                 return response()->json([
-                    'message' => 'Esta transferencia no esta en un estado observable para correccion.',
+                        'message' => 'Esta transferencia no está en un estado observable para corrección.',
                 ], 422);
             }
 
             if ($previousWorkflowCode === 'transfer_status_physical_observed' && blank($request->input('correction_notes'))) {
                 return response()->json([
-                    'message' => 'Debe indicar como fueron atendidas las observaciones de revision fisica.',
+                    'message' => 'Debe indicar cómo fueron atendidas las observaciónes de revisión física.',
                 ], 422);
             }
 
@@ -546,7 +546,7 @@ class TransferController extends Controller
 
             return response()->json([
                 'message' => $previousWorkflowCode === 'transfer_status_physical_observed'
-                    ? 'Solicitud corregida y reenviada a UGDA para revision.'
+                    ? 'Solicitud corregida y reenviada a UGDA para revisión.'
                     : 'Solicitud corregida y reenviada a jefatura.',
                 'number' => $transfer->code,
             ]);
@@ -554,7 +554,7 @@ class TransferController extends Controller
             report($exception);
 
             return response()->json([
-                'message' => 'No se pudo guardar la correccion de la transferencia.',
+                'message' => 'No se pudo guardar la corrección de la transferencia.',
             ], 500);
         }
     }
@@ -903,13 +903,13 @@ class TransferController extends Controller
 
                 if ($year !== '') {
                     if (!preg_match('/^\d{4}$/', $year)) {
-                        return 'El anio del documento "' . $documentName . '" debe tener formato YYYY.';
+                        return 'El año del documento "' . $documentName . '" debe tener formato YYYY.';
                     }
 
                     $yearNumber = (int) $year;
 
                     if ($yearNumber < $startYear || $yearNumber > $endYear) {
-                        return 'El anio del documento "' . $documentName . '" debe estar dentro del rango de la caja (' . $startYear . ' - ' . $endYear . ').';
+                        return 'El año del documento "' . $documentName . '" debe estar dentro del rango de la caja (' . $startYear . ' - ' . $endYear . ').';
                     }
                 }
 
@@ -1245,7 +1245,7 @@ class TransferController extends Controller
 
             if (!$this->canUgdaManage($request)) {
                 return response()->json([
-                    'message' => 'Solo UGDA puede iniciar la revision fisica.',
+                    'message' => 'Solo UGDA puede iniciar la revisión física.',
                 ], 403);
             }
 
@@ -1253,7 +1253,7 @@ class TransferController extends Controller
 
             if (!in_array($currentWorkflow, ['transfer_status_scheduled', 'transfer_status_subsanated'], true)) {
                 return response()->json([
-                    'message' => 'La transferencia debe estar agendada o subsanada para iniciar la revision fisica.',
+                    'message' => 'La transferencia debe estar agendada o subsanada para iniciar la revisión física.',
                 ], 422);
             }
 
@@ -1275,8 +1275,8 @@ class TransferController extends Controller
                     'event_type' => 'status',
                     'title' => 'En Revision',
                     'description' => $currentWorkflow === 'transfer_status_subsanated'
-                        ? 'UGDA inicio una nueva revision fisica para validar las correcciones de la unidad solicitante.'
-                        : 'UGDA inicio la revision fisica de la documentación.',
+                        ? 'UGDA inició una nueva revisión física para validar las correcciones de la unidad solicitante.'
+                        : 'UGDA inició la revisión física de la documentación.',
                     'context' => [
                         'previous_status' => $currentWorkflow,
                     ],
@@ -1291,7 +1291,7 @@ class TransferController extends Controller
             report($exception);
 
             return response()->json([
-                'message' => 'No se pudo iniciar la revision fisica.',
+                'message' => 'No se pudo iniciar la revisión física.',
             ], 500);
         }
     }
@@ -1331,7 +1331,7 @@ class TransferController extends Controller
 
             if ($transfer->workflowStatus?->code !== 'transfer_status_physical_review') {
                 return response()->json([
-                    'message' => 'La transferencia debe estar en revision fisica para asignar ubicaciones.',
+                    'message' => 'La transferencia debe estar en revisión física para asignar ubicaciones.',
                 ], 422);
             }
 
@@ -1429,7 +1429,7 @@ class TransferController extends Controller
 
         if ($validator->fails()) {
             return response()->json([
-                'message' => 'La observacion no puede superar 1000 caracteres.',
+                'message' => 'La observación no puede superar 1000 caracteres.',
                 'errors' => $validator->errors(),
             ], 422);
         }
@@ -1438,7 +1438,7 @@ class TransferController extends Controller
 
         if ($message === '') {
             return response()->json([
-                'message' => 'Debe ingresar la observacion de la transferencia.',
+                'message' => 'Debe ingresar la observación de la transferencia.',
             ], 422);
         }
 
@@ -1457,7 +1457,7 @@ class TransferController extends Controller
             if (in_array($workflowCode, ['transfer_status_physical_review', 'transfer_status_physical_observed'], true)) {
                 if (!$this->canUgdaManage($request)) {
                     return response()->json([
-                        'message' => 'Solo UGDA puede registrar observaciones de revision fisica.',
+                    'message' => 'Solo UGDA puede registrar observaciónes de revisión física.',
                     ], 403);
                 }
 
@@ -1477,7 +1477,7 @@ class TransferController extends Controller
                         'status_catalog_id' => $statusObserved,
                         'actor_user_id' => $request->user()->id,
                         'event_type' => 'observation',
-                        'title' => 'Observacion de revision fisica',
+                        'title' => 'Observación de revisión física',
                         'description' => $message,
                         'context' => [
                             'observation_scope' => 'physical_review',
@@ -1490,16 +1490,16 @@ class TransferController extends Controller
                 app(SystemNotificationService::class)->transferObserved($transfer->fresh(), $request->user(), $message);
 
                 return response()->json([
-                    'message' => 'Observacion de revision fisica registrada correctamente.',
+                    'message' => 'Observación de revisión física registrada correctamente.',
                 ]);
             }
 
-            return $this->changeWorkflow($request, $number, 'transfer_status_observed', 'Observacion UGDA', $message, null, [], 'observation', true);
+            return $this->changeWorkflow($request, $number, 'transfer_status_observed', 'Observación UGDA', $message, null, [], 'observation', true);
         } catch (Throwable $exception) {
             report($exception);
 
             return response()->json([
-                'message' => 'No se pudo registrar la observacion de la transferencia.',
+                'message' => 'No se pudo registrar la observación de la transferencia.',
             ], 500);
         }
     }

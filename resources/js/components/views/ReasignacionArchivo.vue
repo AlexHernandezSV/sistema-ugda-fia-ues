@@ -198,7 +198,7 @@ const printReassignedLabel = () => {
                         <div class="transfer-label__date"><span>Fecha</span><strong>${escapeHtml(label.transferDate)}</strong></div>
                     </div>
                     <div class="transfer-label__hero">
-                        <div class="transfer-label__qr"><img src="${label.qrDataUrl}" alt="Codigo QR ${escapeHtml(label.labelCode)}" /><span>Codigo: ${escapeHtml(label.labelCode)}</span></div>
+                        <div class="transfer-label__qr"><img src="${label.qrDataUrl}" alt="Código QR ${escapeHtml(label.labelCode)}" /><span>Código: ${escapeHtml(label.labelCode)}</span></div>
                         <div>
                             <div class="transfer-label__location"><span>CÓDIGO DE UBICACIÓN</span><strong>${escapeHtml(label.locationCode)}</strong></div>
                             <div class="transfer-label__box"><span>N de caja</span><strong>${escapeHtml(label.boxLabel)}</strong></div>
@@ -525,8 +525,8 @@ onMounted(async () => {
                     >
                         <span class="reassign-type__icon"><i class="pi pi-file"></i></span>
                         <span>
-                            <strong>Reasignar Documento</strong>
-                            <small>Mover documento a otra caja</small>
+                            <strong>Reasignar documento</strong>
+                            <small>Mover documento a otra caja.</small>
                         </span>
                     </button>
                 </div>
@@ -534,7 +534,7 @@ onMounted(async () => {
 
             <template v-if="reassignmentType === 'box'">
                 <section class="reassign-section">
-                    <h2>Buscar Caja</h2>
+                    <h2>Buscar caja</h2>
                     <form class="reassign-search" @submit.prevent="searchBoxes">
                         <i class="pi pi-search"></i>
                         <InputText
@@ -568,11 +568,11 @@ onMounted(async () => {
                     <h2>Nueva Ubicación</h2>
 
                     <div class="reassign-current">
-                        <strong>Informacion Actual</strong>
+                        <strong>Información actual</strong>
                         <span>Código de caja: {{ displayBoxCode(selectedBox) }}</span>
                         <span>Serie: {{ selectedBox?.series ?? 'Seleccione una caja' }}</span>
                         <span>Unidad productora: {{ selectedBox?.units_label ?? selectedBox?.unit?.name ?? '---' }}</span>
-                        <span>Ubicación Actual: {{ selectedBox?.location ?? 'Pendiente' }}</span>
+                        <span>Ubicación actual: {{ selectedBox?.location ?? 'Pendiente' }}</span>
                     </div>
 
                     <div class="reassign-grid">
@@ -624,7 +624,7 @@ onMounted(async () => {
                             Cancelar
                         </button>
                         <button type="button" class="reassign-primary" :disabled="isSaving" @click="requestBoxLocationConfirmation">
-                            Reasignar Ubicación
+                            Reasignar ubicación
                         </button>
                     </footer>
                 </section>
@@ -632,12 +632,12 @@ onMounted(async () => {
 
             <template v-else>
                 <section class="reassign-section">
-                    <h2>Buscar Documento</h2>
+                    <h2>Buscar documento</h2>
                     <form class="reassign-search" @submit.prevent="searchDocuments">
                         <i class="pi pi-search"></i>
                         <InputText
                             v-model="documentSearch"
-                            placeholder="Buscar por nombre, codigo o numero de caja..."
+                            placeholder="Buscar por nombre, código o número de caja..."
                              @input="onDocumentSearchInput"
                         />
                     </form>
@@ -652,8 +652,8 @@ onMounted(async () => {
                             @click="selectDocument(document)"
                         >
                             <strong>{{ document.title }}</strong>
-                            <span>Codigo: {{ document.code }}</span>
-                            <span>Caja Actual: {{ displayBoxCode(document.box) }} - {{ document.box?.series ?? 'Sin serie' }}</span>
+                            <span>Código: {{ document.code }}</span>
+                            <span>Caja actual: {{ displayBoxCode(document.box) }} - {{ document.box?.series ?? 'Sin serie' }}</span>
                             <span>Ubicación: {{ document.box?.location ?? 'Pendiente' }}</span>
                         </button>
                     </div>
@@ -666,10 +666,10 @@ onMounted(async () => {
                     <h2>Nueva Caja de Destino</h2>
 
                     <div class="reassign-current">
-                        <strong>Informacion del Documento</strong>
+                        <strong>Información del documento</strong>
                         <span>Documento: {{ selectedDocument?.title ?? 'Seleccione un documento' }}</span>
-                        <span>Codigo: {{ selectedDocument?.code ?? '---' }}</span>
-                        <span>Caja Actual: {{ displayBoxCode(selectedDocument?.box) }} - {{ selectedDocument?.box?.series ?? '---' }}</span>
+                        <span>Código: {{ selectedDocument?.code ?? '---' }}</span>
+                        <span>Caja actual: {{ displayBoxCode(selectedDocument?.box) }} - {{ selectedDocument?.box?.series ?? '---' }}</span>
                     </div>
 
                     <form class="reassign-search" @submit.prevent="searchDestinationBoxes">
@@ -711,7 +711,7 @@ onMounted(async () => {
                             Cancelar
                         </button>
                         <button type="button" class="reassign-primary" :disabled="isSaving" @click="requestDocumentReassignmentConfirmation">
-                            Reasignar Documento
+                            Reasignar documento
                         </button>
                     </footer>
                 </section>
@@ -795,8 +795,8 @@ onMounted(async () => {
                 </div>
                 <div class="reassign-label-card__hero">
                     <div class="reassign-label-card__qr">
-                        <img :src="reassignedLabel.qrDataUrl" :alt="`Codigo QR ${reassignedLabel.labelCode}`" />
-                        <span>Codigo: {{ reassignedLabel.labelCode }}</span>
+                        <img :src="reassignedLabel.qrDataUrl" :alt="`Código QR ${reassignedLabel.labelCode}`" />
+                        <span>Código: {{ reassignedLabel.labelCode }}</span>
                     </div>
                     <div class="reassign-label-card__hero-main">
                         <div class="reassign-label-card__location">

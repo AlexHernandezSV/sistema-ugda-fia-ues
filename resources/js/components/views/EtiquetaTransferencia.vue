@@ -63,12 +63,12 @@ onMounted(fetchLabel);
                 <div>
                     <p class="label-access-kicker">Consulta de etiqueta</p>
                     <h1>Etiqueta {{ label.labelCode }}</h1>
-                    <span>Informacion de ubicación física para UGDA</span>
+                    <span>Información de ubicación física para UGDA</span>
                 </div>
             </header>
 
             <div class="label-access-location">
-                <span>Codigo de ubicación</span>
+                <span>Código de ubicación</span>
                 <strong>{{ label.locationCode || 'Sin ubicación asignada' }}</strong>
             </div>
 
@@ -113,7 +113,7 @@ onMounted(fetchLabel);
                             <strong>{{ document.name }}</strong>
                             <span>{{ document.series || 'Sin serie documental' }}</span>
                         </div>
-                        <span>{{ document.year || 'Sin anio' }}</span>
+                        <span>{{ document.year || 'Sin año' }}</span>
                     </article>
                 </div>
                 <p v-else>No hay documentos registrados para esta caja.</p>

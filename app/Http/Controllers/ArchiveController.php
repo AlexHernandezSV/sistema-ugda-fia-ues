@@ -244,9 +244,9 @@ class ArchiveController extends Controller
             'existing_document_ids' => ['nullable', 'array'],
             'existing_document_ids.*' => ['integer', 'exists:transfer_box_documents,id'],
         ], [
-            'box_code.required' => 'El numero de caja es obligatorio.',
-            'box_code.regex' => 'El numero de caja solo puede contener letras, numeros y guiones.',
-            'box_code.unique' => 'El numero de caja ya existe.',
+            'box_code.required' => 'El número de caja es obligatorio.',
+            'box_code.regex' => 'El número de caja solo puede contener letras, números y guiones.',
+            'box_code.unique' => 'El número de caja ya existe.',
             'unit_ids.required' => 'Debe seleccionar al menos una unidad productora.',
             'unit_ids.min' => 'Debe seleccionar al menos una unidad productora.',
             'unit_ids.*.integer' => 'Seleccione unidades productoras validas.',
@@ -365,7 +365,7 @@ class ArchiveController extends Controller
                 return response()->json([
                     'message' => 'Los datos de la caja no son validos.',
                     'errors' => [
-                        'documents' => ['El anio del documento "' . $documentName . '" debe estar dentro del rango de la caja (' . $startYear . ' - ' . $endYear . ').'],
+                        'documents' => ['El año del documento "' . $documentName . '" debe estar dentro del rango de la caja (' . $startYear . ' - ' . $endYear . ').'],
                     ],
                 ], 422);
             }
@@ -387,7 +387,7 @@ class ArchiveController extends Controller
                 return response()->json([
                     'message' => 'Los datos de la caja no son validos.',
                     'errors' => [
-                        'documents' => ['El soporte del documento "' . $documentName . '" no es valido.'],
+                        'documents' => ['El soporte del documento "' . $documentName . '" no es válido.'],
                     ],
                 ], 422);
             }
@@ -684,9 +684,9 @@ class ArchiveController extends Controller
             'year.min' => 'El ano del documento debe ser mayor o igual a 1900.',
             'year.max' => 'El ano del documento no puede ser mayor al ano actual.',
             'support.required' => 'Debe seleccionar el tipo de soporte.',
-            'support.in' => 'El tipo de soporte seleccionado no es valido.',
-            'pages.required' => 'Debe indicar el numero de paginas.',
-            'pages.min' => 'El numero de paginas debe ser mayor que 0.',
+            'support.in' => 'El tipo de soporte seleccionado no es válido.',
+            'pages.required' => 'Debe indicar el número de páginas.',
+            'pages.min' => 'El número de páginas debe ser mayor que 0.',
         ]);
 
         if ($validator->fails()) {
@@ -1114,7 +1114,7 @@ class ArchiveController extends Controller
 
         if ($validator->fails()) {
             return response()->json([
-                'message' => 'Seleccione un documento valido para reservar.',
+                'message' => 'Seleccione un documento válido para reservar.',
                 'errors' => $validator->errors(),
             ], 422);
         }

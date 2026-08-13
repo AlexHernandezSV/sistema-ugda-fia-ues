@@ -247,7 +247,7 @@ const handleTemporaryPasswordChange = async () => {
 
         toast.add({
             severity: 'success',
-            summary: 'Contrasena actualizada',
+            summary: 'Contraseña actualizada',
             detail: 'Continua con la verificación de acceso.',
             life: 3000
         });
@@ -651,13 +651,13 @@ onBeforeUnmount(() => {
                         </div>
 
                         <div class="login-field">
-                            <label class="login-field__label">Contrasena temporal</label>
+                            <label class="login-field__label">Contraseña temporal</label>
                             <div class="login-field__shell">
                                 <i class="pi pi-key login-field__icon"></i>
                                 <input v-model="temporaryPassword"
                                     :type="showTemporaryPassword && temporaryPassword.length > 0 ? 'text' : 'password'"
                                     autocomplete="current-password" class="login-field__input login-password-input"
-                                    placeholder="Contrasena recibida" @keyup.enter="handleTemporaryPasswordChange" />
+                                    placeholder="Contraseña recibida" @keyup.enter="handleTemporaryPasswordChange" />
                                 <button v-if="temporaryPassword.length > 0" type="button" class="login-password-toggle"
                                     :aria-label="showTemporaryPassword ? 'Ocultar contrasena' : 'Mostrar contrasena'"
                                     @mousedown.prevent="showTemporaryPassword = !showTemporaryPassword">
@@ -699,7 +699,7 @@ onBeforeUnmount(() => {
                         </div>
 
                         <p class="login-password-policy">
-                            Usa al menos 10 caracteres con mayuscula, minuscula, numero y simbolo.
+                            Usa al menos 10 caracteres con mayúscula, minúscula, número y símbolo.
                         </p>
 
                         <Button label="Actualizar y continuar" icon="pi pi-check"

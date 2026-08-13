@@ -349,7 +349,7 @@ onMounted(async () => {
         </div>
 
         <div class="flex flex-wrap gap-3 mt-3">
-            <Button label="Filtrar" class="border-none px-4 py-2" />
+            <Button label="Buscar" class="border-none px-4 py-2" />
             <Button label="Limpiar" severity="secondary" outlined class="px-4 py-2" @click="clearFilters" />
         </div>
     </div>
@@ -368,8 +368,8 @@ onMounted(async () => {
                 <div class="text-center p-4 text-gray-500 font-medium">No se encontraron solicitudes.</div>
             </template>
 
-            <Column field="number" header="Numero de transferencia" headerClass="bg-primary-custom text-white font-semibold" bodyClass="text-center" style="min-width: 15rem"></Column>
-            <Column field="responsible" header="Responsable del envio" headerClass="bg-primary-custom text-white font-semibold" style="min-width: 19rem"></Column>
+            <Column field="number" header="Número de transferencia" headerClass="bg-primary-custom text-white font-semibold" bodyClass="text-center" style="min-width: 15rem"></Column>
+            <Column field="responsible" header="Responsable del envío" headerClass="bg-primary-custom text-white font-semibold" style="min-width: 19rem"></Column>
             <Column field="unit" header="Unidad productora" headerClass="bg-primary-custom text-white font-semibold" style="min-width: 18rem"></Column>
             <Column field="receivedAt" header="Fecha de recepción" headerClass="bg-primary-custom text-white font-semibold" style="min-width: 14rem"></Column>
 

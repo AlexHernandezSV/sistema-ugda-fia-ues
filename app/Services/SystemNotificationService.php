@@ -61,8 +61,8 @@ class SystemNotificationService
         $this->notifyUsers($this->ugdaUsers(), $actor, [
             'type' => 'transfer_pending_ugda_review',
             'title' => 'Transferencia autorizada',
-            'short_message' => 'Transferencia #' . $transfer->code . ' lista para revision UGDA.',
-            'body' => 'La jefatura autorizo la transferencia de ' . ($transfer->unit?->name ?? 'la unidad productora') . '. UGDA debe continuar con la revision y programacion.',
+            'short_message' => 'Transferencia #' . $transfer->code . ' lista para revisión de UGDA.',
+            'body' => 'La jefatura autorizó la transferencia de ' . ($transfer->unit?->name ?? 'la unidad productora') . '. UGDA debe continuar con la revisión y programación.',
             'tone' => 'info',
             'action_url' => '/solicitudes/transferencias/' . $transfer->code,
             'reference_type' => 'transfer',
@@ -114,7 +114,7 @@ class SystemNotificationService
             'type' => 'transfer_correction_submitted',
             'title' => 'Transferencia subsanada',
             'short_message' => 'Transferencia #' . $transfer->code . ' fue reenviada con correcciones.',
-            'body' => 'La unidad ' . ($transfer->unit?->name ?? 'solicitante') . ' corrigio observaciones de revision fisica. UGDA debe iniciar una nueva revision para validar los cambios.',
+            'body' => 'La unidad ' . ($transfer->unit?->name ?? 'solicitante') . ' corrigió observaciones de revisión física. UGDA debe iniciar una nueva revisión para validar los cambios.',
             'tone' => 'info',
             'action_url' => '/solicitudes/transferencias/' . $transfer->code,
             'reference_type' => 'transfer',
@@ -173,9 +173,9 @@ class SystemNotificationService
         match ($workflowCode) {
             'loan_status_authorized' => $this->notifyUsers($this->ugdaUsers(), $actor, [
                 'type' => 'loan_pending_search',
-                'title' => 'Prestamo autorizado',
-                'short_message' => 'Prestamo #' . $loan->number . ' listo para busqueda.',
-                'body' => 'La solicitud de prestamo fue autorizada. UGDA debe iniciar o continuar la busqueda de documentos.',
+            'title' => 'Préstamo autorizado',
+            'short_message' => 'Préstamo #' . $loan->number . ' listo para búsqueda.',
+            'body' => 'La solicitud de préstamo fue autorizada. UGDA debe iniciar o continuar la búsqueda de documentos.',
                 'tone' => 'info',
                 'action_url' => '/solicitudes/prestamos/' . $loan->number,
                 'reference_type' => 'loan',
@@ -184,8 +184,8 @@ class SystemNotificationService
             ]),
             'loan_status_observed' => $this->notifyUsers([$loan->user_id], $actor, [
                 'type' => 'loan_observed',
-                'title' => 'Prestamo observado',
-                'short_message' => 'Prestamo #' . $loan->number . ' necesita revision.',
+            'title' => 'Préstamo observado',
+            'short_message' => 'Préstamo #' . $loan->number . ' necesita revisión.',
                 'body' => 'UGDA registro una observación en la solicitud de prestamo: ' . $description,
                 'tone' => 'warning',
                 'action_url' => '/solicitudes/prestamos/' . $loan->number,
@@ -195,8 +195,8 @@ class SystemNotificationService
             ]),
             'loan_status_denied' => $this->notifyUsers([$loan->user_id], $actor, [
                 'type' => 'loan_denied',
-                'title' => 'Prestamo denegado',
-                'short_message' => 'Prestamo #' . $loan->number . ' fue denegado.',
+            'title' => 'Préstamo denegado',
+            'short_message' => 'Préstamo #' . $loan->number . ' fue denegado.',
                 'body' => $description,
                 'tone' => 'danger',
                 'action_url' => '/solicitudes/prestamos/' . $loan->number,
@@ -214,8 +214,8 @@ class SystemNotificationService
 
         $this->notifyUsers($this->unitDirectors($loan->unit_id), $actor, [
             'type' => 'loan_pending_unit_authorization',
-            'title' => 'Prestamo pendiente de jefatura',
-            'short_message' => 'Prestamo #' . $loan->number . ' requiere autorización.',
+            'title' => 'Préstamo pendiente de jefatura',
+            'short_message' => 'Préstamo #' . $loan->number . ' requiere autorización.',
             'body' => 'La unidad ' . ($loan->unit?->name ?? 'solicitante') . ' envio una solicitud de prestamo documental. Revise la solicitud para autorizarla o denegarla.',
             'tone' => 'warning',
             'action_url' => '/solicitudes/prestamos/' . $loan->number,
@@ -231,9 +231,9 @@ class SystemNotificationService
 
         $this->notifyUsers($this->ugdaUsers(), $actor, [
             'type' => 'loan_pending_search',
-            'title' => 'Prestamo autorizado',
-            'short_message' => 'Prestamo #' . $loan->number . ' listo para busqueda.',
-            'body' => 'La jefatura autorizo el prestamo de ' . ($loan->unit?->name ?? 'la unidad solicitante') . '. UGDA debe iniciar la busqueda de documentos.',
+            'title' => 'Préstamo autorizado',
+            'short_message' => 'Préstamo #' . $loan->number . ' listo para búsqueda.',
+            'body' => 'La jefatura autorizó el préstamo de ' . ($loan->unit?->name ?? 'la unidad solicitante') . '. UGDA debe iniciar la búsqueda de documentos.',
             'tone' => 'info',
             'action_url' => '/solicitudes/prestamos/' . $loan->number,
             'reference_type' => 'loan',
@@ -248,8 +248,8 @@ class SystemNotificationService
 
         $this->notifyUsers($this->ugdaUsers(), $actor, [
             'type' => 'loan_correction_submitted',
-            'title' => 'Prestamo corregido',
-            'short_message' => 'Prestamo #' . $loan->number . ' fue corregido y reenviado.',
+            'title' => 'Préstamo corregido',
+            'short_message' => 'Préstamo #' . $loan->number . ' fue corregido y reenviado.',
             'body' => 'La unidad ' . ($loan->unit?->name ?? 'solicitante') . ' atendio las observaciones. Revise nuevamente la solicitud.',
             'tone' => 'info',
             'action_url' => '/solicitudes/prestamos/' . $loan->number,
@@ -263,9 +263,9 @@ class SystemNotificationService
     {
         $this->notifyUsers([$loan->user_id], $actor, [
             'type' => 'loan_search_started',
-            'title' => 'Busqueda iniciada',
-            'short_message' => 'Prestamo #' . $loan->number . ' esta en busqueda.',
-            'body' => 'UGDA inicio la busqueda y localizacion fisica de los documentos solicitados.',
+            'title' => 'Búsqueda iniciada',
+            'short_message' => 'Préstamo #' . $loan->number . ' está en búsqueda.',
+            'body' => 'UGDA inició la búsqueda y localización física de los documentos solicitados.',
             'tone' => 'info',
             'action_url' => '/solicitudes/prestamos/' . $loan->number,
             'reference_type' => 'loan',
@@ -281,9 +281,9 @@ class SystemNotificationService
         if ($loan->searchStatus?->code === 'loan_search_not_found') {
             $this->notifyUsers([$loan->user_id], $actor, [
                 'type' => 'loan_search_not_found',
-                'title' => 'Busqueda sin resultados',
-                'short_message' => 'Prestamo #' . $loan->number . ' no tuvo documentos encontrados.',
-                'body' => 'UGDA finalizo la busqueda, pero los documentos solicitados no fueron encontrados en el archivo. El flujo de esta solicitud ha finalizado.',
+                'title' => 'Búsqueda sin resultados',
+                'short_message' => 'Préstamo #' . $loan->number . ' no tuvo documentos encontrados.',
+                'body' => 'UGDA finalizó la búsqueda, pero los documentos solicitados no fueron encontrados en el archivo. El flujo de esta solicitud ha finalizado.',
                 'tone' => 'danger',
                 'action_url' => '/solicitudes/prestamos/' . $loan->number,
                 'reference_type' => 'loan',
@@ -296,9 +296,9 @@ class SystemNotificationService
 
         $this->notifyUsers([$loan->user_id], $actor, [
             'type' => 'loan_search_completed',
-            'title' => 'Busqueda finalizada',
-            'short_message' => 'Prestamo #' . $loan->number . ' tiene documentos encontrados.',
-            'body' => 'UGDA finalizo la busqueda de los documentos solicitados. Revise el detalle de la solicitud para consultar los documentos encontrados.',
+            'title' => 'Búsqueda finalizada',
+            'short_message' => 'Préstamo #' . $loan->number . ' tiene documentos encontrados.',
+            'body' => 'UGDA finalizó la búsqueda de los documentos solicitados. Revise el detalle de la solicitud para consultar los documentos encontrados.',
             'tone' => 'success',
             'action_url' => '/solicitudes/prestamos/' . $loan->number,
             'reference_type' => 'loan',
@@ -308,9 +308,9 @@ class SystemNotificationService
 
         $this->notifyUsers($this->ugdaUsers(), $actor, [
             'type' => 'loan_pending_delivery',
-            'title' => 'Busqueda finalizada',
-            'short_message' => 'Prestamo #' . $loan->number . ' listo para entrega.',
-            'body' => 'La busqueda de documentos finalizo. Registre el prestamo cuando los documentos sean entregados.',
+            'title' => 'Búsqueda finalizada',
+            'short_message' => 'Préstamo #' . $loan->number . ' listo para entrega.',
+            'body' => 'La búsqueda de documentos finalizó. Registre el préstamo cuando los documentos sean entregados.',
             'tone' => 'success',
             'action_url' => '/solicitudes/prestamos/' . $loan->number,
             'reference_type' => 'loan',
@@ -323,8 +323,8 @@ class SystemNotificationService
     {
         $this->notifyUsers([$loan->user_id], $actor, [
             'type' => 'loan_registered',
-            'title' => 'Prestamo registrado',
-            'short_message' => 'Prestamo #' . $loan->number . ' fue entregado.',
+            'title' => 'Préstamo registrado',
+            'short_message' => 'Préstamo #' . $loan->number . ' fue entregado.',
             'body' => 'UGDA registro la entrega de documentos. Revise el detalle para consultar fechas y condiciones del prestamo.',
             'tone' => 'success',
             'action_url' => '/solicitudes/prestamos/' . $loan->number,
@@ -414,7 +414,7 @@ class SystemNotificationService
         $this->notifyUsers([$loan->user_id], $actor, [
             'type' => 'loan_returned',
             'title' => 'Devolución registrada',
-            'short_message' => 'Prestamo #' . $loan->number . ' tiene devolución registrada.',
+            'short_message' => 'Préstamo #' . $loan->number . ' tiene devolución registrada.',
             'body' => 'UGDA registro la devolución de documentos del prestamo.',
             'tone' => 'success',
             'action_url' => '/solicitudes/prestamos/' . $loan->number,

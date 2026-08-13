@@ -306,14 +306,14 @@ const submitStartSearch = async () => {
         const { data } = await axios.post(`/api/loans/${loan.value.number}/search/start`, {});
         toast.add({
             severity: 'success',
-            summary: 'Busqueda iniciada',
-            detail: data.message || 'Busqueda iniciada correctamente.',
+            summary: 'Búsqueda iniciada',
+            detail: data.message || 'Búsqueda iniciada correctamente.',
             life: 2800,
         });
         searchStartModalVisible.value = false;
         await fetchDetail();
     } catch (error) {
-        showError(error.response?.data?.message || 'No se pudo iniciar la busqueda.');
+        showError(error.response?.data?.message || 'No se pudo iniciar la búsqueda.');
     } finally {
         searchStartSubmitting.value = false;
     }
@@ -332,7 +332,7 @@ const submitFinishSearch = async () => {
         documentIds = [...finishSearchForm.selectedIds];
 
         if (documentIds.length === 0) {
-            showError('Seleccione al menos un documento encontrado o cambie el resultado de la busqueda.');
+        showError('Seleccione al menos un documento encontrado o cambie el resultado de la búsqueda.');
             return;
         }
     }
@@ -351,8 +351,8 @@ const submitFinishSearch = async () => {
 
         toast.add({
             severity: 'success',
-            summary: 'Busqueda finalizada',
-            detail: data.message || 'Busqueda finalizada correctamente.',
+            summary: 'Búsqueda finalizada',
+            detail: data.message || 'Búsqueda finalizada correctamente.',
             life: 3000,
         });
 
@@ -360,7 +360,7 @@ const submitFinishSearch = async () => {
         resetFinishSearchForm();
         await fetchDetail();
     } catch (error) {
-        showError(error.response?.data?.message || 'No se pudo finalizar la busqueda.');
+        showError(error.response?.data?.message || 'No se pudo finalizar la búsqueda.');
     } finally {
         finishSearchSubmitting.value = false;
     }
@@ -371,10 +371,10 @@ const decisionModalConfig = computed(() => {
         case 'authorize':
             return {
                 icon: 'pi pi-check-circle',
-                title: 'Autorizar Prestamo',
+                title: 'Autorizar préstamo',
                 subtitle: loan.value?.mode === 'unitAuthorization'
                     ? 'La solicitud sera enviada a la UGDA para su gestión'
-                    : 'Se iniciara el proceso de busqueda de documentos',
+                    : 'Se iniciará el proceso de búsqueda de documentos.',
                 label: 'Comentarios (opcional)',
                 placeholder: 'Agregue comentarios sobre la autorización...',
                 confirmLabel: 'Autorizar',
@@ -385,7 +385,7 @@ const decisionModalConfig = computed(() => {
         case 'authorizeUnit':
             return {
                 icon: 'pi pi-check-circle',
-                title: 'Autorizar Prestamo',
+                title: 'Autorizar préstamo',
                 subtitle: 'La solicitud sera enviada a la UGDA para su gestión',
                 label: 'Comentarios (opcional)',
                 placeholder: 'Agregue comentarios sobre la autorización...',
@@ -409,7 +409,7 @@ const decisionModalConfig = computed(() => {
         case 'deny':
             return {
                 icon: 'pi pi-times-circle',
-                title: 'Denegar Prestamo',
+                title: 'Denegar préstamo',
                 subtitle: 'Debe proporcionar un motivo para denegar esta solicitud',
                 label: 'Motivo de denegación',
                 placeholder: 'Describa el motivo por el cual se deniega este prestamo...',
@@ -421,7 +421,7 @@ const decisionModalConfig = computed(() => {
         case 'denyUnit':
             return {
                 icon: 'pi pi-times-circle',
-                title: 'Denegar Prestamo',
+                title: 'Denegar préstamo',
                 subtitle: 'Debe proporcionar un motivo para denegar esta solicitud',
                 label: 'Motivo de denegación',
                 placeholder: 'Describa el motivo por el cual se deniega este prestamo...',
@@ -463,12 +463,12 @@ const submitDecisionAction = async () => {
         case 'authorize':
             endpoint = `/api/loans/${loan.value.number}/authorize`;
             payload = { comments };
-            successMessage = 'Prestamo autorizado.';
+            successMessage = 'Préstamo autorizado.';
             break;
         case 'authorizeUnit':
             endpoint = `/api/loans/${loan.value.number}/unit-authorize`;
             payload = { comments };
-            successMessage = 'Prestamo autorizado.';
+            successMessage = 'Préstamo autorizado.';
             break;
         case 'observe':
             endpoint = `/api/loans/${loan.value.number}/observe`;
@@ -478,12 +478,12 @@ const submitDecisionAction = async () => {
         case 'deny':
             endpoint = `/api/loans/${loan.value.number}/deny`;
             payload = { reason: comments };
-            successMessage = 'Prestamo denegado.';
+            successMessage = 'Préstamo denegado.';
             break;
         case 'denyUnit':
             endpoint = `/api/loans/${loan.value.number}/unit-deny`;
             payload = { reason: comments };
-            successMessage = 'Prestamo denegado.';
+            successMessage = 'Préstamo denegado.';
             break;
         default:
             return;
@@ -560,7 +560,7 @@ const submitLoanRegistration = async () => {
 
         toast.add({
             severity: 'success',
-            summary: 'Prestamo registrado',
+            summary: 'Préstamo registrado',
             detail: data.message,
             life: 3000,
         });
@@ -672,7 +672,7 @@ const fetchDetail = async () => {
 
 const isManageMode = computed(() => loan.value?.mode === 'manage');
 const showsActions = computed(() => ['manage', 'unitAuthorization'].includes(loan.value?.mode));
-const pageTitle = computed(() => loan.value?.pageTitle ?? (loan.value ? `Prestamo #${loan.value.number}` : 'Prestamo'));
+const pageTitle = computed(() => loan.value?.pageTitle ?? (loan.value ? `Préstamo #${loan.value.number}` : 'Préstamo'));
 const pageSubtitle = computed(() => loan.value?.pageSubtitle ?? 'Detalle de la solicitud');
 const loanRegistrationDocuments = computed(() => loan.value?.loanRegistration?.documents ?? []);
 const returnRegistrationDocuments = computed(() => loan.value?.returnRegistration?.documents ?? []);
@@ -1325,11 +1325,11 @@ watch(
                 </div>
 
                 <h2 class="detalle-decision-modal__title detalle-decision-modal__title--primary m-0">
-                    Iniciar Busqueda de Documentos
+                    Iniciar búsqueda de documentos
                 </h2>
 
                 <p class="detalle-decision-modal__subtitle m-0">
-                    Se marcara esta solicitud como "Busqueda en proceso" mientras localiza los documentos solicitados en el archivo.
+                    Se marcará esta solicitud como «Búsqueda en proceso» mientras localiza los documentos solicitados en el archivo.
                 </p>
 
                 <div class="detalle-decision-modal__actions">
@@ -1347,7 +1347,7 @@ watch(
                         :disabled="searchStartSubmitting"
                         @click="submitStartSearch"
                     >
-                        {{ searchStartSubmitting ? 'Procesando...' : 'Iniciar Busqueda' }}
+                        {{ searchStartSubmitting ? 'Procesando...' : 'Iniciar búsqueda' }}
                     </button>
                 </div>
             </div>
@@ -1436,14 +1436,14 @@ watch(
                     <i class="pi pi-check-circle"></i>
                 </div>
                 <div>
-                    <h2 class="m-0 text-xl font-bold">Finalizar Busqueda de Documentos</h2>
-                    <p class="m-0 mt-2">Indique el resultado de la busqueda de documentos</p>
+                    <h2 class="m-0 text-xl font-bold">Finalizar búsqueda de documentos</h2>
+                    <p class="m-0 mt-2">Indique el resultado de la búsqueda de documentos.</p>
                 </div>
             </div>
 
             <div class="detalle-form-modal__body">
                 <div class="mb-3">
-                    <label class="detalle-form-label">Resultado de la busqueda <span>*</span></label>
+                    <label class="detalle-form-label">Resultado de la búsqueda <span>*</span></label>
                     <select v-model="finishSearchForm.result" class="detalle-input">
                         <option value="all">✓ Todos los documentos fueron encontrados</option>
                         <option value="partial">● Solo algunos documentos fueron encontrados</option>
@@ -1512,7 +1512,7 @@ watch(
                         class="detalle-textarea"
                         rows="5"
                         :maxlength="OBSERVATION_MAX_LENGTH"
-                        placeholder="Agregue comentarios sobre el resultado de la busqueda..."
+                        placeholder="Agregue comentarios sobre el resultado de la búsqueda..."
                     ></textarea>
                 </div>
             </div>
@@ -1533,7 +1533,7 @@ watch(
                     @click="submitFinishSearch"
                 >
                     <i class="pi pi-check-circle"></i>
-                    <span>{{ finishSearchSubmitting ? 'Procesando...' : 'Finalizar Busqueda' }}</span>
+                    <span>{{ finishSearchSubmitting ? 'Procesando...' : 'Finalizar búsqueda' }}</span>
                 </button>
             </div>
         </div>
@@ -1660,7 +1660,7 @@ watch(
                 <button type="button" class="detalle-action detalle-action--secondary" @click="loanModalVisible = false">Cancelar</button>
                 <button type="button" class="detalle-action detalle-action--success" @click="submitLoanRegistration">
                     <i class="pi pi-box"></i>
-                    <span>Registrar Prestamo</span>
+                    <span>Registrar préstamo</span>
                 </button>
             </div>
         </div>

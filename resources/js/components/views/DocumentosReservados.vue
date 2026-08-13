@@ -57,7 +57,7 @@ const locationLabel = (document) => document?.box?.location ?? 'Ubicación pendi
 const documentMetadata = (document) => [
     document.series ? `Serie: ${document.series}` : null,
     document.unit?.name ? `Unidad: ${document.unit.name}` : null,
-    document.year ? `Ano: ${document.year}` : null,
+    document.year ? `Año: ${document.year}` : null,
     `Caja: ${boxLabel(document)}`,
 ].filter(Boolean);
 
@@ -239,11 +239,11 @@ onBeforeUnmount(() => {
             <section class="reserved-warning">
                 <i class="pi pi-exclamation-triangle"></i>
                 <div>
-                    <strong>Sobre los Documentos Reservados</strong>
+                        <strong>Sobre los documentos reservados</strong>
                     <p>
-                        Los documentos marcados como "reservados" no pueden ser prestados bajo ninguna circunstancia.
-                        Esta clasificacion se utiliza para documentos de alta sensibilidad, confidenciales o de valor
-                        historico irreemplazable.
+                        Los documentos marcados como «reservados» no pueden ser prestados bajo ninguna circunstancia.
+                        Esta clasificación se utiliza para documentos de alta sensibilidad, confidenciales o de valor
+                        histórico irreemplazable.
                     </p>
                 </div>
             </section>
@@ -261,13 +261,13 @@ onBeforeUnmount(() => {
                             <InputText
                                 v-model="reservedQuery"
                                 type="text"
-                                placeholder="Buscar por codigo, nombre, serie o unidad..."
+                                placeholder="Buscar por código, nombre, serie o unidad..."
                             />
                         </label>
                         <Button
                             type="button"
                             icon="pi pi-plus"
-                            label="Agregar Documento"
+                            label="Agregar documento"
                             class="reserved-add-button"
                             @click="openAddDialog"
                         />
@@ -281,7 +281,7 @@ onBeforeUnmount(() => {
 
                 <div v-else-if="reservedDocuments.length === 0" class="reserved-empty">
                     <i class="pi pi-shield"></i>
-                    <span>No hay documentos reservados</span>
+                                <span>No hay documentos reservados.</span>
                 </div>
 
                 <div v-else class="reserved-list" role="list">
@@ -295,7 +295,7 @@ onBeforeUnmount(() => {
                             <div class="reserved-row__topline">
                                 <strong>{{ document.code }}</strong>
                                 <span class="reserved-support-badge" :class="supportTone(document.support)">
-                                    {{ document.support ?? 'Sin soporte' }}
+                                    {{ document.support === 'Fisico' ? 'Físico' : (document.support ?? 'Sin soporte') }}
                                 </span>
                             </div>
                             <h3>{{ document.title }}</h3>
@@ -336,8 +336,8 @@ onBeforeUnmount(() => {
                 <div class="reserved-modal">
                     <header class="reserved-modal__header">
                         <div>
-                            <h2>Agregar Documento a Reservados</h2>
-                            <p>Busca y selecciona el documento que deseas marcar como reservado</p>
+                            <h2>Agregar documento a reservados</h2>
+                            <p>Busca y selecciona el documento que deseas marcar como reservado.</p>
                         </div>
                         <button type="button" class="reserved-modal__close" @click="closeAddDialog">
                             <i class="pi pi-arrow-left"></i>
@@ -350,7 +350,7 @@ onBeforeUnmount(() => {
                             <div>
                                 <strong>Importante</strong>
                                 <p>
-                                    Al agregar un documento a la lista de reservados, este <b>NO podra ser prestado</b>
+                                    Al agregar un documento a la lista de reservados, este <b>no podrá ser prestado</b>
                                     hasta que sea removido de esta lista.
                                 </p>
                             </div>
@@ -361,7 +361,7 @@ onBeforeUnmount(() => {
                             <InputText
                                 v-model="availableQuery"
                                 type="text"
-                                placeholder="Buscar por codigo, nombre, serie o unidad productora..."
+                                placeholder="Buscar por código, nombre, serie o unidad productora..."
                             />
                         </label>
 
@@ -383,7 +383,7 @@ onBeforeUnmount(() => {
                                         <div class="reserved-row__topline">
                                             <strong>{{ document.code }}</strong>
                                             <span class="reserved-support-badge" :class="supportTone(document.support)">
-                                                {{ document.support ?? 'Sin soporte' }}
+                                                {{ document.support === 'Fisico' ? 'Físico' : (document.support ?? 'Sin soporte') }}
                                             </span>
                                         </div>
                                         <h3>{{ document.title }}</h3>

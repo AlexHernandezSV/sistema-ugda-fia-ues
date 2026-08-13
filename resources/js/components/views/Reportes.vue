@@ -1587,7 +1587,7 @@ const exportCurrentTable = () => {
                     <table>
                         <thead>
                             <tr>
-                                <th>Codigo</th>
+                                <th>Código</th>
                                 <th>Nombre</th>
                                 <th>Unidad</th>
                                 <th>Fecha</th>
@@ -1644,7 +1644,7 @@ const exportCurrentTable = () => {
                     <table>
                         <thead>
                             <tr>
-                                <th>Codigo</th>
+                                <th>Código</th>
                                 <th>Nombre</th>
                                 <th>Serie</th>
                                 <th>Unidad</th>
@@ -1820,7 +1820,7 @@ const exportCurrentTable = () => {
                     <table>
                         <thead>
                             <tr>
-                                <th>Prestamo</th>
+                                <th>Préstamo</th>
                                 <th>Usuario</th>
                                 <th>Unidad</th>
                                 <th>Estado</th>
@@ -1852,14 +1852,14 @@ const exportCurrentTable = () => {
     }
 
     const columns = [
-        ["Codigo", "code"],
+        ["Código", "code"],
         ["Nombre", "name"],
         ["Serie", "series"],
         ["Unidad", "unit"],
         ["Usuario que ingreso", "entered_by"],
         ["Fecha", "date_label"],
         ["Soporte", "support"],
-        ["Anio documental", "year"],
+        ["Año documental", "year"],
         ["Paginas", "pages"],
         ["Transferencia", "transfer_code"],
         ["Caja", "box_number"],
@@ -2073,7 +2073,7 @@ onMounted(fetchReportSummary);
                 <div class="reports-filter-panel__heading">
                     <div>
                         <i class="pi pi-filter"></i>
-                        <strong>Filtros Dinamicos</strong>
+                        <strong>Filtros dinámicos</strong>
                         <span v-if="hasActiveFilters" class="reports-status-chip">Activos</span>
                     </div>
 
@@ -2084,7 +2084,7 @@ onMounted(fetchReportSummary);
                         @click="clearFilters"
                     >
                         <i class="pi pi-times"></i>
-                        <span>Limpiar filtros</span>
+                        <span>Limpiar</span>
                     </button>
                 </div>
 
@@ -2744,7 +2744,7 @@ onMounted(fetchReportSummary);
                             <span>Anterior</span>
                         </button>
                         <span>
-                            Pagina {{ classificationSeriesMeta.current_page }} de {{ classificationSeriesMeta.last_page }}
+                            Página {{ classificationSeriesMeta.current_page }} de {{ classificationSeriesMeta.last_page }}
                         </span>
                         <button
                             type="button"
@@ -2778,7 +2778,7 @@ onMounted(fetchReportSummary);
                         class="reports-table"
                         @page="onClassificationDocumentsPage"
                     >
-                        <Column field="code" header="Codigo" style="min-width: 10rem" />
+                        <Column field="code" header="Código" style="min-width: 10rem" />
                         <Column field="name" header="Nombre" style="min-width: 18rem" />
                         <Column field="series" header="Serie" style="min-width: 16rem" />
                         <Column field="unit" header="Unidad" style="min-width: 15rem" />
@@ -3058,7 +3058,7 @@ onMounted(fetchReportSummary);
                     stripedRows
                     class="reports-table"
                 >
-                    <Column field="code" header="Codigo" style="min-width: 10rem" />
+                        <Column field="code" header="Código" style="min-width: 10rem" />
                     <Column field="name" header="Nombre" style="min-width: 18rem" />
                     <Column field="series" header="Serie" style="min-width: 16rem" />
                     <Column field="unit" header="Unidad" style="min-width: 15rem" />

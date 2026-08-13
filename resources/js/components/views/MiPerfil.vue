@@ -86,7 +86,7 @@ const changePassword = async () => {
         toast.add({
             severity: 'success',
             summary: 'Actualizado',
-            detail: 'Contrasena actualizada correctamente.',
+            detail: 'Contraseña actualizada correctamente.',
             life: 3000,
         });
         resetPasswordForm();
@@ -348,7 +348,7 @@ onMounted(fetchProfile);
 
                     <div class="perfil-form">
                         <label>
-                            <span>Contrasena actual</span>
+                            <span>Contraseña actual</span>
                             <InputText v-model="passwordForm.current_password" type="password" autocomplete="current-password" />
                         </label>
                         <label>
@@ -356,13 +356,13 @@ onMounted(fetchProfile);
                             <InputText v-model="passwordForm.password" type="password" autocomplete="new-password" placeholder="Minimo 10 caracteres" />
                         </label>
                         <p class="perfil-password-policy">
-                            Usa al menos 10 caracteres con mayuscula, minuscula, numero y simbolo.
+                            Usa al menos 10 caracteres con mayúscula, minúscula, número y símbolo.
                         </p>
                         <label>
                             <span>Confirmar nueva contrasena</span>
                             <InputText v-model="passwordForm.password_confirmation" type="password" autocomplete="new-password" />
                         </label>
-                        <Button label="Guardar contrasena" icon="pi pi-save" class="perfil-primary" :loading="passwordSaving" @click="changePassword" />
+                        <Button label="Guardar contraseña" icon="pi pi-save" class="perfil-primary" :loading="passwordSaving" @click="changePassword" />
                     </div>
                 </div>
 
@@ -376,7 +376,7 @@ onMounted(fetchProfile);
 
                     <div class="perfil-form">
                         <label>
-                            <span>Contrasena para confirmar cambios</span>
+                            <span>Contraseña para confirmar cambios</span>
                             <InputText v-model="twoFactorForm.current_password" type="password" autocomplete="current-password" />
                         </label>
 
@@ -394,7 +394,7 @@ onMounted(fetchProfile);
                         <div class="perfil-authenticator">
                             <div>
                                 <strong>Google Authenticator</strong>
-                                <small>Escanea el QR y confirma con un código de 6 digitos.</small>
+                                <small>Escanea el QR y confirma con un código de 6 dígitos.</small>
                             </div>
                             <Button label="Generar QR" icon="pi pi-qrcode" severity="secondary" outlined :loading="authenticatorPreparing" @click="prepareAuthenticator" />
                         </div>

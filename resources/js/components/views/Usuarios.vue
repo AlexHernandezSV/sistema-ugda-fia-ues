@@ -394,7 +394,7 @@ const resetUserPassword = async () => {
         );
         toast.add({
             severity: "success",
-            summary: "Contrasena enviada",
+            summary: "Contraseña enviada",
             detail: "Se envio una contrasena temporal al correo del usuario.",
             life: 3500,
         });

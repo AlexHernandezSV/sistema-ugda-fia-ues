@@ -13,7 +13,11 @@ const isSaving = ref(false);
 const isSearchingBoxes = ref(false);
 const boxes = ref([]);
 const seriesOptions = ref([]);
-const supportOptions = ref(['Fisico', 'Digital', 'Mixto']);
+const supportOptions = ref([
+    { label: 'Físico', value: 'Fisico' },
+    { label: 'Digital', value: 'Digital' },
+    { label: 'Mixto', value: 'Mixto' },
+]);
 const boxSearch = ref('');
 const boxDropdownRef = ref(null);
 const documentFileInputRef = ref(null);
@@ -38,7 +42,11 @@ const form = ref({
 
 const selectedBox = computed(() => boxes.value.find((box) => box.id === form.value.box_id) ?? null);
 const requiresDigitalFile = computed(() => ['Digital', 'Mixto'].includes(form.value.support));
-const getBoxCode = (box) => box?.box_code || box?.boxCode || box?.code || 'Sin codigo';
+const normalizeSupportOptions = (options) => (Array.isArray(options) ? options : []).map((option) => {
+    const value = typeof option === 'string' ? option : option.value;
+    return { label: value === 'Fisico' ? 'Físico' : value, value };
+});
+const getBoxCode = (box) => box?.box_code || box?.boxCode || box?.code || 'Sin código';
 const selectedYear = computed({
     get: () => form.value.year ? new Date(Number(form.value.year), 0, 1) : null,
     set: (value) => {
@@ -119,9 +127,10 @@ const fetchCatalog = async () => {
     try {
         const { data } = await axios.get('/api/archive/catalog');
         seriesOptions.value = Array.isArray(data.series) ? data.series : [];
-        supportOptions.value = Array.isArray(data.support_types) ? data.support_types : supportOptions.value;
+        const normalizedSupportOptions = normalizeSupportOptions(data.support_types);
+        supportOptions.value = normalizedSupportOptions.length ? normalizedSupportOptions : supportOptions.value;
     } catch (error) {
-        showError(error.response?.data?.message ?? 'No se pudo cargar el catalogo de archivo.');
+        showError(error.response?.data?.message ?? 'No se pudo cargar el catálogo de archivo.');
     } finally {
         isLoading.value = false;
     }
@@ -133,7 +142,7 @@ const searchBoxes = async () => {
     if (!term) {
         boxes.value = [];
         form.value.box_id = null;
-        showError('Ingrese el codigo o numero de la caja que desea buscar.');
+        showError('Ingrese el código o número de la caja que desea buscar.');
         return;
     }
 
@@ -192,7 +201,7 @@ const previewDocumentFile = () => {
 
 const validateForm = () => {
     if (!form.value.box_id) {
-        showError('Seleccione la caja donde se asignara el documento.');
+        showError('Seleccione la caja donde se asignará el documento.');
         return false;
     }
 
@@ -204,7 +213,7 @@ const validateForm = () => {
     const documentYear = Number(form.value.year);
 
     if (form.value.year.length !== 4 || !Number.isInteger(documentYear) || documentYear < 1900 || documentYear > currentYear) {
-        showError(`El ano del documento debe ser un entero de 4 digitos entre 1900 y ${currentYear}.`);
+        showError(`El año del documento debe ser un entero de 4 dígitos entre 1900 y ${currentYear}.`);
         return false;
     }
 
@@ -213,7 +222,7 @@ const validateForm = () => {
         const endYear = Number(selectedBox.value.end_year);
 
         if (documentYear < startYear || documentYear > endYear) {
-            showError(`El ano del documento debe estar dentro del periodo de la caja (${startYear} - ${endYear}).`);
+        showError(`El año del documento debe estar dentro del período de la caja (${startYear} - ${endYear}).`);
             return false;
         }
     }
@@ -221,7 +230,7 @@ const validateForm = () => {
     const pages = Number(form.value.pages);
 
     if (!Number.isInteger(pages) || pages <= 0) {
-        showError('El numero de paginas debe ser un entero positivo mayor que 0.');
+        showError('El número de páginas debe ser un entero positivo mayor que 0.');
         return false;
     }
 
@@ -309,7 +318,7 @@ onMounted(async () => {
                     </label>
 
                     <label>
-                        <span>Codigo <b>*</b></span>
+                        <span>Código <b>*</b></span>
                         <InputText v-model="form.code" placeholder="Ej. DOC-001" maxlength="120" />
                     </label>
                 </div>
@@ -321,7 +330,7 @@ onMounted(async () => {
 
                 <div class="create-document-grid create-document-grid--three">
                     <label>
-                        <span>Ano <b>*</b></span>
+                        <span>Año <b>*</b></span>
                         <DatePicker
                             v-model="selectedYear"
                             view="year"
@@ -338,7 +347,7 @@ onMounted(async () => {
 
                     <label>
                         <span>Tipo de Soporte <b>*</b></span>
-                        <Dropdown v-model="form.support" :options="supportOptions" placeholder="Seleccionar" class="w-full" />
+                        <Dropdown v-model="form.support" :options="supportOptions" optionLabel="label" optionValue="value" placeholder="Seleccionar" class="w-full" />
                     </label>
 
                     <label>
@@ -381,12 +390,12 @@ onMounted(async () => {
 
                 <form class="create-document-search" @submit.prevent="searchBoxes">
                     <label>
-                        <span>Buscar Caja Existente <b>*</b></span>
+                        <span>Buscar caja existente <b>*</b></span>
                         <div class="create-document-search__bar">
                             <i class="pi pi-search"></i>
                             <InputText
                                 v-model="boxSearch"
-                                placeholder="Buscar por numero de caja, serie o ubicación..."
+                                placeholder="Buscar por número de caja, serie o ubicación..."
                                 :disabled="isSearchingBoxes"
                             />
                             <button type="submit" :disabled="isSearchingBoxes">

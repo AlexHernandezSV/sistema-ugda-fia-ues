@@ -45,8 +45,8 @@ class DocumentarySeriesController extends Controller
             'unit_ids.*' => ['integer', 'exists:units,id'],
         ], [
             'code.required' => 'El código de la serie es obligatorio.',
-            'code.max' => 'El código de la serie no puede exceder los 20 digitos.',
-            'code.regex' => 'El código de la serie solo puede contener digitos.',
+            'code.max' => 'El código de la serie no puede exceder los 20 dígitos.',
+            'code.regex' => 'El código de la serie solo puede contener dígitos.',
             'code.unique' => 'Ya existe una serie documental registrada con este código.',
             'name.required' => 'El nombre de la serie es obligatorio.',
             'name.max' => 'El nombre de la serie no puede exceder los 150 caracteres.',
@@ -91,8 +91,8 @@ class DocumentarySeriesController extends Controller
             'unit_ids.*' => ['integer', 'exists:units,id'],
         ], [
             'code.required' => 'El código de la serie es obligatorio.',
-            'code.max' => 'El código de la serie no puede exceder los 20 digitos.',
-            'code.regex' => 'El código de la serie solo puede contener digitos.',
+            'code.max' => 'El código de la serie no puede exceder los 20 dígitos.',
+            'code.regex' => 'El código de la serie solo puede contener dígitos.',
             'code.unique' => 'Ya existe una serie documental registrada con este código.',
             'name.required' => 'El nombre de la serie es obligatorio.',
             'name.max' => 'El nombre de la serie no puede exceder los 150 caracteres.',
@@ -165,8 +165,8 @@ class DocumentarySeriesController extends Controller
             'unit_ids.*' => ['integer', Rule::in($allowedUnitIds)],
         ], [
             'code.required' => 'El código de la subserie es obligatorio.',
-            'code.max' => 'El código de la subserie no puede exceder los 20 digitos.',
-            'code.regex' => 'El código de la subserie solo puede contener digitos.',
+            'code.max' => 'El código de la subserie no puede exceder los 20 dígitos.',
+            'code.regex' => 'El código de la subserie solo puede contener dígitos.',
             'code.unique' => 'Ya existe una subserie registrada con este código dentro de la serie seleccionada.',
             'name.required' => 'El nombre de la subserie es obligatorio.',
             'name.max' => 'El nombre de la subserie no puede exceder los 150 caracteres.',
@@ -215,8 +215,8 @@ class DocumentarySeriesController extends Controller
             'unit_ids.*' => ['integer', Rule::in($allowedUnitIds)],
         ], [
             'code.required' => 'El código de la subserie es obligatorio.',
-            'code.max' => 'El código de la subserie no puede exceder los 20 digitos.',
-            'code.regex' => 'El código de la subserie solo puede contener digitos.',
+            'code.max' => 'El código de la subserie no puede exceder los 20 dígitos.',
+            'code.regex' => 'El código de la subserie solo puede contener dígitos.',
             'code.unique' => 'Ya existe una subserie registrada con este código dentro de la serie seleccionada.',
             'name.required' => 'El nombre de la subserie es obligatorio.',
             'name.max' => 'El nombre de la subserie no puede exceder los 150 caracteres.',

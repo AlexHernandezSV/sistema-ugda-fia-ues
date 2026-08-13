@@ -68,8 +68,11 @@ app.use(PrimeVue, {
         medium: 'Medio',
         strong: 'Fuerte',
         passwordPrompt: 'Escriba una contraseña',
-        emptyFilterMessage: 'Sin resultados encontrados', // Para tablas
-        emptyMessage: 'No hay opciones disponibles' // Para dropdowns
+        emptyFilterMessage: 'No se encontraron resultados.', // Tablas y listas filtradas
+        emptyMessage: 'No hay opciones disponibles.', // Dropdowns y selectores
+        searchMessage: 'Buscar',
+        selectionMessage: 'Seleccionado {0}',
+        emptySelectionMessage: 'No hay ninguna opción seleccionada'
     }
 });
 

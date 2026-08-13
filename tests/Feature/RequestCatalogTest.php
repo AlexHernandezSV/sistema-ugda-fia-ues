@@ -532,7 +532,7 @@ class RequestCatalogTest extends TestCase
             'status_catalog_id' => $physicalObserved->id,
             'actor_user_id' => $ugda->id,
             'event_type' => 'observation',
-            'title' => 'Observacion de revision fisica',
+            'title' => 'Observación de revision fisica',
             'description' => $physicalMessage,
             'context' => [
                 'observation_scope' => 'physical_review',

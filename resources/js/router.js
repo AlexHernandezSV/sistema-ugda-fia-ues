@@ -163,13 +163,13 @@ const routes = [
 
     { path: '/solicitudes/prestamos/crear',
         name: 'solicitudes-prestamos-crear',
-        meta: { title: 'Solicitud de Prestamo', allowedProfiles: ['Unidad Solicitante'] },
+        meta: { title: 'Solicitud de préstamo', allowedProfiles: ['Unidad Solicitante'] },
         component: SolicitudPrestamo
     },
 
     { path: '/solicitudes/prestamos/:number/editar',
         name: 'solicitudes-prestamo-editar',
-        meta: { title: 'Corregir Solicitud de Prestamo', allowedProfiles: ['Unidad Solicitante'] },
+        meta: { title: 'Corregir solicitud de préstamo', allowedProfiles: ['Unidad Solicitante'] },
         component: SolicitudPrestamo
     },
 
@@ -205,7 +205,7 @@ const routes = [
 
     { path: '/solicitudes/prestamos/:number',
         name: 'solicitudes-prestamo-detalle',
-        meta: { title: 'Detalle de Prestamo' },
+        meta: { title: 'Detalle de préstamo' },
         component: DetallePrestamo
     },
 

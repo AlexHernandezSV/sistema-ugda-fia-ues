@@ -36,7 +36,7 @@ const filters = ref({
 });
 
 const statusOptions = [
-    { label: 'No leidas', value: 'unread' },
+    { label: 'No leídas', value: 'unread' },
     { label: 'Leidas', value: 'read' },
 ];
 const rowsPerPageOptions = [
@@ -212,8 +212,8 @@ onMounted(() => fetchNotifications());
         <div class="surface-card shadow-1 border-round-xl p-4">
             <div class="grid">
                 <div class="col-12 md:col-6 xl:col">
-                    <label class="notificaciones-filter-label">Busqueda</label>
-                    <InputText v-model="filters.search" placeholder="Numero, titulo o detalle" class="w-full mt-2" />
+                    <label class="notificaciones-filter-label">Búsqueda</label>
+                    <InputText v-model="filters.search" placeholder="Número, título o detalle" class="w-full mt-2" />
                 </div>
                 <div class="col-12 md:col-6 xl:col">
                     <label class="notificaciones-filter-label">Estado</label>
@@ -239,7 +239,7 @@ onMounted(() => fetchNotifications());
             </div>
 
             <div class="flex flex-wrap gap-3 mt-3">
-                <Button label="Filtrar" class="border-none px-4 py-2 notificaciones-filter-button" @click="fetchNotifications(1)" />
+                <Button label="Buscar" class="border-none px-4 py-2 notificaciones-filter-button" @click="fetchNotifications(1)" />
                 <Button label="Limpiar" severity="secondary" outlined class="px-4 py-2" @click="clearFilters" />
             </div>
         </div>
@@ -247,7 +247,7 @@ onMounted(() => fetchNotifications());
         <div class="surface-card shadow-1 border-round-xl overflow-hidden">
             <div class="notificaciones-list-header">
                 <span>{{ pageLabel }}</span>
-                <span>Pagina {{ meta.current_page }} de {{ meta.last_page }}</span>
+                <span>Página {{ meta.current_page }} de {{ meta.last_page }}</span>
             </div>
 
             <div v-if="loading" class="p-4 text-center text-gray-500">Cargando notificaciones...</div>
@@ -321,7 +321,7 @@ onMounted(() => fetchNotifications());
                         type="button"
                         class="notificaciones-pagination__icon"
                         :disabled="meta.current_page <= 1"
-                        aria-label="Pagina anterior"
+                        aria-label="Página anterior"
                         @click="previousPage"
                     >
                         <i class="pi pi-angle-left"></i>
@@ -342,7 +342,7 @@ onMounted(() => fetchNotifications());
                         type="button"
                         class="notificaciones-pagination__icon"
                         :disabled="meta.current_page >= meta.last_page"
-                        aria-label="Pagina siguiente"
+                        aria-label="Página siguiente"
                         @click="nextPage"
                     >
                         <i class="pi pi-angle-right"></i>

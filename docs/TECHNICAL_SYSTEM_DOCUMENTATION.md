@@ -155,7 +155,7 @@ Los permisos se guardan como roles con nombre tecnico, por ejemplo:
 - `POST /api/transfers/{number}/schedule`: agenda entrega fisica.
 - `POST /api/transfers/{number}/start-physical-review`: inicia revision fisica.
 - `POST /api/transfers/{number}/complete-locations`: completa ubicaciones fisicas.
-- `POST /api/transfers/{number}/observe`: registra observacion UGDA o fisica.
+- `POST /api/transfers/{number}/observe`: registra observación UGDA o fisica.
 - `POST /api/transfers/{number}/deny`: deniega transferencia desde UGDA.
 - `GET /api/transfers/{number}/documents/{code}/download`: descarga/visualiza documento.
 - `GET /api/transfers/{number}/boxes/{boxNumber}/label`: payload de etiqueta QR.
@@ -289,10 +289,10 @@ Metodos publicos:
 
 Reglas importantes:
 
-- La observacion digital usa estado `transfer_status_observed`.
-- La observacion fisica usa estado `transfer_status_physical_observed` y `context.observation_scope = physical_review`.
-- Al corregir observacion digital, la solicitud vuelve a `transfer_status_pending` y genera evento `Corregido y reenviado`.
-- Al corregir observacion fisica, la solicitud pasa a `transfer_status_subsanated` y genera evento `Subsanada`.
+- La observación digital usa estado `transfer_status_observed`.
+- La observación fisica usa estado `transfer_status_physical_observed` y `context.observation_scope = physical_review`.
+- Al corregir observación digital, la solicitud vuelve a `transfer_status_pending` y genera evento `Corregido y reenviado`.
+- Al corregir observación fisica, la solicitud pasa a `transfer_status_subsanated` y genera evento `Subsanada`.
 
 ### RequestCatalogController
 
@@ -636,9 +636,9 @@ Cubre detalle de prestamos, transferencias, archivo general, etiquetas/documento
 - `test_admin_can_search_general_archive_by_completed_transfer_date`: busqueda por fecha de transferencia completada.
 - `test_general_archive_is_only_available_to_admin_profile`: archivo general restringido a admin.
 - `test_authenticated_user_can_get_review_transfer_detail_with_ugda_sections`: secciones de revision UGDA.
-- `test_transfer_correction_notes_before_schedule_are_visible_to_director_and_ugda`: aclaraciones del solicitante despues de observacion digital antes de agenda.
+- `test_transfer_correction_notes_before_schedule_are_visible_to_director_and_ugda`: aclaraciones del solicitante despues de observación digital antes de agenda.
 - `test_digital_observations_do_not_appear_as_physical_review_observations`: observaciones digitales corregidas no aparecen como fisicas.
-- `test_physical_review_observations_enable_correction_only_after_physical_observation`: correccion fisica solo se habilita tras observacion fisica real.
+- `test_physical_review_observations_enable_correction_only_after_physical_observation`: correccion fisica solo se habilita tras observación fisica real.
 - `test_authenticated_user_can_get_denied_transfer_detail_with_decision_card`: tarjeta de decision denegada.
 - `test_authenticated_user_can_download_transfer_document_from_hyperlink_route`: descarga/visualizacion de documento.
 - `test_dashboard_alert_routes_point_to_loan_detail_when_alert_is_for_a_loan`: rutas de alertas de prestamo.

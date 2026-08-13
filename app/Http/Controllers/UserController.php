@@ -63,11 +63,11 @@ class UserController extends Controller
             'unit_ids.min' => 'Seleccione al menos una unidad para el usuario.',
             'unit_ids.*.exists' => 'Seleccione una unidad valida.',
             'role.required' => 'Seleccione un rol para el usuario.',
-            'role.exists' => 'Seleccione un rol valido.',
+            'role.exists' => 'Seleccione un rol válido.',
             'max' => 'El campo no debe exceder los :max caracteres.',
         ], [
             'role.required' => 'Seleccione un rol para el usuario.',
-            'role.exists' => 'Seleccione un rol valido.',
+            'role.exists' => 'Seleccione un rol válido.',
         ]);
 
         $randomPassword = Str::random(8);
@@ -220,12 +220,12 @@ class UserController extends Controller
             $user,
             $request->user(),
             'temporary_password_reset',
-            'Contrasena temporal generada',
+            'Contraseña temporal generada',
             'Un administrador restablecio la contrasena y envio una temporal por correo.',
             $request
         );
 
-        return response()->json(['message' => 'Contrasena temporal enviada al correo del usuario.']);
+        return response()->json(['message' => 'Contraseña temporal enviada al correo del usuario.']);
     }
 
     public function destroy($id)

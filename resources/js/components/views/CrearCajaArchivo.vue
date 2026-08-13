@@ -18,7 +18,11 @@ const isSearchingDocuments = ref(false);
 
 const units = ref([]);
 const seriesOptions = ref([]);
-const supportOptions = ref(['Fisico', 'Digital', 'Mixto']);
+const supportOptions = ref([
+    { label: 'Físico', value: 'Fisico' },
+    { label: 'Digital', value: 'Digital' },
+    { label: 'Mixto', value: 'Mixto' },
+]);
 const locationOptions = ref({
     offices: [],
     aisles: [],
@@ -107,6 +111,10 @@ const selectedSeriesName = computed(() => selectedSeriesOptions.value
     .join('; '));
 
 const requiresDigitalDocFile = computed(() => ['Digital', 'Mixto'].includes(docForm.value.support));
+const normalizeSupportOptions = (options) => (Array.isArray(options) ? options : []).map((option) => {
+    const value = typeof option === 'string' ? option : option.value;
+    return { label: value === 'Fisico' ? 'Físico' : value, value };
+});
 
 watch(() => docForm.value.support, (support) => {
     if (support !== 'Fisico') {
@@ -215,7 +223,7 @@ const onDocumentPagesInput = (event) => {
     docForm.value.pages = sanitizePositiveInteger(event.target.value);
 };
 
-// Permite letras, numeros y guiones en el numero visible de caja.
+// Permite letras, números y guiones en el número visible de caja.
 const onBoxNumberInput = (event) => {
     form.value.box_code = String(event.target.value ?? '')
         .toUpperCase()
@@ -347,7 +355,8 @@ const fetchCatalog = async () => {
         const { data } = await axios.get('/api/archive/catalog');
         units.value = Array.isArray(data.units) ? data.units : [];
         seriesOptions.value = Array.isArray(data.series) ? data.series : [];
-        supportOptions.value = Array.isArray(data.support_types) ? data.support_types : supportOptions.value;
+        const normalizedSupportOptions = normalizeSupportOptions(data.support_types);
+        supportOptions.value = normalizedSupportOptions.length ? normalizedSupportOptions : supportOptions.value;
         locationOptions.value = {
             offices: data.locations?.offices ?? [],
             aisles: data.locations?.aisles ?? [],
@@ -500,18 +509,18 @@ const validateDocumentForBox = (document, requireDigitalFile = true) => {
     const endYear = Number(getYearString(form.value.end_year));
 
     if (!/^\d{4}$/.test(year) || Number(year) < startYear || Number(year) > endYear) {
-        return `El anio del documento "${documentName}" debe estar dentro del rango de la caja (${startYear} - ${endYear}).`;
+        return `El año del documento "${documentName}" debe estar dentro del rango de la caja (${startYear} - ${endYear}).`;
     }
 
     const pages = String(document?.pages ?? '').trim();
 
     if (pages !== '' && (!/^\d+$/.test(pages) || Number(pages) < 1)) {
-        return `La cantidad de paginas del documento "${documentName}" debe ser un entero positivo.`;
+        return `La cantidad de páginas del documento "${documentName}" debe ser un entero positivo.`;
     }
 
     if (requireDigitalFile && ['Digital', 'Mixto'].includes(document?.support)
         && (!document?.digital_file_base64 || !isPdfFileName(document?.digital_file_name))) {
-        return `El documento "${documentName}" requiere un archivo PDF para el soporte ${document.support}.`;
+        return `El documento "${documentName}" requiere un archivo PDF para el soporte ${document.support === 'Fisico' ? 'físico' : document.support}.`;
     }
 
     return '';
@@ -529,7 +538,7 @@ const validateDocumentCollection = (documentList, requireDigitalFile = true) => 
     const duplicateCode = findDuplicateDocumentCode(documentList);
 
     return duplicateCode
-        ? `El codigo "${duplicateCode}" esta repetido dentro de esta caja. Cada codigo debe ser unico por caja.`
+        ? `El código "${duplicateCode}" está repetido dentro de esta caja. Cada código debe ser único por caja.`
         : '';
 };
 
@@ -544,12 +553,12 @@ const addDocument = async () => {
     }
 
     if (docForm.value.year.length !== 4 || !Number.isInteger(documentYear) || documentYear > currentYear) {
-        showError(`El ano del documento debe ser un numero entero de 4 digitos hasta ${currentYear}.`);
+        showError(`El año del documento debe ser un número entero de 4 dígitos hasta ${currentYear}.`);
         return;
     }
 
     if (pages !== null && (!Number.isInteger(pages) || pages <= 0)) {
-        showError('El numero de paginas debe ser un entero positivo mayor que 0.');
+        showError('El número de páginas debe ser un entero positivo mayor que 0.');
         return;
     }
 
@@ -821,8 +830,8 @@ const buildLabelsDocument = () => {
                     </div>
                     <div class="print-label-card__hero">
                         <div class="print-label-card__qr">
-                            <img src="${label.qrDataUrl}" alt="Codigo QR ${escapeHtml(label.labelCode)}" />
-                            <span>Codigo: ${escapeHtml(label.labelCode)}</span>
+                            <img src="${label.qrDataUrl}" alt="Código QR ${escapeHtml(label.labelCode)}" />
+                            <span>Código: ${escapeHtml(label.labelCode)}</span>
                         </div>
                         <div class="print-label-card__hero-main">
                             <div class="print-label-card__location">
@@ -949,7 +958,7 @@ const validateForm = () => {
     }
 
     if (!/^[A-Z0-9]+(?:-[A-Z0-9]+)*$/.test(form.value.box_code)) {
-        showError('El numero de caja solo puede contener letras, numeros y guiones.');
+        showError('El número de caja solo puede contener letras, números y guiones.');
         return false;
     }
 
@@ -957,7 +966,7 @@ const validateForm = () => {
     const endYear = getYearString(form.value.end_year);
 
     if (!/^\d{4}$/.test(startYear) || !/^\d{4}$/.test(endYear)) {
-        showError('Los anos de la caja deben tener 4 digitos.');
+        showError('Los años de la caja deben tener 4 dígitos.');
         return false;
     }
 
@@ -1110,7 +1119,7 @@ onMounted(fetchCatalog);
 
                 <div class="create-box-grid create-box-grid--two">
                     <label>
-                        <span>Ano Inicial <b>*</b></span>
+        <span>Año inicial <b>*</b></span>
                         <DatePicker
                             v-model="form.start_year"
                             view="year"
@@ -1125,7 +1134,7 @@ onMounted(fetchCatalog);
                         />
                     </label>
                     <label>
-                        <span>Ano Final <b>*</b></span>
+        <span>Año final <b>*</b></span>
                         <DatePicker
                             v-model="form.end_year"
                             view="year"
@@ -1318,7 +1327,7 @@ onMounted(fetchCatalog);
                         <InputText v-model="docForm.code" placeholder="Ej: EXP-2024-001" class="w-full" />
                     </label>
                     <label>
-                        <span>Ano <b>*</b></span>
+                        <span>Año <b>*</b></span>
                         <InputText
                             v-model="docForm.year"
                             inputmode="numeric"
@@ -1339,7 +1348,7 @@ onMounted(fetchCatalog);
                 <div class="create-box-grid create-box-grid--two">
                     <label>
                         <span>Tipo de Soporte <b>*</b></span>
-                        <Dropdown v-model="docForm.support" :options="supportOptions" placeholder="Seleccionar" class="w-full" />
+                        <Dropdown v-model="docForm.support" :options="supportOptions" optionLabel="label" optionValue="value" placeholder="Seleccionar" class="w-full" />
                     </label>
                     <label>
                         <span>N de Paginas <b>*</b></span>
@@ -1403,7 +1412,7 @@ onMounted(fetchCatalog);
                     <Column field="name" header="Nombre" />
                     <Column field="year" header="Año" />
                     <Column field="support" header="Soporte" />
-                    <Column field="pages" header="N° Paginas" />
+                    <Column field="pages" header="N.° de páginas" />
                     <Column header="Acciones">
                         <template #body="{ data }">
                             <div class="create-box-doc-actions">
@@ -1517,9 +1526,17 @@ onMounted(fetchCatalog);
 
         <Dialog v-model:visible="searchDialogVisible" modal :draggable="false" header="Buscar documentos existentes" :style="{ width: 'min(900px, 94vw)' }">
             <form class="archive-existing-search" @submit.prevent="searchExistingDocuments">
-                <InputText v-model="documentSearch" placeholder="Buscar por código, nombre, serie, caja o ubicación" class="w-full" />
+                <InputText v-model="documentSearch" placeholder="Buscar por código, nombre, serie, caja o ubicación..." class="w-full" />
                 <button type="submit" class="create-box-primary" :disabled="isSearchingDocuments">
                     {{ isSearchingDocuments ? 'Buscando...' : 'Buscar' }}
+                </button>
+                <button
+                    type="button"
+                    class="create-box-outline"
+                    :disabled="isSearchingDocuments || (!documentSearch && documentSearchResults.length === 0)"
+                    @click="documentSearch = ''; documentSearchResults = []"
+                >
+                    Limpiar
                 </button>
             </form>
 
@@ -1603,8 +1620,8 @@ onMounted(fetchCatalog);
 
                             <div class="transfer-label__hero">
                                 <div class="transfer-label__qr">
-                                    <img :src="labelPreviewItem.qrDataUrl" :alt="`Codigo QR ${labelPreviewItem.labelCode}`" />
-                                    <span>Codigo: {{ labelPreviewItem.labelCode }}</span>
+                                    <img :src="labelPreviewItem.qrDataUrl" :alt="`Código QR ${labelPreviewItem.labelCode}`" />
+                                    <span>Código: {{ labelPreviewItem.labelCode }}</span>
                                 </div>
 
                                 <div class="transfer-label__hero-main">

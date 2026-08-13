@@ -131,8 +131,8 @@ const refreshNextTransferCode = async () => {
 
         headerForm.value.code = data.code ?? '';
     } catch (error) {
-        console.error('Error generando numero de transferencia:', error);
-        showError('No se pudo generar el numero de transferencia.');
+        console.error('Error generando número de transferencia:', error);
+        showError('No se pudo generar el número de transferencia.');
     } finally {
         isRefreshingCode.value = false;
     }
@@ -576,13 +576,13 @@ const validateDocumentForBox = (document, box) => {
     const endYear = Number(getYearString(box.year_end));
 
     if (documentYear === '') {
-        return `Debe indicar el anio del documento "${documentName}".`;
+        return `Debe indicar el año del documento "${documentName}".`;
     }
 
     const yearNumber = Number(documentYear);
 
     if (!/^\d{4}$/.test(documentYear) || yearNumber < startYear || yearNumber > endYear) {
-        return `El anio del documento "${documentName}" debe estar dentro del rango de la caja (${startYear} - ${endYear}).`;
+        return `El año del documento "${documentName}" debe estar dentro del rango de la caja (${startYear} - ${endYear}).`;
     }
 
     if (document?.file && !isPdfFile(document.file)) {
@@ -857,6 +857,8 @@ const getSupportClass = (support) => {
     return `transfer-docs__support-chip--${supportKey}`;
 };
 
+const getSupportLabel = (support) => support === 'Fisico' ? 'Físico' : (support || 'Sin soporte');
+
 const saveBoxChanges = () => {
     if (currentBoxIndex.value === null) {
         return;
@@ -918,7 +920,7 @@ const validateTransferDraft = () => {
     }
 
     if (isEditMode.value && String(correctionNotes.value ?? '').trim() === '') {
-        showError('Debe indicar como fueron atendidas las observaciones de revision fisica.');
+        showError('Debe indicar cómo fueron atendidas las observaciones de revisión física.');
         return false;
     }
 
@@ -1004,7 +1006,7 @@ const submitTransfer = async () => {
             severity: 'success',
             summary: isEditMode.value ? 'Solicitud corregida exitosamente' : 'Solicitud creada exitosamente',
             detail: isEditMode.value
-                ? `La solicitud #${data.number} ha sido corregida y reenviada a UGDA para revision.`
+                ? `La solicitud #${data.number} ha sido corregida y reenviada a UGDA para revisión.`
                 : `La solicitud #${data.number} ha sido creada y enviada para autorización.`,
             life: 3200,
         });
@@ -1224,7 +1226,7 @@ const goBack = () => {
                     </Column>
                     <Column field="year_start" header="Fecha inicial" style="width: 9rem"></Column>
                     <Column field="year_end" header="Fecha final" style="width: 9rem"></Column>
-                    <Column header="Codigo de caja" style="width: 12rem">
+                    <Column header="Código de caja" style="width: 12rem">
                         <template #body="{ data }">{{ buildBoxCode(data) }}</template>
                     </Column>
                     <Column header="Documentos" style="width: 10rem">
@@ -1491,7 +1493,7 @@ const goBack = () => {
                                     class="transfer-docs__support-chip"
                                     :class="getSupportClass(document.support)"
                                 >
-                                    {{ document.support }}
+                                    {{ getSupportLabel(document.support) }}
                                 </strong>
                             </div>
                             <div>

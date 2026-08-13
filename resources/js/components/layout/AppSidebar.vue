@@ -72,7 +72,7 @@ const menuItems = computed(() => {
             to: '/solicitudes/crear',
         });
         items.push({
-            label: 'Solicitud de Prestamo',
+            label: 'Solicitud de préstamo',
             icon: 'pi pi-file-export',
             to: '/solicitudes/prestamos/crear',
         });
@@ -505,7 +505,7 @@ onBeforeUnmount(() => {
                     <div class="sidebar-notifications-panel__header">
                         <div>
                             <strong>Notificaciones</strong>
-                            <span>{{ notifications.unreadCount }} no leidas</span>
+                            <span>{{ notifications.unreadCount }} no leídas</span>
                         </div>
                         <button
                             type="button"
@@ -592,7 +592,7 @@ onBeforeUnmount(() => {
                             @click="handleLogout"
                         >
                             <i class="pi pi-sign-out text-lg"></i>
-                            <span class="font-medium text-sm">Cerrar Sesion</span>
+                            <span class="font-medium text-sm">Cerrar sesión</span>
                         </div>
                     </div>
                 </div>

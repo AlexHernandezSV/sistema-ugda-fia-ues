@@ -16,7 +16,7 @@ class TemporaryPasswordMail extends Mailable
 
     public function build()
     {
-        return $this->subject('Sistema UGDA - Contrasena temporal')
+        return $this->subject('Sistema UGDA - Contraseña temporal')
             ->view('emails.temporary_password');
     }
 }

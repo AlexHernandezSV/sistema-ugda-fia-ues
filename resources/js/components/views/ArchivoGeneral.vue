@@ -36,7 +36,7 @@ const resultCountLabel = computed(() => {
 });
 const limitNotice = computed(() => (
     resultsCount.value > results.value.length
-        ? `Mostrando ${results.value.length} de ${resultsCount.value} coincidencias. Refine la busqueda para ver resultados mas precisos.`
+        ? `Mostrando ${results.value.length} de ${resultsCount.value} coincidencias. Refine la búsqueda para ver resultados más precisos.`
         : ''
 ));
 
@@ -76,7 +76,7 @@ const selectedLocationParts = computed(() => {
     };
 });
 
-const formatDocumentSupport = (support) => support || 'Sin soporte';
+const formatDocumentSupport = (support) => support === 'Fisico' ? 'Físico' : (support || 'Sin soporte');
 
 const formatPeriodStart = (document) => document?.box?.start_year || document?.year || 'N/D';
 const formatPeriodEnd = (document) => document?.box?.end_year || document?.year || 'N/D';
@@ -214,7 +214,7 @@ onMounted(() => fetchArchive());
         <section class="archive-results shadow-1">
             <div v-if="errorMessage" class="archive-state archive-state--error">
                 <i class="pi pi-exclamation-triangle"></i>
-                <h2>No se pudo completar la busqueda</h2>
+                    <h2>No se pudo completar la búsqueda</h2>
                 <p>{{ errorMessage }}</p>
             </div>
 
@@ -226,7 +226,7 @@ onMounted(() => fetchArchive());
 
             <template v-else-if="hasSearched">
                 <div class="archive-results__header">
-                    <h2 data-v-b54a6ae6="" style="color: #ffffff;">Resultados de Busqueda</h2>
+                    <h2 data-v-b54a6ae6="" style="color: #ffffff;">Resultados de búsqueda</h2>
                     <span>{{"( " + resultCountLabel + " )" }}</span>
                 </div>
 
@@ -257,7 +257,7 @@ onMounted(() => fetchArchive());
                                     <p>Código: {{ document.code || 'N/D' }}</p>
                                 </div>
                                 <div class="archive-document__badges">
-                                    <span class="archive-document__support">{{ document.support || 'Sin soporte' }}</span>
+                                    <span class="archive-document__support">{{ formatDocumentSupport(document.support) }}</span>
                                     <span v-if="document.is_loaned" class="archive-document__loaned">
                                         <i class="pi pi-arrow-up-right"></i>
                                         Prestado
@@ -330,7 +330,7 @@ onMounted(() => fetchArchive());
 
             <div v-else class="archive-state">
                 <i class="pi pi-search"></i>
-                <h2>Comience su busqueda</h2>
+                <h2>Comience su búsqueda</h2>
                 <p>Utilice el buscador para localizar documentos en el archivo general. Puede buscar por:</p>
 
                 <div class="archive-state__hints">
@@ -341,7 +341,7 @@ onMounted(() => fetchArchive());
                     </div>
                     <div>
                         <i class="pi pi-hashtag"></i>
-                        <strong>Código o numero de caja</strong>
+                        <strong>Código o número de caja</strong>
                         <span>Identifique por código unico</span>
                     </div>
                     <div>
@@ -352,7 +352,7 @@ onMounted(() => fetchArchive());
                     <div>
                         <i class="pi pi-calendar"></i>
                         <strong>Fecha</strong>
-                        <span>Use formato dia/mes/anio</span>
+                        <span>Use el formato día/mes/año.</span>
                     </div>
                 </div>
             </div>

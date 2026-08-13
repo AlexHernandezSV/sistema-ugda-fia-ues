@@ -103,7 +103,7 @@ onMounted(fetchPending);
 
                 <div class="pending-card__main">
                     <div class="pending-card__title">
-                        <h2>Prestamo #{{ loan.number }}</h2>
+                        <h2>Préstamo #{{ loan.number }}</h2>
                         <span>{{ loan.auth }}</span>
                     </div>
                     <div class="pending-card__grid">

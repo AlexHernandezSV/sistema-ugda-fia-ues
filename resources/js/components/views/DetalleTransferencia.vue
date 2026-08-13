@@ -165,7 +165,9 @@ const supportChipClass = (support) => {
     }
 };
 
-const documentSupportLabel = (document) => (document.supportRestricted ? 'Restringido' : (document.support || 'N/A'));
+const documentSupportLabel = (document) => (document.supportRestricted
+    ? 'Restringido'
+    : (document.support === 'Fisico' ? 'Físico' : (document.support || 'N/D')));
 
 const documentSupportClass = (document) => (document.supportRestricted
     ? 'detalle-support-chip detalle-support-chip--restricted'
@@ -398,7 +400,7 @@ const startPhysicalReview = async () => {
         });
         await fetchDetail();
     } catch (error) {
-        showError(error.response?.data?.message || 'No se pudo iniciar la revision fisica.');
+        showError(error.response?.data?.message || 'No se pudo iniciar la revisión física.');
     }
 };
 
@@ -1789,7 +1791,7 @@ watch(
                                     <th>Serie / Subserie</th>
                                     <th>Fecha inicial</th>
                                     <th>Fecha final</th>
-                                    <th>Codigo de caja</th>
+                                    <th>Código de caja</th>
                                     <th class="ugda-chip-table-cell">Documentos</th>
                                 </tr>
                             </thead>

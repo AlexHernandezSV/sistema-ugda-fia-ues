@@ -42,7 +42,7 @@ const correctionNotes = ref('');
 
 const isEditMode = computed(() => route.name === 'solicitudes-prestamo-editar');
 const editNumber = computed(() => route.params.number);
-const pageTitle = computed(() => isEditMode.value ? 'Corregir Solicitud de Prestamo' : 'Solicitud de Prestamo');
+const pageTitle = computed(() => isEditMode.value ? 'Corregir solicitud de préstamo' : 'Solicitud de préstamo');
 const pageSubtitle = computed(() => isEditMode.value
     ? `Solicitud #${editNumber.value} - Atienda las observaciones registradas`
     : 'Solicita documentos que ya se encuentran en custodia de la UGDA');

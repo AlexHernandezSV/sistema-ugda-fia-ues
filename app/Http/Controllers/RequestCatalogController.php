@@ -115,7 +115,7 @@ class RequestCatalogController extends Controller
 
             if ($detail === null) {
                 return response()->json([
-                    'message' => 'Prestamo no encontrado.',
+                    'message' => 'Préstamo no encontrado.',
                 ], 404);
             }
 
@@ -267,11 +267,11 @@ class RequestCatalogController extends Controller
             'Vista previa del documento',
             'Transferencia: ' . $number,
             'Caja: ' . ($document['boxNumber'] ?? 'N/D'),
-            'Codigo: ' . ($document['code'] ?? 'N/D'),
+            'Código: ' . ($document['code'] ?? 'N/D'),
             'Nombre: ' . ($document['name'] ?? 'N/D'),
             'Serie: ' . ($document['series'] ?? 'N/D'),
             'Soporte: ' . ($document['support'] ?? 'N/D'),
-            'Anio: ' . ($document['year'] ?? 'N/D'),
+            'Año: ' . ($document['year'] ?? 'N/D'),
             'Paginas: ' . ($document['pages'] ?? 'N/D'),
             'Archivo registrado: ' . ($document['digitalFile'] ?? 'N/D'),
         ];
@@ -529,7 +529,7 @@ class RequestCatalogController extends Controller
         $drawText($margin, $y, 'DETALLE DE CAJAS Y DOCUMENTOS', 11, 'F2', '0.07 0.31 0.48');
         $y += 12;
 
-        $columns = ['Codigo', 'Documento', 'Serie / Subserie', 'Fechas extremas', 'Soporte', 'Paginas'];
+        $columns = ['Código', 'Documento', 'Serie / Subserie', 'Fechas extremas', 'Soporte', 'Páginas'];
         $widths = [68, 148, 137, 68, 48, 58];
 
         foreach (($summary['boxes'] ?? []) as $box) {

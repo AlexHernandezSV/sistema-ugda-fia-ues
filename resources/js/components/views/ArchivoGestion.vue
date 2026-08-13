@@ -40,25 +40,25 @@ const tableFirst = computed(() => (
 
 const cards = [
     {
-        title: 'Crear Nueva Caja',
+        title: 'Crear nueva caja',
         description: 'Crea nuevas cajas y asigna documentos con ubicación física',
         icon: 'pi pi-box',
         action: () => router.push('/archivo-general/cajas/crear'),
     },
     {
-        title: 'Crear Nuevo Documento',
+        title: 'Crear nuevo documento',
         description: 'Crea documentos y asigna a cajas existentes',
         icon: 'pi pi-file-plus',
         action: () => router.push('/archivo-general/documentos/crear'),
     },
     {
-        title: 'Reasignacion',
+        title: 'Reasignación',
         description: 'Cambia ubicaciones de cajas o documentos',
         icon: 'pi pi-refresh',
         action: () => router.push('/archivo-general/reasignacion'),
     },
     {
-        title: 'Documentos Reservados',
+        title: 'Documentos reservados',
         description: 'Gestiona documentos reservados para uso especifico',
         icon: 'pi pi-shield',
         action: () => router.push('/archivo-general/documentos-reservados'),
@@ -238,14 +238,14 @@ const printLabel = async (box) => {
                     <div class="transfer-label__date"><span>Fecha</span><strong>${safeLabel.transferDate}</strong></div>
                 </div>
                 <div class="transfer-label__hero">
-                    <div class="transfer-label__qr"><img src="${label.qrDataUrl}" alt="Codigo QR ${safeLabel.labelCode}" /><span>Codigo: ${safeLabel.labelCode}</span></div>
+                    <div class="transfer-label__qr"><img src="${label.qrDataUrl}" alt="Código QR ${safeLabel.labelCode}" /><span>Código: ${safeLabel.labelCode}</span></div>
                     <div>
                         <div class="transfer-label__location"><span>CÓDIGO DE UBICACIÓN</span><strong>${safeLabel.locationCode}</strong></div>
-                        <div class="transfer-label__box"><span>N de caja</span><strong>${safeLabel.boxLabel}</strong></div>
+                        <div class="transfer-label__box"><span>N.° de caja</span><strong>${safeLabel.boxLabel}</strong></div>
                     </div>
                 </div>
                 <div class="transfer-label__details">
-                    <div><span>N de transferencia</span><strong>${safeLabel.transferNumber}</strong></div>
+                    <div><span>N.° de transferencia</span><strong>${safeLabel.transferNumber}</strong></div>
                     <div><span>Unidad productora</span><strong>${safeLabel.unit}</strong></div>
                     <div><span>Contenido de la caja</span><strong>${safeLabel.content}</strong></div>
                     <div><span>Periodo documental</span><strong>${safeLabel.period}</strong></div>
@@ -364,7 +364,7 @@ onMounted(fetchBoxes);
         </header>
 
         <main class="archive-management-main">
-            <p class="archive-management-copy">Selecciona una opcion para gestionar el archivo general</p>
+            <p class="archive-management-copy">Selecciona una opción para gestionar el archivo general.</p>
 
             <section class="archive-action-grid">
                 <button
@@ -391,7 +391,7 @@ onMounted(fetchBoxes);
                             <InputText
                                 v-model="query"
                                 type="text"
-                                placeholder="Buscar por numero, serie, unidad o ubicación..."
+                                placeholder="Buscar por número, serie, unidad o ubicación..."
                                 :disabled="loading"
                             />
                         </span>
@@ -399,7 +399,7 @@ onMounted(fetchBoxes);
                             <Button
                                 type="submit"
                                 icon="pi pi-search"
-                                label="Filtrar"
+                                label="Buscar"
                                 :loading="loading"
                                 :disabled="loading"
                             />
@@ -495,7 +495,7 @@ onMounted(fetchBoxes);
                 <Column field="series" header="Serie" />
                 <Column field="code" header="Código" />
                 <Column field="name" header="Nombre" />
-                <Column field="year" header="Ano" />
+                    <Column field="year" header="Año" />
                 <Column field="support" header="Soporte" />
                 <Column field="pages" header="Paginas" />
                 <Column field="created_at_label" header="Registrado" />

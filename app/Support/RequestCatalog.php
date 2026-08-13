@@ -62,7 +62,7 @@ class RequestCatalog
             'loans' => [
                 'auth' => self::statusOptions('loan', 'authorization', array_column($loans, 'auth')),
                 'status' => self::statusOptions('loan', 'workflow', array_column($loans, 'status')),
-                'search' => self::statusOptions('loan', 'search', array_column($loans, 'search'), 'Busqueda: '),
+                'search' => self::statusOptions('loan', 'search', array_column($loans, 'search'), 'Búsqueda: '),
             ],
         ];
     }
@@ -307,7 +307,7 @@ class RequestCatalog
                         ? 'El solicitante ha corregido las observaciones y reenviado la solicitud para nueva validación'
                         : 'El solicitante ha atendido las observaciones de UGDA y reenviado la solicitud para nueva validación',
                     'message' => $isPhysicalClarification
-                        ? 'Se ha recibido la documentación corregida. Revise las aclaraciones del solicitante e inicie una nueva revisión fÃ­sica para validar los cambios realizados.'
+                        ? 'Se ha recibido la documentación corregida. Revise las aclaraciones del solicitante e inicie una nueva revisión física para validar los cambios realizados.'
                         : 'Se han recibido las aclaraciones del solicitante. Revise la respuesta antes de continuar con la autorización o gestión de la solicitud.',
                 ]
                 : null,
@@ -474,16 +474,16 @@ class RequestCatalog
             'requestedAt' => self::formatDateTime($loan->requested_at),
             'auth' => $loan->authorizationStatus?->label ?? 'Pendiente',
             'status' => $loan->workflowStatus?->label ?? 'Pendiente',
-            'search' => $loan->searchStatus?->label ? str_replace('Busqueda: ', '', $loan->searchStatus->label) : '-',
-            'pageTitle' => $isUnitDirectorReview ? 'Revisar Solicitud de Prestamo' : ($isManage ? 'Gestionar Prestamo Documental' : 'Prestamo #' . $loan->number),
+            'search' => $loan->searchStatus?->label ? preg_replace('/^(?:Búsqueda|Busqueda):\s*/u', '', $loan->searchStatus->label) : '-',
+            'pageTitle' => $isUnitDirectorReview ? 'Revisar solicitud de préstamo' : ($isManage ? 'Gestionar préstamo documental' : 'Préstamo #' . $loan->number),
             'pageSubtitle' => $isUnitDirectorReview
                 ? 'Solicitud #' . $loan->number . ' - ' . ($loan->unit?->name ?? 'Sin unidad')
                 : ($isManage
                 ? 'Solicitud #' . $loan->number . ' - ' . ($loan->unit?->name ?? 'Sin unidad')
                 : 'Detalle de la solicitud'),
             'mode' => $isUnitDirectorReview ? 'unitAuthorization' : ($isManage ? 'manage' : 'detail'),
-            'generalSectionTitle' => ($isManage || $isUnitDirectorReview) ? 'Datos Generales' : 'Información General',
-            'documentsSectionTitle' => $workflowCode === 'loan_status_loaned' ? 'Documentos Prestados' : 'Documentos Solicitados',
+            'generalSectionTitle' => ($isManage || $isUnitDirectorReview) ? 'Datos generales' : 'Información general',
+            'documentsSectionTitle' => $workflowCode === 'loan_status_loaned' ? 'Documentos prestados' : 'Documentos solicitados',
             'authorizedBy' => self::userDisplayName($loan->authorizedBy),
             'authorizedAt' => self::formatDateTime($loan->authorized_at),
             'chips' => self::loanChips($loan),
@@ -524,8 +524,8 @@ class RequestCatalog
                 : null,
             'searchProgress' => $searchCode === 'loan_search_in_progress'
                 ? [
-                    'title' => 'Busqueda En proceso',
-                    'description' => 'Los documentos estan siendo localizados en el archivo',
+                    'title' => 'Búsqueda en proceso',
+                    'description' => 'Los documentos están siendo localizados en el archivo.',
                 ]
                 : null,
             'searchCompleted' => in_array($searchCode, ['loan_search_completed', 'loan_search_not_found'], true)
@@ -749,8 +749,8 @@ class RequestCatalog
                     default => 'solicitudes pendientes de gestión',
                 },
                 'description' => match ($profile) {
-                    'Director/Jefe de Unidad' => 'Las siguientes solicitudes requieren tu revision y autorización:',
-                    'Unidad Solicitante' => 'Las siguientes solicitudes requieren tu atencion o seguimiento:',
+                    'Director/Jefe de Unidad' => 'Las siguientes solicitudes requieren tu revisión y autorización:',
+                    'Unidad Solicitante' => 'Las siguientes solicitudes requieren tu atención o seguimiento:',
                     default => 'Las siguientes solicitudes requieren gestión desde UGDA:',
                 },
                 'items' => $alerts->map(fn ($item) => [
@@ -789,7 +789,7 @@ class RequestCatalog
             'requestedAt' => self::formatDateTime($loan->requested_at),
             'auth' => $loan->authorizationStatus?->label ?? 'Pendiente',
             'status' => $loan->workflowStatus?->label ?? 'Pendiente',
-            'search' => $loan->searchStatus?->label ? str_replace('Busqueda: ', '', $loan->searchStatus->label) : '-',
+            'search' => $loan->searchStatus?->label ? preg_replace('/^(?:Búsqueda|Busqueda):\s*/u', '', $loan->searchStatus->label) : '-',
         ];
     }
 
@@ -996,10 +996,10 @@ class RequestCatalog
         $isNotFound = $loan->searchStatus?->code === 'loan_search_not_found';
 
         return [
-            'title' => $isNotFound ? 'Busqueda No encontrados' : 'Busqueda Finalizada',
+            'title' => $isNotFound ? 'Búsqueda sin resultados' : 'Búsqueda finalizada',
             'description' => $isNotFound
-                ? 'Los documentos solicitados no fueron encontrados'
-                : ($groups ? 'Algunos documentos fueron encontrados' : 'No se encontraron documentos disponibles'),
+                ? 'Los documentos solicitados no fueron encontrados.'
+                : ($groups ? 'Algunos documentos fueron encontrados.' : 'No se encontraron documentos disponibles.'),
             'completedBy' => self::userDisplayName($loan->searchCompletedBy),
             'completedAt' => self::formatDateTime($loan->search_completed_at),
             'comments' => $isNotFound ? $loan->search_comments : ($loan->search_comments ?: 'Sin comentarios adicionales.'),
@@ -1048,7 +1048,7 @@ class RequestCatalog
             ->all();
 
         return [
-            'title' => 'Documentos en Prestamo',
+            'title' => 'Documentos en préstamo',
             'description' => 'Los documentos fueron entregados y deben ser devueltos en la fecha indicada.',
             'loanDate' => self::formatDate($dispatch->loan_date),
             'dueDate' => self::formatDate($dispatch->due_date),
@@ -1200,23 +1200,23 @@ class RequestCatalog
 
         if ($workflowCode === 'loan_status_pending') {
             return [
-                ['key' => 'authorize', 'label' => 'Autorizar prestamo', 'icon' => 'pi pi-check-circle', 'variant' => 'success'],
+                ['key' => 'authorize', 'label' => 'Autorizar préstamo', 'icon' => 'pi pi-check-circle', 'variant' => 'success'],
                 ['key' => 'observe', 'label' => 'Observar solicitud', 'icon' => 'pi pi-eye', 'variant' => 'warning'],
-                ['key' => 'deny', 'label' => 'Denegar prestamo', 'icon' => 'pi pi-times-circle', 'variant' => 'danger'],
+                ['key' => 'deny', 'label' => 'Denegar préstamo', 'icon' => 'pi pi-times-circle', 'variant' => 'danger'],
                 ['key' => 'back', 'label' => 'Volver', 'icon' => null, 'variant' => 'secondary'],
             ];
         }
 
         if ($workflowCode === 'loan_status_authorized' && $searchCode === null) {
             return [
-                ['key' => 'startSearch', 'label' => 'Iniciar busqueda de documentos', 'icon' => 'pi pi-search', 'variant' => 'primary'],
+                ['key' => 'startSearch', 'label' => 'Iniciar búsqueda de documentos', 'icon' => 'pi pi-search', 'variant' => 'primary'],
                 ['key' => 'back', 'label' => 'Volver', 'icon' => null, 'variant' => 'secondary'],
             ];
         }
 
         if ($searchCode === 'loan_search_in_progress') {
             return [
-                ['key' => 'finishSearch', 'label' => 'Finalizar busqueda', 'icon' => 'pi pi-check-circle', 'variant' => 'primary'],
+                ['key' => 'finishSearch', 'label' => 'Finalizar búsqueda', 'icon' => 'pi pi-check-circle', 'variant' => 'primary'],
                 ['key' => 'back', 'label' => 'Volver', 'icon' => null, 'variant' => 'secondary'],
             ];
         }
@@ -1229,7 +1229,7 @@ class RequestCatalog
 
         if ($workflowCode === 'loan_status_authorized' && $searchCode === 'loan_search_completed') {
             return [
-                ['key' => 'registerLoan', 'label' => 'Registrar prestamo', 'icon' => 'pi pi-box', 'variant' => 'success'],
+                ['key' => 'registerLoan', 'label' => 'Registrar préstamo', 'icon' => 'pi pi-box', 'variant' => 'success'],
                 ['key' => 'back', 'label' => 'Volver', 'icon' => null, 'variant' => 'secondary'],
             ];
         }
@@ -1249,8 +1249,8 @@ class RequestCatalog
     private static function loanUnitAuthorizationActions(): array
     {
         return [
-            ['key' => 'authorizeUnit', 'label' => 'Autorizar prestamo', 'icon' => 'pi pi-check-circle', 'variant' => 'success'],
-            ['key' => 'denyUnit', 'label' => 'Denegar prestamo', 'icon' => 'pi pi-times-circle', 'variant' => 'danger'],
+            ['key' => 'authorizeUnit', 'label' => 'Autorizar préstamo', 'icon' => 'pi pi-check-circle', 'variant' => 'success'],
+            ['key' => 'denyUnit', 'label' => 'Denegar préstamo', 'icon' => 'pi pi-times-circle', 'variant' => 'danger'],
             ['key' => 'back', 'label' => 'Volver', 'icon' => null, 'variant' => 'secondary'],
         ];
     }
@@ -1267,10 +1267,10 @@ class RequestCatalog
             ->values();
 
         return [
-            'title' => 'Registrar Prestamo de Documentos',
-            'subtitle' => 'Seleccione los documentos que se estan prestando e ingrese los detalles',
+            'title' => 'Registrar préstamo de documentos',
+            'subtitle' => 'Seleccione los documentos que se están prestando e ingrese los detalles.',
             'helperTitle' => 'Seleccione los documentos a prestar',
-            'helperText' => 'Solo se muestran los documentos que fueron encontrados en la busqueda',
+            'helperText' => 'Solo se muestran los documentos que fueron encontrados en la búsqueda.',
             'selectAllLabel' => 'Seleccionar todos',
             'documentsTitle' => $documents->first()->group_title ?? 'Documentos encontrados',
             'selectionSummary' => 'Documentos seleccionados para prestamo: {count} de {total}',

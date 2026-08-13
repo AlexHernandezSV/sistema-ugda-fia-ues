@@ -103,7 +103,7 @@ class SystemNotificationController extends Controller
         }
 
         return response()->json([
-            'message' => 'Notificacion marcada como leida.',
+            'message' => 'Notificación marcada como leída.',
             'notification' => $this->serialize($notification->fresh()),
         ]);
     }
@@ -116,7 +116,7 @@ class SystemNotificationController extends Controller
             ->update(['read_at' => now()]);
 
         return response()->json([
-            'message' => 'Todas las notificaciones fueron marcadas como leidas.',
+            'message' => 'Todas las notificaciones fueron marcadas como leídas.',
         ]);
     }
 
@@ -152,19 +152,19 @@ class SystemNotificationController extends Controller
             'transfer_scheduled' => 'Transferencia agendada',
             'transfer_completed' => 'Transferencia completada',
             'transfer_denied_by_ugda' => 'Transferencia denegada por UGDA',
-            'loan_pending_search' => 'Prestamo para busqueda',
-            'loan_pending_unit_authorization' => 'Prestamo por autorizar',
-            'loan_observed' => 'Prestamo observado',
-            'loan_denied' => 'Prestamo denegado',
-            'loan_search_started' => 'Busqueda iniciada',
-            'loan_pending_delivery' => 'Prestamo para entrega',
-            'loan_registered' => 'Prestamo registrado',
+            'loan_pending_search' => 'Préstamo para búsqueda',
+            'loan_pending_unit_authorization' => 'Préstamo por autorizar',
+            'loan_observed' => 'Préstamo observado',
+            'loan_denied' => 'Préstamo denegado',
+            'loan_search_started' => 'Búsqueda iniciada',
+            'loan_pending_delivery' => 'Préstamo para entrega',
+            'loan_registered' => 'Préstamo registrado',
             'loan_due_in_3_days' => 'Devolución en 3 días',
             'loan_due_in_2_days' => 'Devolución en 2 días',
             'loan_due_today' => 'Devolución vence hoy',
             'loan_overdue_reminder' => 'Devolución vencida',
             'loan_returned' => 'Devolución registrada',
-            default => 'Notificacion del sistema',
+            default => 'Notificación del sistema',
         };
     }
 }

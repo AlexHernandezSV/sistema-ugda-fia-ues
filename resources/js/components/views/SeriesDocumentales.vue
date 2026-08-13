@@ -153,7 +153,7 @@ const validateSeriesForm = (target = createSeriesForm.value) => {
     if (!String(target.code ?? "").trim()) {
         seriesErrors.value.code = "El código de la serie es obligatorio.";
     } else if (!/^\d+$/.test(target.code)) {
-        seriesErrors.value.code = "El código solo puede contener digitos.";
+        seriesErrors.value.code = "El código solo puede contener dígitos.";
     }
 
     if (!String(target.name ?? "").trim()) {
@@ -170,7 +170,7 @@ const validateSubseriesForm = (target = createSubseriesForm.value) => {
     if (!String(target.code ?? "").trim()) {
         subseriesErrors.value.code = "El código de la subserie es obligatorio.";
     } else if (!/^\d+$/.test(target.code)) {
-        subseriesErrors.value.code = "El código solo puede contener digitos.";
+        subseriesErrors.value.code = "El código solo puede contener dígitos.";
     }
 
     if (!String(target.name ?? "").trim()) {
@@ -595,7 +595,7 @@ const clearFilter = () => {
                     Gestión de Series y Subseries Documentales
                 </h1>
                 <p class="reports-hero__subtitle m-0">
-                    Administrar el catalogo de series y subseries documentales
+                    Administrar el catálogo de series y subseries documentales
                 </p>
             </div>
         </section>

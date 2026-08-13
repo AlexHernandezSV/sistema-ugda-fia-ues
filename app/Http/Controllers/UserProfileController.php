@@ -88,15 +88,15 @@ class UserProfileController extends Controller
                 'confirmed',
             ],
         ], [
-            'current_password.required' => 'Ingrese su contrasena actual.',
-            'password.required' => 'Ingrese la nueva contrasena.',
-            'password.confirmed' => 'La confirmacion no coincide.',
+            'current_password.required' => 'Ingrese su contraseña actual.',
+            'password.required' => 'Ingrese la nueva contraseña.',
+            'password.confirmed' => 'La confirmación no coincide.',
         ]);
 
         $user = $request->user();
 
         if (!Hash::check($request->current_password, $user->password)) {
-            return response()->json(['message' => 'La contrasena actual no es correcta.'], 422);
+            return response()->json(['message' => 'La contraseña actual no es correcta.'], 422);
         }
 
         $user->update([
@@ -110,12 +110,12 @@ class UserProfileController extends Controller
             $user,
             $user,
             'password_changed',
-            'Cambio de contrasena',
-            'Actualizo su contrasena desde Mi Perfil.',
+            'Cambio de contraseña',
+            'Actualizó su contraseña desde Mi perfil.',
             $request
         );
 
-        return response()->json(['message' => 'Contrasena actualizada correctamente.']);
+        return response()->json(['message' => 'Contraseña actualizada correctamente.']);
     }
 
     public function updateTwoFactor(Request $request)
@@ -124,14 +124,14 @@ class UserProfileController extends Controller
             'current_password' => ['required'],
             'method' => ['required', Rule::in(['email', 'disabled'])],
         ], [
-            'current_password.required' => 'Ingrese su contrasena para confirmar el cambio.',
-            'method.in' => 'Seleccione un metodo valido.',
+            'current_password.required' => 'Ingrese su contraseña para confirmar el cambio.',
+            'method.in' => 'Seleccione un método válido.',
         ]);
 
         $user = $request->user();
 
         if (!Hash::check($request->current_password, $user->password)) {
-            return response()->json(['message' => 'La contrasena no es correcta.'], 422);
+            return response()->json(['message' => 'La contraseña no es correcta.'], 422);
         }
 
         $user->forceFill([
@@ -146,13 +146,13 @@ class UserProfileController extends Controller
             $user,
             $user,
             'two_factor_changed',
-            'Metodo de seguridad actualizado',
-            "Selecciono: {$label}.",
+            'Método de seguridad actualizado',
+            "Seleccionó: {$label}.",
             $request
         );
 
         return response()->json([
-            'message' => 'Metodo de seguridad actualizado.',
+            'message' => 'Método de seguridad actualizado.',
             'two_factor_method' => $user->two_factor_method,
         ]);
     }
@@ -162,13 +162,13 @@ class UserProfileController extends Controller
         $request->validate([
             'current_password' => ['required'],
         ], [
-            'current_password.required' => 'Ingrese su contrasena para configurar el autenticador.',
+            'current_password.required' => 'Ingrese su contraseña para configurar el autenticador.',
         ]);
 
         $user = $request->user();
 
         if (!Hash::check($request->current_password, $user->password)) {
-            return response()->json(['message' => 'La contrasena no es correcta.'], 422);
+            return response()->json(['message' => 'La contraseña no es correcta.'], 422);
         }
 
         $secret = $this->authenticatorCodes->generateSecret();
@@ -190,19 +190,19 @@ class UserProfileController extends Controller
             'current_password' => ['required'],
             'code' => ['required', 'string', 'size:6'],
         ], [
-            'current_password.required' => 'Ingrese su contrasena para confirmar el cambio.',
+            'current_password.required' => 'Ingrese su contraseña para confirmar el cambio.',
             'code.required' => 'Ingrese el código del autenticador.',
-            'code.size' => 'El código debe tener 6 digitos.',
+            'code.size' => 'El código debe tener 6 dígitos.',
         ]);
 
         $user = $request->user();
 
         if (!Hash::check($request->current_password, $user->password)) {
-            return response()->json(['message' => 'La contrasena no es correcta.'], 422);
+            return response()->json(['message' => 'La contraseña no es correcta.'], 422);
         }
 
         if (!$this->authenticatorCodes->verify($user->two_factor_secret, $request->code)) {
-            return response()->json(['message' => 'El código del autenticador no es valido.'], 422);
+            return response()->json(['message' => 'El código del autenticador no es válido.'], 422);
         }
 
         $user->forceFill([
