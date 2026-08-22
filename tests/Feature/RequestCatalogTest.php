@@ -28,6 +28,31 @@ class RequestCatalogTest extends TestCase
         $this->seed(DatabaseSeeder::class);
     }
 
+    public function test_request_numbers_use_an_annual_five_digit_sequence(): void
+    {
+        $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
+        $unit = $admin->units()->firstOrFail();
+
+        Transfer::create([
+            'code' => 'TRF-2026-00017',
+            'user_id' => $admin->id,
+            'unit_id' => $unit->id,
+            'request_date' => '2026-01-02',
+            'requested_at' => '2026-01-02 08:00:00',
+            'status' => 'Borrador',
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson('/api/transfers/next-code?request_date=2026-08-22')
+            ->assertOk()
+            ->assertJsonPath('code', 'TRF-2026-00018');
+
+        $this->actingAs($admin)
+            ->getJson('/api/transfers/next-code?request_date=2027-01-01')
+            ->assertOk()
+            ->assertJsonPath('code', 'TRF-2027-00001');
+    }
+
     public function test_authenticated_user_can_get_loan_detail_with_history(): void
     {
         $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
@@ -55,6 +80,60 @@ class RequestCatalogTest extends TestCase
             ->assertSee('PREST-007', false)
             ->assertSee('RECIBIDO POR', false)
             ->assertSee('Firma', false);
+    }
+
+    public function test_ugda_can_modify_an_active_loan_registration(): void
+    {
+        $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
+        $loan = Loan::where('number', 'PREST-007')->firstOrFail();
+        $originalDocument = $loan->documents()->firstOrFail();
+        $replacementDocument = $loan->documents()->create([
+            'document_kind' => 'system',
+            'group_title' => 'Documentos del Sistema (1)',
+            'title' => 'Documento corregido para prueba',
+            'series_label' => 'Documentación Administrativa',
+            'box_code' => 'CAJA-099',
+            'year_label' => '2024',
+            'document_type_label' => 'Copia',
+            'document_type_tone' => 'info',
+            'found_in_search' => true,
+            'selected_for_loan' => false,
+            'returned' => false,
+            'sort_order' => 2,
+        ]);
+        $dispatch = $loan->latestDispatch()->with('items')->firstOrFail();
+
+        $this->actingAs($admin)
+            ->putJson('/api/loans/PREST-007/register', [
+                'selected_ids' => [$replacementDocument->id],
+                'loan_date' => '20/08/2026',
+                'due_date' => '27/08/2026',
+                'received_by' => 'Persona corregida',
+                'observations' => 'Registro corregido antes de reimprimir.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('message', 'El registro del préstamo #PREST-007 fue modificado correctamente.');
+
+        $dispatch->refresh();
+
+        $this->assertSame('2026-08-20', $dispatch->loan_date->toDateString());
+        $this->assertSame('2026-08-27', $dispatch->due_date->toDateString());
+        $this->assertSame('Persona corregida', $dispatch->received_by_name);
+        $this->assertSame('Registro corregido antes de reimprimir.', $dispatch->observations);
+        $this->assertDatabaseHas('loan_dispatch_items', [
+            'loan_dispatch_id' => $dispatch->id,
+            'loan_document_id' => $replacementDocument->id,
+        ]);
+        $this->assertDatabaseMissing('loan_dispatch_items', [
+            'loan_dispatch_id' => $dispatch->id,
+            'loan_document_id' => $originalDocument->id,
+        ]);
+        $this->assertFalse($originalDocument->refresh()->selected_for_loan);
+        $this->assertTrue($replacementDocument->refresh()->selected_for_loan);
+        $this->assertDatabaseHas('loan_events', [
+            'loan_id' => $loan->id,
+            'title' => 'Registro de préstamo modificado',
+        ]);
     }
 
     public function test_requester_cannot_download_the_ugda_loan_summary_sheet(): void
@@ -140,6 +219,11 @@ class RequestCatalogTest extends TestCase
         ]);
 
         $response->assertCreated();
+
+        $this->assertMatchesRegularExpression(
+            '/^PRT-' . now()->format('Y') . '-\d{5}$/',
+            (string) $response->json('number')
+        );
 
         $loanDocument = LoanDocument::query()
             ->where('title', $document['title'])

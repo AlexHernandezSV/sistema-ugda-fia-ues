@@ -30,6 +30,7 @@ const searchStartSubmitting = ref(false);
 const finishSearchSubmitting = ref(false);
 const documentModificationsSubmitting = ref(false);
 const decisionSubmitting = ref(false);
+const loanSubmitting = ref(false);
 const currentDecisionAction = ref(null);
 const documentPreviewVisible = ref(false);
 const documentPreviewTitle = ref('Documento PDF');
@@ -90,6 +91,38 @@ const resetLoanForm = () => {
     loanForm.dueDate = null;
     loanForm.receivedBy = '';
     loanForm.observations = '';
+};
+
+const parseDateForForm = (value) => {
+    if (!value) {
+        return null;
+    }
+
+    if (value instanceof Date) {
+        return value;
+    }
+
+    const [day, month, year] = String(value).split('/').map(Number);
+    const parsedDate = new Date(year, month - 1, day);
+
+    parsedDate.setHours(0, 0, 0, 0);
+
+    return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+};
+
+const openEditLoanRegistration = () => {
+    const registration = loan.value?.loanRegistration;
+
+    if (!loan.value?.loanSummarySheetCard?.canEdit || registration?.mode !== 'edit') {
+        return;
+    }
+
+    loanForm.selectedIds = [...(registration.initial?.selectedIds ?? [])];
+    loanForm.loanDate = parseDateForForm(registration.initial?.loanDate);
+    loanForm.dueDate = parseDateForForm(registration.initial?.dueDate);
+    loanForm.receivedBy = registration.initial?.receivedBy ?? '';
+    loanForm.observations = registration.initial?.observations ?? '';
+    loanModalVisible.value = true;
 };
 
 const resetReturnForm = () => {
@@ -538,6 +571,11 @@ const toggleReturnDocuments = () => {
 };
 
 const submitLoanRegistration = async () => {
+    if (!loan.value || loanForm.selectedIds.length === 0) {
+        showError('Seleccione al menos un documento para el préstamo.');
+        return;
+    }
+
     if (!validateObservationLength(loanForm.observations)) {
         return;
     }
@@ -549,18 +587,26 @@ const submitLoanRegistration = async () => {
         return;
     }
 
-    try {
-        const { data } = await axios.post(`/api/loans/${loan.value.number}/register`, {
+    loanSubmitting.value = true;
+
+    const isEditing = loan.value.loanRegistration?.mode === 'edit';
+    const payload = {
             selected_ids: loanForm.selectedIds,
             loan_date: formatDateForRequest(loanForm.loanDate),
             due_date: formatDateForRequest(loanForm.dueDate),
-            received_by: loanForm.receivedBy,
-            observations: loanForm.observations,
-        });
+            received_by: loanForm.receivedBy.trim(),
+            observations: loanForm.observations.trim(),
+    };
+
+    try {
+        const request = isEditing
+            ? axios.put(`/api/loans/${loan.value.number}/register`, payload)
+            : axios.post(`/api/loans/${loan.value.number}/register`, payload);
+        const { data } = await request;
 
         toast.add({
             severity: 'success',
-            summary: 'Préstamo registrado',
+            summary: isEditing ? 'Registro modificado' : 'Préstamo registrado',
             detail: data.message,
             life: 3000,
         });
@@ -568,7 +614,11 @@ const submitLoanRegistration = async () => {
         await fetchDetail();
         openLoanSummarySheetPreview(data.summarySheetUrl);
     } catch (error) {
-        showError(error.response?.data?.message || 'No se pudo registrar el prestamo.');
+        showError(error.response?.data?.message || (isEditing
+            ? 'No se pudo modificar el registro del préstamo.'
+            : 'No se pudo registrar el prestamo.'));
+    } finally {
+        loanSubmitting.value = false;
     }
 };
 
@@ -671,6 +721,7 @@ const fetchDetail = async () => {
 };
 
 const isManageMode = computed(() => loan.value?.mode === 'manage');
+const isEditingLoanRegistration = computed(() => loan.value?.loanRegistration?.mode === 'edit');
 const showsActions = computed(() => ['manage', 'unitAuthorization'].includes(loan.value?.mode));
 const pageTitle = computed(() => loan.value?.pageTitle ?? (loan.value ? `Préstamo #${loan.value.number}` : 'Préstamo'));
 const pageSubtitle = computed(() => loan.value?.pageSubtitle ?? 'Detalle de la solicitud');
@@ -954,12 +1005,21 @@ watch(
                         <p>{{ loan.loanSummarySheetCard.description }}</p>
                     </div>
                 </div>
-                <Button
-                    :label="loan.loanSummarySheetCard.buttonLabel"
-                    icon="pi pi-eye"
-                    class="detalle-loan-sheet-card__button"
-                    @click="openLoanSummarySheetPreview()"
-                />
+                <div class="detalle-loan-sheet-card__actions">
+                    <Button
+                        v-if="loan.loanSummarySheetCard.canEdit"
+                        :label="loan.loanSummarySheetCard.editButtonLabel"
+                        icon="pi pi-file-edit"
+                        class="detalle-loan-sheet-card__edit-button"
+                        @click="openEditLoanRegistration"
+                    />
+                    <Button
+                        :label="loan.loanSummarySheetCard.buttonLabel"
+                        icon="pi pi-eye"
+                        class="detalle-loan-sheet-card__button"
+                        @click="openLoanSummarySheetPreview()"
+                    />
+                </div>
             </div>
         </div>
 
@@ -1657,10 +1717,10 @@ watch(
             </div>
 
             <div class="detalle-form-modal__footer">
-                <button type="button" class="detalle-action detalle-action--secondary" @click="loanModalVisible = false">Cancelar</button>
-                <button type="button" class="detalle-action detalle-action--success" @click="submitLoanRegistration">
+                <button type="button" class="detalle-action detalle-action--secondary" :disabled="loanSubmitting" @click="loanModalVisible = false">Cancelar</button>
+                <button type="button" class="detalle-action detalle-action--success" :disabled="loanSubmitting" @click="submitLoanRegistration">
                     <i class="pi pi-box"></i>
-                    <span>Registrar préstamo</span>
+                    <span>{{ loanSubmitting ? 'Guardando...' : (loan.loanRegistration?.submitLabel ?? (isEditingLoanRegistration ? 'Guardar cambios' : 'Registrar préstamo')) }}</span>
                 </button>
             </div>
         </div>
@@ -2393,6 +2453,13 @@ watch(
     min-width: 0;
 }
 
+.detalle-loan-sheet-card__actions {
+    align-items: center;
+    display: flex;
+    flex-shrink: 0;
+    gap: 0.75rem;
+}
+
 .detalle-loan-sheet-card__icon {
     align-items: center;
     background: #d89614;
@@ -2434,6 +2501,22 @@ watch(
 .detalle-loan-sheet-card__button:hover:not(:disabled) {
     background: #8f5c06 !important;
     border-color: #8f5c06 !important;
+}
+
+.detalle-loan-sheet-card__edit-button {
+    background: #dc2626 !important;
+    border: 1px solid #dc2626 !important;
+    border-radius: 8px;
+    color: #ffffff !important;
+    flex-shrink: 0;
+    font-weight: 800;
+    min-height: 2.8rem;
+    min-width: 11.5rem;
+}
+
+.detalle-loan-sheet-card__edit-button:hover:not(:disabled) {
+    background: #b91c1c !important;
+    border-color: #b91c1c !important;
 }
 
 .detalle-loan-summary-banner .detalle-banner__title {
@@ -3476,7 +3559,17 @@ watch(
         padding-right: 1rem;
     }
 
+    .detalle-loan-sheet-card__actions {
+        flex-direction: column;
+        width: 100%;
+    }
+
     .detalle-loan-sheet-card__button {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .detalle-loan-sheet-card__edit-button {
         min-width: 0;
         width: 100%;
     }

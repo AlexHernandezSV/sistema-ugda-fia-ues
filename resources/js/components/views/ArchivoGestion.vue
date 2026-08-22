@@ -16,10 +16,33 @@ const query = ref('');
 const loading = ref(false);
 const selectedBox = ref(null);
 const documentsDialogVisible = ref(false);
+const editDocumentDialogVisible = ref(false);
+const editingDocument = ref(null);
+const editingDocumentSaving = ref(false);
+const editDocumentFileInputRef = ref(null);
+const editDocumentFile = ref(null);
+const editDocumentFileName = ref('');
+const archiveSeriesOptions = ref([]);
+const supportOptions = [
+    { label: 'Físico', value: 'Fisico' },
+    { label: 'Digital', value: 'Digital' },
+    { label: 'Mixto', value: 'Mixto' },
+];
+const editForm = ref({
+    series_id: null,
+    code: '',
+    name: '',
+    year: '',
+    support: null,
+    pages: '',
+});
+const currentDate = new Date();
+const minimumYearDate = new Date(1900, 0, 1);
 const documentPreviewVisible = ref(false);
 const documentPreviewTitle = ref('Documento PDF');
 const documentPreviewSource = ref(null);
 const reopenDocumentsDialogAfterPreview = ref(false);
+const reopenEditDocumentDialogAfterPreview = ref(false);
 const deleteDialogVisible = ref(false);
 const deletingBox = ref(false);
 const boxPendingDelete = ref(null);
@@ -37,6 +60,75 @@ const boxesCount = computed(() => pagination.value.total);
 const tableFirst = computed(() => (
     (pagination.value.current_page - 1) * pagination.value.per_page
 ));
+const requiresEditDigitalFile = computed(() => ['Digital', 'Mixto'].includes(editForm.value.support));
+const selectedEditYear = computed({
+    get: () => {
+        const yearMatch = String(editForm.value.year ?? '').match(/\d{4}/);
+
+        return yearMatch ? new Date(Number(yearMatch[0]), 0, 1) : null;
+    },
+    set: (value) => {
+        editForm.value.year = value instanceof Date && !Number.isNaN(value.getTime())
+            ? String(value.getFullYear())
+            : '';
+    },
+});
+
+const normalizeDocumentPages = (value) => {
+    const match = String(value ?? '').match(/\d+/);
+
+    return match ? match[0] : '';
+};
+
+const normalizePositiveInteger = (value) => normalizeDocumentPages(value).replace(/^0+/, '') || '';
+
+const classificationMatchScore = (option, value) => {
+    const normalizedValue = normalizeArchiveLabel(value);
+    const candidates = [option?.label, option?.name]
+        .map((candidate) => normalizeArchiveLabel(candidate))
+        .filter(Boolean);
+
+    return Math.min(...candidates.map((candidate) => {
+        if (candidate === normalizedValue) {
+            return 0;
+        }
+
+        if (candidate.endsWith(normalizedValue)) {
+            return 1;
+        }
+
+        if (normalizedValue.endsWith(candidate)) {
+            return 2;
+        }
+
+        return 99;
+    }));
+};
+
+const classificationMatchesLabel = (option, value) => classificationMatchScore(option, value) < 99;
+
+const findClassificationOption = (value) => archiveSeriesOptions.value
+    .filter((option) => classificationMatchesLabel(option, value))
+    .sort((first, second) => classificationMatchScore(first, value) - classificationMatchScore(second, value))[0] ?? null;
+
+const editSeriesOptions = computed(() => {
+    const boxSeries = String(selectedBox.value?.series ?? '')
+        .split(';')
+        .map((value) => normalizeArchiveLabel(value))
+        .filter(Boolean);
+    const options = archiveSeriesOptions.value.filter((option) => (
+        boxSeries.some((boxLabel) => classificationMatchesLabel(option, boxLabel))
+    ));
+
+    if (editingDocument.value?.series && !options.some((option) => classificationMatchesLabel(option, editingDocument.value.series))) {
+        return [
+            { label: editingDocument.value.series, value: editForm.value.series_id },
+            ...options,
+        ];
+    }
+
+    return options;
+});
 
 const cards = [
     {
@@ -101,6 +193,171 @@ const clearBoxSearch = () => {
     fetchBoxes(1);
 };
 
+const normalizeArchiveLabel = (value) => String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+
+const showError = (detail) => {
+    toast.add({
+        severity: 'error',
+        summary: 'Error',
+        detail,
+        life: 4200,
+    });
+};
+
+const loadArchiveSeries = async () => {
+    if (archiveSeriesOptions.value.length > 0) {
+        return;
+    }
+
+    const { data } = await axios.get('/api/archive/catalog');
+    archiveSeriesOptions.value = Array.isArray(data.series) ? data.series : [];
+};
+
+const resetEditDocument = () => {
+    editingDocument.value = null;
+    editDocumentFile.value = null;
+    editDocumentFileName.value = '';
+    editForm.value = {
+        series_id: null,
+        code: '',
+        name: '',
+        year: '',
+        support: null,
+        pages: '',
+    };
+
+    if (editDocumentFileInputRef.value) {
+        editDocumentFileInputRef.value.value = '';
+    }
+};
+
+const openEditDocument = async (document) => {
+    try {
+        await loadArchiveSeries();
+        const matchingSeries = findClassificationOption(document.series);
+        const currentSeriesValue = `existing:${document.id}`;
+
+        editingDocument.value = document;
+        editForm.value = {
+            series_id: matchingSeries?.value ?? currentSeriesValue,
+            code: document.code ?? '',
+            name: document.name ?? '',
+            year: String(document.year ?? ''),
+            support: document.support ?? 'Fisico',
+            pages: normalizeDocumentPages(document.pages),
+        };
+        editDocumentFile.value = null;
+        editDocumentFileName.value = '';
+        editDocumentDialogVisible.value = true;
+    } catch (error) {
+        showError(error.response?.data?.message ?? 'No se pudo cargar el formulario del documento.');
+    }
+};
+
+const onEditPagesInput = (event) => {
+    editForm.value.pages = normalizePositiveInteger(event.target.value);
+};
+
+const readFileAsBase64 = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+        const result = reader.result;
+        resolve(typeof result === 'string' && result.includes(',') ? result.split(',')[1] : '');
+    };
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo PDF.'));
+    reader.readAsDataURL(file);
+});
+
+const onEditDocumentFileSelect = (event) => {
+    const file = event.target.files?.[0] ?? null;
+
+    if (!file) {
+        return;
+    }
+
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+        showError('Seleccione un archivo PDF para el documento digital.');
+        event.target.value = '';
+        return;
+    }
+
+    editDocumentFile.value = file;
+    editDocumentFileName.value = file.name;
+};
+
+const clearEditDocumentFile = () => {
+    editDocumentFile.value = null;
+    editDocumentFileName.value = '';
+
+    if (editDocumentFileInputRef.value) {
+        editDocumentFileInputRef.value.value = '';
+    }
+};
+
+const onEditSupportChange = () => {
+    if (editForm.value.support === 'Fisico') {
+        clearEditDocumentFile();
+    }
+};
+
+const openEditDocumentFilePicker = () => {
+    editDocumentFileInputRef.value?.click();
+};
+
+const saveEditedDocument = async () => {
+    const year = String(editForm.value.year ?? '').trim();
+    const pages = String(editForm.value.pages ?? '').trim();
+
+    if (!editForm.value.series_id || !editForm.value.code || !editForm.value.name
+        || !/^\d{4}$/.test(year) || !editForm.value.support || !/^\d+$/.test(pages) || Number(pages) < 1) {
+        showError('Complete todos los campos obligatorios del documento.');
+        return;
+    }
+
+    if (requiresEditDigitalFile.value && !editDocumentFile.value
+        && !editingDocument.value?.digital_available) {
+        showError('Adjunte un archivo PDF para documentos digitales o mixtos.');
+        return;
+    }
+
+    editingDocumentSaving.value = true;
+
+    try {
+        const payload = {
+            series_id: editForm.value.series_id,
+            code: editForm.value.code.trim(),
+            name: editForm.value.name.trim(),
+            year: Number(year),
+            support: editForm.value.support,
+            pages: Number(pages),
+            digital_file_name: editDocumentFile.value ? editDocumentFileName.value : null,
+            digital_file_base64: editDocumentFile.value ? await readFileAsBase64(editDocumentFile.value) : null,
+        };
+
+        await axios.put(`/api/archive/documents/${editingDocument.value.id}`, payload);
+
+        toast.add({
+            severity: 'success',
+            summary: 'Documento actualizado',
+            detail: 'Los datos del documento fueron actualizados correctamente.',
+            life: 3200,
+        });
+        editDocumentDialogVisible.value = false;
+        await fetchBoxes(pagination.value.current_page, pagination.value.per_page);
+        selectedBox.value = boxes.value.find((box) => box.id === selectedBox.value?.id) ?? selectedBox.value;
+    } catch (error) {
+        const validationErrors = Object.values(error.response?.data?.errors ?? {}).flat();
+        showError(validationErrors[0] ?? error.response?.data?.message ?? 'No se pudo actualizar el documento.');
+    } finally {
+        editingDocumentSaving.value = false;
+    }
+};
+
 const openDocuments = (box) => {
     selectedBox.value = box;
     documentsDialogVisible.value = true;
@@ -119,13 +376,37 @@ const openDocumentPreview = (document) => {
 
     documentPreviewTitle.value = document.digital_file || document.name || 'Documento PDF';
     documentPreviewSource.value = { url: document.digital_url };
+    reopenEditDocumentDialogAfterPreview.value = false;
     reopenDocumentsDialogAfterPreview.value = documentsDialogVisible.value;
+    documentsDialogVisible.value = false;
+    documentPreviewVisible.value = true;
+};
+
+const openEditDocumentPreview = (document) => {
+    if (!document?.digital_url) {
+        showError('Este documento no tiene un archivo PDF asociado.');
+        return;
+    }
+
+    documentPreviewTitle.value = document.digital_file || document.name || 'Documento PDF';
+    documentPreviewSource.value = { url: document.digital_url };
+    reopenDocumentsDialogAfterPreview.value = false;
+    reopenEditDocumentDialogAfterPreview.value = true;
+    editDocumentDialogVisible.value = false;
     documentsDialogVisible.value = false;
     documentPreviewVisible.value = true;
 };
 
 const clearDocumentPreview = () => {
     documentPreviewSource.value = null;
+
+    if (reopenEditDocumentDialogAfterPreview.value) {
+        reopenEditDocumentDialogAfterPreview.value = false;
+        nextTick(() => {
+            editDocumentDialogVisible.value = true;
+        });
+        return;
+    }
 
     if (reopenDocumentsDialogAfterPreview.value) {
         reopenDocumentsDialogAfterPreview.value = false;
@@ -501,28 +782,161 @@ onMounted(fetchBoxes);
                 <Column field="created_at_label" header="Registrado" />
                 <Column header="Acciones">
                     <template #body="{ data }">
-                        <button
-                            v-if="data.digital_available && data.digital_url"
-                            type="button"
-                            class="archive-table-actions__view"
-                            title="Ver PDF"
-                            @click="openDocumentPreview(data)"
-                        >
-                            <i class="pi pi-eye"></i>
-                        </button>
-                        <span
-                            v-else-if="['Digital', 'Mixto'].includes(data.support)"
-                            class="archive-document-unavailable"
-                        >
-                            Sin archivo
-                        </span>
-                        <span v-else class="archive-document-unavailable">N/D</span>
+                        <div class="archive-document-actions">
+                            <button
+                                type="button"
+                                class="archive-table-actions__edit"
+                                title="Modificar documento"
+                                @click="openEditDocument(data)"
+                            >
+                                <i class="pi pi-pencil"></i>
+                            </button>
+                            <button
+                                v-if="data.digital_available && data.digital_url"
+                                type="button"
+                                class="archive-table-actions__view"
+                                title="Ver PDF"
+                                @click="openDocumentPreview(data)"
+                            >
+                                <i class="pi pi-eye"></i>
+                            </button>
+                        </div>
                     </template>
                 </Column>
                 <template #empty>
                     <div class="archive-boxes-empty">Esta caja no tiene documentos registrados.</div>
                 </template>
             </DataTable>
+        </Dialog>
+
+        <Dialog
+            v-model:visible="editDocumentDialogVisible"
+            modal
+            :draggable="false"
+            :closable="!editingDocumentSaving"
+            :dismissableMask="!editingDocumentSaving"
+            :header="editingDocument ? `Modificar documento ${editingDocument.code || ''}` : 'Modificar documento'"
+            :style="{ width: 'min(760px, 94vw)' }"
+            @hide="resetEditDocument"
+        >
+            <p class="archive-documents-subtitle">
+                Actualice los datos del documento. Si cambia el soporte a Digital o Mixto, puede conservar el PDF actual o cargar uno nuevo.
+            </p>
+
+            <section class="archive-document-edit-form">
+                <label>
+                    <span>Serie / Subserie <b>*</b></span>
+                    <Dropdown
+                        v-model="editForm.series_id"
+                        :options="editSeriesOptions"
+                        optionLabel="label"
+                        optionValue="value"
+                        placeholder="Seleccionar serie documental"
+                        class="w-full"
+                    />
+                </label>
+
+                <div class="archive-document-edit-form__grid">
+                    <label>
+                        <span>Código del Documento <b>*</b></span>
+                        <InputText v-model="editForm.code" class="w-full" />
+                    </label>
+                    <label>
+                        <span>Año <b>*</b></span>
+                        <DatePicker
+                            v-model="selectedEditYear"
+                            view="year"
+                            dateFormat="yy"
+                            showIcon
+                            iconDisplay="input"
+                            readonlyInput
+                            :minDate="minimumYearDate"
+                            :maxDate="currentDate"
+                            placeholder="Seleccionar año"
+                            class="w-full"
+                        />
+                    </label>
+                </div>
+
+                <label>
+                    <span>Nombre del Documento <b>*</b></span>
+                    <InputText v-model="editForm.name" class="w-full" />
+                </label>
+
+                <div class="archive-document-edit-form__grid">
+                    <label>
+                        <span>Tipo de Soporte <b>*</b></span>
+                        <Dropdown
+                            v-model="editForm.support"
+                            :options="supportOptions"
+                            optionLabel="label"
+                            optionValue="value"
+                            placeholder="Seleccionar soporte"
+                            class="w-full"
+                            @change="onEditSupportChange"
+                        />
+                    </label>
+                    <label>
+                        <span>N.° de páginas <b>*</b></span>
+                        <InputText
+                            v-model="editForm.pages"
+                            inputmode="numeric"
+                            class="w-full"
+                            @input="onEditPagesInput"
+                        />
+                    </label>
+                </div>
+
+                <div v-if="requiresEditDigitalFile" class="archive-document-edit-form__file">
+                    <div v-if="editingDocument?.digital_available && editingDocument?.digital_file" class="archive-document-edit-form__current-file">
+                        <i class="pi pi-file-pdf"></i>
+                        <span>Archivo actual: {{ editingDocument.digital_file }}</span>
+                        <button type="button" @click="openEditDocumentPreview(editingDocument)">Ver PDF</button>
+                    </div>
+                    <input
+                        ref="editDocumentFileInputRef"
+                        type="file"
+                        accept=".pdf"
+                        class="archive-document-edit-form__input"
+                        @change="onEditDocumentFileSelect"
+                    />
+                    <div class="archive-document-edit-form__file-actions">
+                        <Button
+                            type="button"
+                            icon="pi pi-upload"
+                            :label="editDocumentFileName || 'Cargar nuevo PDF'"
+                            outlined
+                            @click="openEditDocumentFilePicker"
+                        />
+                        <Button
+                            v-if="editDocumentFile"
+                            type="button"
+                            icon="pi pi-times"
+                            label="Quitar selección"
+                            severity="secondary"
+                            text
+                            @click="clearEditDocumentFile"
+                        />
+                    </div>
+                    <small>Los archivos digitales deben estar en formato PDF.</small>
+                </div>
+            </section>
+
+            <template #footer>
+                <Button
+                    label="Cancelar"
+                    severity="secondary"
+                    outlined
+                    :disabled="editingDocumentSaving"
+                    @click="editDocumentDialogVisible = false"
+                />
+                <Button
+                    label="Guardar cambios"
+                    icon="pi pi-check"
+                    :loading="editingDocumentSaving"
+                    @click="saveEditedDocument"
+                />
+            </template>
         </Dialog>
 
         <Dialog
@@ -791,6 +1205,105 @@ onMounted(fetchBoxes);
     background: #dbeafe;
 }
 
+.archive-document-actions {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+
+.archive-document-actions button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: 0.35rem;
+    cursor: pointer;
+    display: inline-flex;
+    height: 2rem;
+    justify-content: center;
+    width: 2rem;
+}
+
+.archive-table-actions__edit {
+    color: #0f4c8f !important;
+}
+
+.archive-table-actions__edit:hover {
+    background: #eff6ff;
+}
+
+.archive-document-edit-form {
+    display: grid;
+    gap: 1rem;
+}
+
+.archive-document-edit-form label {
+    display: grid;
+    gap: 0.4rem;
+}
+
+.archive-document-edit-form label > span {
+    color: #334155;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.archive-document-edit-form label b {
+    color: #dc2626;
+}
+
+.archive-document-edit-form__grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.archive-document-edit-form__file {
+    background: #f8fafc;
+    border: 1px solid #dbe3ed;
+    border-radius: 0.5rem;
+    display: grid;
+    gap: 0.7rem;
+    padding: 0.9rem;
+}
+
+.archive-document-edit-form__current-file {
+    align-items: center;
+    color: #475569;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.archive-document-edit-form__current-file i {
+    color: #dc2626;
+}
+
+.archive-document-edit-form__current-file button {
+    background: transparent;
+    border: 0;
+    color: #0f4c8f;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 600;
+    padding: 0;
+}
+
+.archive-document-edit-form__input {
+    display: none;
+}
+
+.archive-document-edit-form__file-actions {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.archive-document-edit-form__file small {
+    color: #64748b;
+}
+
 .archive-document-unavailable {
     color: #94a3b8;
     font-size: 0.8rem;
@@ -875,6 +1388,10 @@ onMounted(fetchBoxes);
 
     .archive-box-search__actions :deep(.p-button) {
         flex: 1;
+    }
+
+    .archive-document-edit-form__grid {
+        grid-template-columns: 1fr;
     }
 }
 </style>

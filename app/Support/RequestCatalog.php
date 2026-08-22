@@ -545,6 +545,8 @@ class RequestCatalog
                     'title' => 'Hoja de préstamo',
                     'description' => 'Imprima esta hoja desde UGDA para obtener la firma de la persona que recibe los documentos.',
                     'buttonLabel' => 'Visualizar PDF',
+                    'canEdit' => $isManage && $workflowCode === 'loan_status_loaned',
+                    'editButtonLabel' => 'Modificar registro',
                     'url' => SignedPdfUrl::loanSummarySheet($loan->number),
                 ]
                 : null,
@@ -1257,23 +1259,48 @@ class RequestCatalog
 
     private static function buildLoanRegistrationConfig(Loan $loan): ?array
     {
-        if ($loan->workflowStatus?->code !== 'loan_status_authorized' || $loan->searchStatus?->code !== 'loan_search_completed') {
+        $isNewRegistration = $loan->workflowStatus?->code === 'loan_status_authorized'
+            && $loan->searchStatus?->code === 'loan_search_completed';
+        $isRegisteredLoan = $loan->workflowStatus?->code === 'loan_status_loaned'
+            && $loan->latestDispatch !== null;
+
+        if (!$isNewRegistration && !$isRegisteredLoan) {
             return null;
         }
 
         $documents = $loan->documents
             ->where('found_in_search', true)
-            ->where('selected_for_loan', false)
+            ->when($isNewRegistration, fn ($collection) => $collection->where('selected_for_loan', false))
+            ->where('returned', false)
             ->values();
 
+        $dispatch = $isRegisteredLoan ? $loan->latestDispatch : null;
+
         return [
-            'title' => 'Registrar préstamo de documentos',
-            'subtitle' => 'Seleccione los documentos que se están prestando e ingrese los detalles.',
+            'mode' => $isRegisteredLoan ? 'edit' : 'create',
+            'title' => $isRegisteredLoan ? 'Modificar registro del préstamo' : 'Registrar préstamo de documentos',
+            'subtitle' => $isRegisteredLoan
+                ? 'Corrija los datos necesarios y genere nuevamente la hoja de préstamo.'
+                : 'Seleccione los documentos que se están prestando e ingrese los detalles.',
             'helperTitle' => 'Seleccione los documentos a prestar',
-            'helperText' => 'Solo se muestran los documentos que fueron encontrados en la búsqueda.',
+            'helperText' => $isRegisteredLoan
+                ? 'Puede corregir la selección de documentos y los datos del registro activo.'
+                : 'Solo se muestran los documentos que fueron encontrados en la búsqueda.',
             'selectAllLabel' => 'Seleccionar todos',
             'documentsTitle' => $documents->first()->group_title ?? 'Documentos encontrados',
-            'selectionSummary' => 'Documentos seleccionados para prestamo: {count} de {total}',
+            'selectionSummary' => $isRegisteredLoan
+                ? 'Documentos incluidos en el registro: {count} de {total}'
+                : 'Documentos seleccionados para prestamo: {count} de {total}',
+            'submitLabel' => $isRegisteredLoan ? 'Guardar cambios' : 'Registrar préstamo',
+            'initial' => $isRegisteredLoan
+                ? [
+                    'selectedIds' => $dispatch->items->pluck('loan_document_id')->map(fn ($id) => (int) $id)->values()->all(),
+                    'loanDate' => self::formatDate($dispatch->loan_date),
+                    'dueDate' => self::formatDate($dispatch->due_date),
+                    'receivedBy' => $dispatch->received_by_name,
+                    'observations' => $dispatch->observations,
+                ]
+                : null,
             'documents' => $documents->map(fn ($document) => [
                 'id' => $document->id,
                 'title' => $document->title,

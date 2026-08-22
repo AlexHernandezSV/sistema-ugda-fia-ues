@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('transfers', function (Blueprint $table) {
             $table->id();
-            $table->string('code')->unique(); // Ej: TR-2026-001
+            $table->string('code')->unique(); // Ej: TRF-2026-00001
             $table->foreignId('user_id')->constrained(); // Solicitante
             $table->foreignId('unit_id')->constrained(); // Unidad productora
             $table->date('request_date');

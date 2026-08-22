@@ -161,6 +161,7 @@ Route::middleware('auth')->group(function () {
     Route::delete('/api/archive/boxes/{id}', [ArchiveController::class, 'destroyBox']);
     Route::get('/api/archive/documents', [ArchiveController::class, 'documents']);
     Route::post('/api/archive/documents', [ArchiveController::class, 'storeDocument']);
+    Route::put('/api/archive/documents/{id}', [ArchiveController::class, 'updateDocument']);
     Route::get('/api/archive/reserved-documents', [ArchiveController::class, 'reservedDocuments']);
     Route::post('/api/archive/reserved-documents', [ArchiveController::class, 'storeReservedDocument']);
     Route::delete('/api/archive/reserved-documents/{id}', [ArchiveController::class, 'destroyReservedDocument']);
@@ -211,6 +212,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/api/loans/{number}/search/start', [LoanController::class, 'startSearch']);
     Route::post('/api/loans/{number}/search/finish', [LoanController::class, 'finishSearch']);
     Route::post('/api/loans/{number}/register', [LoanController::class, 'registerLoan']);
+    Route::put('/api/loans/{number}/register', [LoanController::class, 'updateRegisteredLoan']);
     Route::get('/api/loans/{number}/summary-sheet', [RequestCatalogController::class, 'downloadLoanSummarySheet'])
         ->middleware('signed:relative')
         ->name('loans.summary-sheet');

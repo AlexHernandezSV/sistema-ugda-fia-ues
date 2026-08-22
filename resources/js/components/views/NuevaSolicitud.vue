@@ -21,7 +21,7 @@ const headerForm = ref({
 });
 
 const batchForm = ref({
-    series: [],
+    series: null,
     year_start: null,
     year_end: null,
     quantity: '',
@@ -79,9 +79,7 @@ const totalSeries = computed(() => new Set(boxesList.value.flatMap((box) => getB
 
 const requiresDigitalFileInput = computed(() => docForm.value.support === 'Digital' || docForm.value.support === 'Mixto');
 
-const formatBoxNumber = (boxNumber) => String(Number(boxNumber) || boxNumber || 0).padStart(3, '0');
-
-const buildBoxCode = (box = {}) => box.box_code || box.boxCode || `C-${headerForm.value.code || 'PENDIENTE'}-${formatBoxNumber(box.box_number)}`;
+const buildBoxCode = (box = {}) => box.box_code || box.boxCode || 'Se asignará al registrar';
 
 const parseApiDate = (value) => {
     if (!value) {
@@ -354,14 +352,12 @@ watch(
     () => headerForm.value.unit_id,
     (unitId) => {
         seriesOptions.value = buildSeriesOptionsForUnit(seriesCatalog.value, unitId);
-        batchForm.value.series = [];
+        batchForm.value.series = null;
     }
 );
 
 const addBatch = () => {
-    const selectedSeries = Array.isArray(batchForm.value.series)
-        ? batchForm.value.series.filter(Boolean)
-        : [];
+    const selectedSeries = batchForm.value.series ? [batchForm.value.series] : [];
     const startYear = getYearString(batchForm.value.year_start);
     const endYear = getYearString(batchForm.value.year_end);
     const quantity = Number(batchForm.value.quantity);
@@ -397,8 +393,8 @@ const addBatch = () => {
         ? Math.max(...boxesList.value.map((box) => Number(box.box_number))) + 1
         : 1;
 
-    const selectedSeriesLabel = selectedSeries.map((series) => series.label).join('; ');
-    const selectedSeriesLabels = selectedSeries.map((series) => series.label);
+    const selectedSeriesLabel = selectedSeries[0].label;
+    const selectedSeriesLabels = [selectedSeriesLabel];
     const newBoxes = Array.from({ length: quantity }, (_, index) => ({
         id_temp: `${Date.now()}-${index}`,
         series: selectedSeriesLabel,
@@ -413,7 +409,7 @@ const addBatch = () => {
     boxesList.value.push(...newBoxes);
 
     batchForm.value = {
-        series: [],
+        series: null,
         year_start: null,
         year_end: null,
         quantity: '',
@@ -1134,18 +1130,15 @@ const goBack = () => {
 
                 <div class="transfer-request__detail-grid">
                     <div class="transfer-request__field">
-                        <label for="transferSeries">Series / Subseries <span>*</span></label>
-                        <MultiSelect
+                        <label for="transferSeries">Serie / Subserie <span>*</span></label>
+                        <Dropdown
                             id="transferSeries"
                             v-model="batchForm.series"
                             :options="seriesOptions"
                             :disabled="isLoading"
                             optionLabel="label"
-                            placeholder="Seleccionar series o subseries"
-                            display="chip"
+                            placeholder="Seleccionar serie o subserie"
                             filter
-                            :maxSelectedLabels="4"
-                            selectedItemsLabel="{0} series seleccionadas"
                             fluid
                         />
                     </div>

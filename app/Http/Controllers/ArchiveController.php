@@ -12,6 +12,7 @@ use App\Models\TransferBox;
 use App\Models\TransferDocument;
 use App\Models\Unit;
 use App\Models\User;
+use App\Support\RequestNumberGenerator;
 use App\Support\SignedPdfUrl;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -20,6 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Throwable;
 
 class ArchiveController extends Controller
@@ -37,7 +39,7 @@ class ArchiveController extends Controller
 
             return response()->json([
                 'next_box_number' => $nextBoxNumber,
-                'next_box_code' => $this->nextArchiveBoxCode(),
+                'next_box_code' => RequestNumberGenerator::box(now()),
                 'units' => Unit::query()
                     ->where('is_active', true)
                     ->orderBy('name')
@@ -71,10 +73,40 @@ class ArchiveController extends Controller
 
         try {
             $term = trim((string) $request->query('q', ''));
+            $classificationId = trim((string) $request->query('classification_id', ''));
 
             $boxesQuery = TransferBox::query()
                 ->with(['documents', 'transfer.unit', 'transfer.units', 'assignedBy.person'])
                 ->whereHas('transfer', fn (Builder $query) => $query->whereNotNull('completed_at'));
+
+            if ($classificationId !== '') {
+                $classification = $this->archiveClassificationOptions()
+                    ->firstWhere('value', $classificationId);
+
+                if ($classification === null) {
+                    return response()->json([
+                        'message' => 'La subserie documental seleccionada no esta habilitada.',
+                    ], 422);
+                }
+
+                $classificationNames = collect([$classification['label'], $classification['name']])
+                    ->map(fn ($name) => trim((string) $name))
+                    ->filter()
+                    ->unique()
+                    ->values();
+
+                $boxesQuery->where(function (Builder $query) use ($classificationNames) {
+                    foreach ($classificationNames as $index => $classificationName) {
+                        $method = $index === 0 ? 'where' : 'orWhere';
+                        $query->{$method}(function (Builder $classificationQuery) use ($classificationName) {
+                            $this->whereArchiveClassificationLabelMatches(
+                                $classificationQuery,
+                                $classificationName,
+                            );
+                        });
+                    }
+                });
+            }
 
             if ($term !== '') {
                 $boxesQuery->where(function (Builder $query) use ($term) {
@@ -117,12 +149,6 @@ class ArchiveController extends Controller
 
                                 $transferQuery->whereRaw('LOWER(transfers.code) = ?', [$transferCode]);
                             });
-
-                        return;
-                    }
-
-                    if (preg_match('/^\d+$/', $term) === 1) {
-                        $query->where('transfer_boxes.box_number', (int) $term);
 
                         return;
                     }
@@ -201,16 +227,15 @@ class ArchiveController extends Controller
         }
 
         $request->merge([
-            'box_code' => mb_strtoupper(trim((string) $request->input('box_code'))),
             'unit_ids' => $this->normalizeArchiveUnitIds($request),
             'classification_ids' => collect($request->input('classification_ids', $request->input('series_ids', [])))
                 ->when(
                     $request->filled('series_id'),
-                    fn ($classifications) => $classifications->push('series:' . (int) $request->input('series_id'))
+                    fn ($classifications) => $classifications->push('subseries:' . (int) $request->input('series_id'))
                 )
                 ->map(function ($classification) {
                     if (is_numeric($classification)) {
-                        return 'series:' . (int) $classification;
+                        return 'subseries:' . (int) $classification;
                     }
 
                     return trim((string) $classification);
@@ -222,11 +247,10 @@ class ArchiveController extends Controller
         ]);
 
         $validator = Validator::make($request->all(), [
-            'box_code' => ['required', 'string', 'max:120', 'regex:/^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$/', 'unique:transfer_boxes,box_code'],
             'unit_ids' => ['required', 'array', 'min:1'],
             'unit_ids.*' => ['required', 'integer', 'distinct', 'exists:units,id'],
             'classification_ids' => ['required', 'array', 'min:1'],
-            'classification_ids.*' => ['required', 'string', 'distinct', 'regex:/^(series|subseries):\d+$/'],
+            'classification_ids.*' => ['required', 'string', 'distinct', 'regex:/^subseries:\d+$/'],
             'start_year' => ['required', 'integer', 'min:1900', 'max:2100'],
             'end_year' => ['required', 'integer', 'min:1900', 'max:2100', 'gte:start_year'],
             'office_id' => ['required', 'integer', 'exists:physical_location_offices,id'],
@@ -244,9 +268,6 @@ class ArchiveController extends Controller
             'existing_document_ids' => ['nullable', 'array'],
             'existing_document_ids.*' => ['integer', 'exists:transfer_box_documents,id'],
         ], [
-            'box_code.required' => 'El número de caja es obligatorio.',
-            'box_code.regex' => 'El número de caja solo puede contener letras, números y guiones.',
-            'box_code.unique' => 'El número de caja ya existe.',
             'unit_ids.required' => 'Debe seleccionar al menos una unidad productora.',
             'unit_ids.min' => 'Debe seleccionar al menos una unidad productora.',
             'unit_ids.*.integer' => 'Seleccione unidades productoras validas.',
@@ -421,7 +442,6 @@ class ArchiveController extends Controller
         try {
             $box = DB::transaction(function () use ($request, $selectedShelf, $selectedSeriesName, $unitIds) {
                 $now = now();
-                $this->lockArchiveBoxCodeSequence($now);
                 $transferredStatus = RequestStatusCatalog::query()
                     ->where('code', 'transfer_status_transferred')
                     ->value('id');
@@ -430,7 +450,7 @@ class ArchiveController extends Controller
                     ->value('id');
 
                 $transfer = Transfer::query()->create([
-                    'code' => $this->nextArchiveTransferCode(),
+                    'code' => RequestNumberGenerator::transfer($now),
                     'user_id' => $request->user()->id,
                     'unit_id' => (int) $unitIds->first(),
                     'request_date' => $now->toDateString(),
@@ -451,7 +471,7 @@ class ArchiveController extends Controller
                 $transfer->units()->sync($unitIds->all());
 
                 $boxNumber = ((int) TransferBox::query()->max('box_number')) + 1;
-                $boxCode = mb_strtoupper(trim((string) $request->input('box_code')));
+                $boxCode = RequestNumberGenerator::box($now);
                 $startYear = (int) $request->input('start_year');
                 $endYear = (int) $request->input('end_year');
                 $locationCode = $this->buildLocationCode($selectedShelf);
@@ -660,14 +680,14 @@ class ArchiveController extends Controller
 
         $request->merge([
             'series_id' => is_numeric($request->input('series_id'))
-                ? 'series:' . (int) $request->input('series_id')
+                ? 'subseries:' . (int) $request->input('series_id')
                 : trim((string) $request->input('series_id')),
         ]);
 
         $currentYear = (int) now()->format('Y');
         $validator = Validator::make($request->all(), [
             'box_id' => ['required', 'integer', 'exists:transfer_boxes,id'],
-            'series_id' => ['required', 'string', 'regex:/^(series|subseries):\d+$/'],
+            'series_id' => ['required', 'string', 'regex:/^subseries:\d+$/'],
             'code' => ['required', 'string', 'max:120'],
             'name' => ['required', 'string', 'max:255'],
             'year' => ['required', 'integer', 'min:1900', 'max:' . $currentYear],
@@ -740,11 +760,13 @@ class ArchiveController extends Controller
                     throw new \RuntimeException('La serie o subserie documental seleccionada no esta habilitada.', 422);
                 }
 
-                $boxSeries = $this->normalizeArchiveClassificationLabel($box->series_name);
+                $boxSeriesNames = collect(explode(';', (string) $box->series_name))
+                    ->map(fn ($name) => $this->normalizeArchiveClassificationLabel($name))
+                    ->filter();
                 $classificationNames = collect([$classification['label'], $classification['name']])
                     ->map(fn ($name) => $this->normalizeArchiveClassificationLabel($name));
 
-                if (!$classificationNames->contains($boxSeries)) {
+                if ($classificationNames->intersect($boxSeriesNames)->isEmpty()) {
                     throw new \RuntimeException('La serie o subserie documental debe coincidir con la clasificacion asignada a la caja.', 422);
                 }
 
@@ -808,6 +830,210 @@ class ArchiveController extends Controller
 
             return response()->json([
                 'message' => 'No se pudo crear el documento. Intente nuevamente.',
+            ], 500);
+        }
+    }
+
+    public function updateDocument(Request $request, int $id): JsonResponse
+    {
+        if (!$this->canManageArchive($request)) {
+            return response()->json([
+                'message' => 'Solo el personal UGDA puede modificar documentos del archivo general.',
+            ], 403);
+        }
+
+        $request->merge([
+            'series_id' => is_numeric($request->input('series_id'))
+                ? 'subseries:' . (int) $request->input('series_id')
+                : trim((string) $request->input('series_id')),
+        ]);
+
+        $currentYear = (int) now()->format('Y');
+        $validator = Validator::make($request->all(), [
+            'series_id' => ['required', 'string', 'regex:/^(subseries|existing):\d+$/'],
+            'code' => ['required', 'string', 'max:120'],
+            'name' => ['required', 'string', 'max:255'],
+            'year' => ['required', 'integer', 'min:1900', 'max:' . $currentYear],
+            'support' => ['required', 'string', 'in:Fisico,Digital,Mixto'],
+            'pages' => ['required', 'integer', 'min:1', 'max:99999'],
+            'digital_file_name' => ['nullable', 'string', 'max:255'],
+            'digital_file_base64' => ['nullable', 'string'],
+        ], [
+            'series_id.required' => 'Debe seleccionar la serie o subserie documental.',
+            'code.required' => 'El codigo del documento es obligatorio.',
+            'name.required' => 'El nombre del documento es obligatorio.',
+            'year.required' => 'El ano del documento es obligatorio.',
+            'year.min' => 'El ano del documento debe ser mayor o igual a 1900.',
+            'year.max' => 'El ano del documento no puede ser mayor al ano actual.',
+            'support.required' => 'Debe seleccionar el tipo de soporte.',
+            'support.in' => 'El tipo de soporte seleccionado no es válido.',
+            'pages.required' => 'Debe indicar el número de páginas.',
+            'pages.min' => 'El número de páginas debe ser mayor que 0.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Los datos del documento no son validos.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $support = (string) $request->input('support');
+        $hasDigitalPayload = trim((string) $request->input('digital_file_base64', '')) !== '';
+        $fileName = trim((string) $request->input('digital_file_name', ''));
+
+        if ($hasDigitalPayload && ($fileName === '' || !str_ends_with(mb_strtolower($fileName), '.pdf'))) {
+            return response()->json([
+                'message' => 'Los datos del documento no son validos.',
+                'errors' => [
+                    'digital_file' => ['El archivo digital debe estar en formato PDF.'],
+                ],
+            ], 422);
+        }
+
+        try {
+            [$document, $oldDigitalPath] = DB::transaction(function () use ($id, $request, $support, $hasDigitalPayload) {
+                $document = TransferDocument::query()
+                    ->with('box.transfer')
+                    ->whereHas('box.transfer', fn (Builder $query) => $query->whereNotNull('completed_at'))
+                    ->lockForUpdate()
+                    ->find($id);
+
+                if ($document === null || $document->box === null) {
+                    throw new \RuntimeException('El documento no fue encontrado en una caja disponible.', 404);
+                }
+
+                $box = $document->box;
+                $seriesId = (string) $request->input('series_id');
+                $classification = null;
+
+                if (preg_match('/^existing:(\d+)$/', $seriesId, $existingSeriesMatch) === 1) {
+                    if ((int) $existingSeriesMatch[1] !== (int) $document->id) {
+                        throw new \RuntimeException('La serie documental histórica no corresponde al documento seleccionado.', 422);
+                    }
+
+                    $classification = [
+                        'label' => $document->series_label,
+                        'name' => $document->series_label,
+                    ];
+                } else {
+                    $classification = $this->archiveClassificationOptions()
+                        ->firstWhere('value', $seriesId);
+                }
+
+                if ($classification === null) {
+                    throw new \RuntimeException('La serie o subserie documental seleccionada no esta habilitada.', 422);
+                }
+
+                $boxSeriesNames = collect(explode(';', (string) $box->series_name))
+                    ->map(fn ($name) => $this->normalizeArchiveClassificationLabel($name))
+                    ->filter();
+                $classificationNames = collect([$classification['label'], $classification['name']])
+                    ->map(fn ($name) => $this->normalizeArchiveClassificationLabel($name));
+                $currentDocumentSeries = $this->normalizeArchiveClassificationLabel($document->series_label);
+                $isCurrentDocumentClassification = $classificationNames->contains($currentDocumentSeries);
+
+                if ($classificationNames->intersect($boxSeriesNames)->isEmpty() && !$isCurrentDocumentClassification) {
+                    throw new \RuntimeException('La serie o subserie documental debe coincidir con la clasificacion asignada a la caja.', 422);
+                }
+
+                $documentYear = (int) $request->input('year');
+
+                if ($box->start_year && $box->end_year
+                    && ($documentYear < (int) $box->start_year || $documentYear > (int) $box->end_year)) {
+                    throw new \RuntimeException('El ano del documento debe estar dentro del periodo de la caja (' . $box->start_year . ' - ' . $box->end_year . ').', 422);
+                }
+
+                $hasExistingDigitalFile = !empty($document->digital_file_name)
+                    && !empty($document->digital_file_path);
+
+                if (in_array($support, ['Digital', 'Mixto'], true)
+                    && !$hasDigitalPayload
+                    && !$hasExistingDigitalFile) {
+                    throw new \RuntimeException('Debe conservar el archivo PDF actual o adjuntar uno nuevo para el soporte ' . $support . '.', 422);
+                }
+
+                $code = trim((string) $request->input('code'));
+                $codeExists = $box->documents()
+                    ->where('id', '<>', $document->id)
+                    ->whereRaw('LOWER(code) = ?', [mb_strtolower($code)])
+                    ->exists();
+
+                if ($codeExists) {
+                    throw new \RuntimeException('Ya existe otro documento con ese codigo en la caja seleccionada.', 422);
+                }
+
+                $oldDigitalPath = $document->digital_file_path;
+                $digitalDocument = null;
+
+                if ($support !== 'Fisico' && $hasDigitalPayload) {
+                    $digitalDocument = $this->storeDigitalDocumentPayload($request->only([
+                        'digital_file_name',
+                        'digital_file_base64',
+                    ]), ($box->transfer?->code ?: 'archivo-general') . '-' . $document->id);
+
+                    if ($digitalDocument === null) {
+                        throw new \RuntimeException('No se pudo guardar el archivo PDF del documento.', 422);
+                    }
+                }
+
+                $document->update([
+                    'code' => $code,
+                    'name' => trim((string) $request->input('name')),
+                    'series_label' => $classification['label'],
+                    'support_type' => $support,
+                    'year_label' => (string) $documentYear,
+                    'pages_label' => (string) ((int) $request->input('pages')),
+                    'digital_file_name' => $support === 'Fisico'
+                        ? null
+                        : ($digitalDocument['name'] ?? $document->digital_file_name),
+                    'digital_file_path' => $support === 'Fisico'
+                        ? null
+                        : ($digitalDocument['path'] ?? $document->digital_file_path),
+                ]);
+
+                $box->transfer?->events()->create([
+                    'status_catalog_id' => $box->transfer?->workflow_status_id,
+                    'actor_user_id' => $request->user()->id,
+                    'event_type' => 'status',
+                    'title' => 'Documento actualizado',
+                    'description' => 'El documento "' . $document->name . '" fue actualizado desde la gestión del archivo.',
+                    'context' => [
+                        'document_id' => $document->id,
+                        'box_id' => $box->id,
+                        'support' => $support,
+                    ],
+                    'occurred_at' => now(),
+                ]);
+
+                return [$document->fresh(['box.transfer.unit', 'box.assignedBy.person']), $oldDigitalPath];
+            });
+
+            if ($oldDigitalPath && $oldDigitalPath !== $document->digital_file_path) {
+                Storage::disk('local')->delete($oldDigitalPath);
+            }
+
+            return response()->json([
+                'message' => 'Documento actualizado correctamente.',
+                'document' => $this->mapDocument($document),
+            ]);
+        } catch (\RuntimeException $exception) {
+            if (in_array((int) $exception->getCode(), [404, 422], true)) {
+                return response()->json([
+                    'message' => $exception->getMessage(),
+                ], (int) $exception->getCode());
+            }
+
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudo actualizar el documento. Intente nuevamente.',
+            ], 500);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudo actualizar el documento. Intente nuevamente.',
             ], 500);
         }
     }
@@ -1471,8 +1697,8 @@ class ArchiveController extends Controller
     }
 
     /**
-     * El Archivo General puede clasificar cajas con cualquier elemento activo
-     * del catalogo, sin filtrar por las unidades asociadas a la clasificacion.
+     * Las cajas y documentos del Archivo General se clasifican únicamente
+     * con subseries activas, sin filtrar por las unidades asociadas.
      */
     private function archiveClassificationOptions()
     {
@@ -1485,17 +1711,8 @@ class ArchiveController extends Controller
             ->get(['id', 'code', 'name'])
             ->flatMap(function (DocumentarySeries $series) {
                 $seriesLabel = $series->code . ' - ' . $series->name;
-                $options = collect([[
-                    'label' => $seriesLabel,
-                    'value' => 'series:' . $series->id,
-                    'code' => $series->code,
-                    'name' => $series->name,
-                    'type' => 'series',
-                    'series_id' => $series->id,
-                    'subseries_id' => null,
-                ]]);
 
-                return $options->merge($series->subseries->map(fn (DocumentarySubseries $subseries) => [
+                return $series->subseries->map(fn (DocumentarySubseries $subseries) => [
                     'label' => $seriesLabel . ' / ' . $subseries->code . ' - ' . $subseries->name,
                     'value' => 'subseries:' . $subseries->id,
                     'code' => $subseries->code,
@@ -1503,16 +1720,28 @@ class ArchiveController extends Controller
                     'type' => 'subseries',
                     'series_id' => $series->id,
                     'subseries_id' => $subseries->id,
-                ]));
+                ]);
             })
             ->values();
     }
 
     private function normalizeArchiveClassificationLabel(?string $value): string
     {
-        $normalized = str_replace(['–', '—', '−'], '-', trim((string) $value));
+        $normalized = Str::ascii(str_replace(['–', '—', '−'], '-', trim((string) $value)));
 
         return mb_strtolower(preg_replace('/\s+/', ' ', $normalized) ?? '');
+    }
+
+    private function whereArchiveClassificationLabelMatches(Builder $query, string $label): void
+    {
+        $normalizedLabel = $this->normalizeArchiveClassificationLabel($label);
+        $normalizedLabel = preg_replace('/\s+/', '', $normalizedLabel) ?? '';
+        $normalizedColumn = "REPLACE(REPLACE(LOWER(COALESCE(transfer_boxes.series_name, '')), ' ', ''), ';', '|')";
+
+        $query->whereRaw(
+            "POSITION(? IN ('|' || {$normalizedColumn} || '|')) > 0",
+            ["|{$normalizedLabel}|"],
+        );
     }
 
     private function normalizeArchiveUnitIds(Request $request): array
@@ -1534,48 +1763,6 @@ class ArchiveController extends Controller
     private function canSearchArchive(Request $request): bool
     {
         return in_array($request->user()?->activeProfile()?->name, ['Administrador', 'Usuario UGDA'], true);
-    }
-
-    private function nextArchiveTransferCode(): string
-    {
-        $year = now()->format('Y');
-        $prefix = 'AG-' . $year . '-';
-        $last = Transfer::query()
-            ->where('code', 'like', $prefix . '%')
-            ->pluck('code')
-            ->map(fn ($code) => (int) str_replace($prefix, '', (string) $code))
-            ->max();
-
-        return $prefix . str_pad((string) (($last ?? 0) + 1), 4, '0', STR_PAD_LEFT);
-    }
-
-    private function nextArchiveBoxCode(?Carbon $date = null): string
-    {
-        $date ??= now();
-        $prefix = 'C-' . $date->format('dmy') . '-';
-        $last = TransferBox::query()
-            ->whereNotNull('box_code')
-            ->where('box_code', 'like', $prefix . '%')
-            ->whereHas('transfer', fn (Builder $query) => $query->where('view_mode', 'archive'))
-            ->whereDate('transfer_boxes.created_at', $date->toDateString())
-            ->pluck('box_code')
-            ->map(function ($code) use ($prefix) {
-                $suffix = substr((string) $code, strlen($prefix));
-
-                return ctype_digit($suffix) ? (int) $suffix : 0;
-            })
-            ->max();
-
-        return $prefix . str_pad((string) (($last ?? 0) + 1), 3, '0', STR_PAD_LEFT);
-    }
-
-    private function lockArchiveBoxCodeSequence(Carbon $date): void
-    {
-        if (DB::getDriverName() === 'pgsql') {
-            DB::select("SELECT pg_advisory_xact_lock(hashtext(?))", [
-                'archive-box-code-' . $date->toDateString(),
-            ]);
-        }
     }
 
     private function locationOptions(): array

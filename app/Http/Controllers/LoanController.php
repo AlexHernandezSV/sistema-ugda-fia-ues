@@ -928,6 +928,123 @@ class LoanController extends Controller
         }
     }
 
+    public function updateRegisteredLoan(Request $request, string $number): JsonResponse
+    {
+        if (!$this->canUgdaManage($request)) {
+            return response()->json([
+                'message' => 'Solo UGDA puede modificar este registro.',
+            ], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'selected_ids' => ['required', 'array', 'min:1'],
+            'selected_ids.*' => ['integer', 'distinct'],
+            'loan_date' => ['required', 'date_format:d/m/Y'],
+            'due_date' => ['required', 'date_format:d/m/Y'],
+            'received_by' => ['required', 'string', 'max:255'],
+            'observations' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $validator->after(function ($validator) use ($request) {
+            if ($validator->errors()->isNotEmpty()) {
+                return;
+            }
+
+            $loanDate = Carbon::createFromFormat('d/m/Y', $request->string('loan_date')->toString());
+            $dueDate = Carbon::createFromFormat('d/m/Y', $request->string('due_date')->toString());
+
+            if ($dueDate->lt($loanDate)) {
+                $validator->errors()->add(
+                    'due_date',
+                    'La fecha de devolución programada debe ser igual o posterior a la fecha de préstamo.'
+                );
+            }
+        });
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Los datos del préstamo no son válidos.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $loan = Loan::query()
+                ->with(['authorizationStatus', 'workflowStatus', 'searchStatus', 'documents', 'latestDispatch.items'])
+                ->where('number', $number)
+                ->first();
+
+            if ($loan === null) {
+                return response()->json(['message' => 'Préstamo no encontrado.'], 404);
+            }
+
+            if ($loan->workflowStatus?->code !== 'loan_status_loaned' || $loan->latestDispatch === null) {
+                return response()->json([
+                    'message' => 'Este préstamo no tiene un registro activo que pueda modificarse.',
+                ], 422);
+            }
+
+            $selectedIds = collect($request->input('selected_ids'))
+                ->map(fn ($id) => (int) $id)
+                ->values();
+            $editableDocuments = $loan->documents
+                ->filter(fn (LoanDocument $document) => $document->found_in_search && !$document->returned)
+                ->keyBy('id');
+
+            if ($selectedIds->contains(fn (int $id) => !$editableDocuments->has($id))) {
+                return response()->json([
+                    'message' => 'Solo puede seleccionar documentos encontrados y que aún no hayan sido devueltos.',
+                    'errors' => ['selected_ids' => ['La selección de documentos no es válida.']],
+                ], 422);
+            }
+
+            DB::transaction(function () use ($request, $loan, $selectedIds) {
+                $dispatch = $loan->latestDispatch;
+                $previousIds = $dispatch->items->pluck('loan_document_id')->map(fn ($id) => (int) $id)->values()->all();
+
+                $dispatch->update([
+                    'loan_date' => Carbon::createFromFormat('d/m/Y', $request->string('loan_date')->toString())->toDateString(),
+                    'due_date' => Carbon::createFromFormat('d/m/Y', $request->string('due_date')->toString())->toDateString(),
+                    'received_by_name' => $request->string('received_by')->toString(),
+                    'observations' => $request->input('observations'),
+                ]);
+
+                $dispatch->items()->delete();
+                foreach ($selectedIds as $documentId) {
+                    $dispatch->items()->create(['loan_document_id' => $documentId]);
+                }
+
+                $loan->documents()->update(['selected_for_loan' => false]);
+                $loan->documents()->whereIn('id', $selectedIds->all())->update(['selected_for_loan' => true]);
+
+                $loan->events()->create([
+                    'status_catalog_id' => $this->statusId('loan_status_loaned'),
+                    'actor_user_id' => $request->user()->id,
+                    'actor_name_snapshot' => null,
+                    'event_type' => 'status',
+                    'title' => 'Registro de préstamo modificado',
+                    'description' => 'UGDA corrigió los datos del registro de préstamo y actualizó la hoja de préstamo.',
+                    'context' => [
+                        'previous_document_ids' => $previousIds,
+                        'document_ids' => $selectedIds->all(),
+                    ],
+                    'occurred_at' => now(),
+                ]);
+            });
+
+            return response()->json([
+                'message' => 'El registro del préstamo #' . $number . ' fue modificado correctamente.',
+                'summarySheetUrl' => \App\Support\SignedPdfUrl::loanSummarySheet($number),
+            ]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudo modificar el registro del préstamo.',
+            ], 500);
+        }
+    }
+
     public function registerDocumentModifications(Request $request, string $number): JsonResponse
     {
         $validator = Validator::make($request->all(), [

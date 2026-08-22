@@ -365,6 +365,7 @@ class TransferController extends Controller
                     'year_start' => (string) $box->start_year,
                     'year_end' => (string) $box->end_year,
                     'box_number' => (int) $box->box_number,
+                    'box_code' => $box->box_code,
                     'documents_count' => $box->documents->count(),
                     'documents_list' => $box->documents->map(fn ($document) => [
                         'id_doc' => 'doc-' . $document->id,
@@ -600,7 +601,8 @@ class TransferController extends Controller
 
         $businessError = $this->validateTransferBoxBusinessRules(
             $request->input('boxes', []),
-            (int) $request->input('unit_id')
+            (int) $request->input('unit_id'),
+            true
         );
 
         if ($businessError !== null) {
@@ -663,13 +665,15 @@ class TransferController extends Controller
     {
         foreach ($boxesPayload as $boxIndex => $boxPayload) {
             $boxNumber = (int) $boxPayload['box_number'];
+            $boxCode = RequestNumberGenerator::box(now());
 
             $box = $transfer->boxes()->create([
                 'series_name' => $boxPayload['series'],
                 'start_year' => (int) $boxPayload['year_start'],
                 'end_year' => (int) $boxPayload['year_end'],
                 'box_number' => $boxNumber,
-                'title' => 'Caja C-' . $transfer->code . '-' . str_pad((string) $boxNumber, 3, '0', STR_PAD_LEFT),
+                'box_code' => $boxCode,
+                'title' => 'Caja ' . $boxCode,
                 'period_label' => '01/01/' . $boxPayload['year_start'] . ' - 31/12/' . $boxPayload['year_end'],
                 'content_description' => $boxPayload['series'],
             ]);
@@ -842,7 +846,7 @@ class TransferController extends Controller
             ->implode('|');
     }
 
-    private function validateTransferBoxBusinessRules(array $boxesPayload, int $unitId): ?string
+    private function validateTransferBoxBusinessRules(array $boxesPayload, int $unitId, bool $singleSeriesPerBox = false): ?string
     {
         $allowedSeriesLabels = $this->allowedSeriesLabelsForUnit($unitId);
 
@@ -857,6 +861,10 @@ class TransferController extends Controller
 
             if (empty($normalizedBoxLabels)) {
                 return 'La caja #' . $boxNumber . ' debe tener una serie o subserie definida.';
+            }
+
+            if ($singleSeriesPerBox && count($boxLabels) !== 1) {
+                return 'La caja #' . $boxNumber . ' solo puede tener una serie o subserie.';
             }
 
             foreach ($boxLabels as $boxLabel) {

@@ -67,18 +67,9 @@ watch(() => form.value.support, (support) => {
     }
 });
 
-watch(selectedBox, (box) => {
-    if (!box) {
-        return;
-    }
-
-    const matchingSeries = seriesOptions.value.find((series) => (
-        series.label === box.series || series.name === box.series
-    ));
-
-    if (matchingSeries) {
-        form.value.series_id = matchingSeries.value;
-    }
+watch(() => form.value.series_id, () => {
+    boxes.value = [];
+    form.value.box_id = null;
 });
 
 const showError = (detail) => {
@@ -139,6 +130,13 @@ const fetchCatalog = async () => {
 const searchBoxes = async () => {
     const term = boxSearch.value.trim();
 
+    if (!form.value.series_id) {
+        boxes.value = [];
+        form.value.box_id = null;
+        showError('Seleccione primero la subserie documental del documento.');
+        return;
+    }
+
     if (!term) {
         boxes.value = [];
         form.value.box_id = null;
@@ -150,7 +148,12 @@ const searchBoxes = async () => {
 
     try {
         const { data } = await axios.get('/api/archive/boxes', {
-            params: { q: term, page: 1, per_page: 50 },
+            params: {
+                q: term,
+                classification_id: form.value.series_id,
+                page: 1,
+                per_page: 50,
+            },
         });
 
         boxes.value = Array.isArray(data.boxes) ? data.boxes : [];
@@ -304,14 +307,14 @@ onMounted(async () => {
 
                 <div class="create-document-grid create-document-grid--two">
                     <label>
-                        <span>Serie / Subserie <b>*</b></span>
+                        <span>Serie / Subseries <b>*</b></span>
                         <Dropdown
                             v-model="form.series_id"
                             :options="seriesOptions"
                             optionLabel="label"
                             optionValue="value"
                             filter
-                            placeholder="Seleccionar serie"
+                            placeholder="Seleccionar subserie"
                             class="w-full"
                             :disabled="isLoading"
                         />
@@ -395,10 +398,10 @@ onMounted(async () => {
                             <i class="pi pi-search"></i>
                             <InputText
                                 v-model="boxSearch"
-                                placeholder="Buscar por número de caja, serie o ubicación..."
-                                :disabled="isSearchingBoxes"
+                                placeholder="Buscar por número de caja o ubicación..."
+                                :disabled="!form.series_id || isSearchingBoxes"
                             />
-                            <button type="submit" :disabled="isSearchingBoxes">
+                            <button type="submit" :disabled="!form.series_id || isSearchingBoxes">
                                 Buscar
                             </button>
                         </div>
@@ -414,6 +417,9 @@ onMounted(async () => {
                     placeholder="Seleccionar caja"
                     class="w-full"
                     :loading="isSearchingBoxes"
+                    :disabled="!form.series_id"
+                    appendTo="self"
+                    overlayClass="create-document-box-dropdown-overlay"
                 >
                     <template #option="{ option }">
                         <div class="create-document-box-option">
@@ -622,6 +628,12 @@ onMounted(async () => {
 .create-document-box-option span {
     color: #526477;
     font-size: 0.82rem;
+}
+
+:global(.create-document-box-dropdown-overlay) {
+    max-width: 100% !important;
+    overflow-x: hidden;
+    width: 100% !important;
 }
 
 .create-document-footer {

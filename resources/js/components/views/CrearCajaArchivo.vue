@@ -223,13 +223,6 @@ const onDocumentPagesInput = (event) => {
     docForm.value.pages = sanitizePositiveInteger(event.target.value);
 };
 
-// Permite letras, números y guiones en el número visible de caja.
-const onBoxNumberInput = (event) => {
-    form.value.box_code = String(event.target.value ?? '')
-        .toUpperCase()
-        .replace(/[^A-Z0-9-]/g, '');
-};
-
 const escapeHtml = (value = '') => String(value)
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
@@ -322,7 +315,7 @@ const buildLabelPreviewItem = async () => ({
     transferNumber: 'N/A',
     transferDate: currentDateLabel(),
     unit: selectedUnitName.value || 'Unidad no seleccionada',
-    content: selectedSeriesName.value || 'Serie documental no seleccionada',
+    content: selectedSeriesName.value || 'Subserie documental no seleccionada',
     period: [getYearString(form.value.start_year), getYearString(form.value.end_year)].filter(Boolean).join(' - ') || 'Periodo no definido',
     locationCode: generatedLocationCode.value,
     labelCode: buildBoxLabelCode(),
@@ -952,13 +945,8 @@ const downloadLabelsPdf = async () => {
 };
 
 const validateForm = () => {
-    if (!form.value.box_code || form.value.unit_ids.length === 0 || form.value.classification_ids.length === 0 || !form.value.start_year || !form.value.end_year) {
+    if (form.value.unit_ids.length === 0 || form.value.classification_ids.length === 0 || !form.value.start_year || !form.value.end_year) {
         showError('Complete la información obligatoria de la caja.');
-        return false;
-    }
-
-    if (!/^[A-Z0-9]+(?:-[A-Z0-9]+)*$/.test(form.value.box_code)) {
-        showError('El número de caja solo puede contener letras, números y guiones.');
         return false;
     }
 
@@ -1014,7 +1002,6 @@ const submitBox = async () => {
 
     try {
         const payload = {
-            box_code: form.value.box_code,
             unit_ids: form.value.unit_ids,
             classification_ids: form.value.classification_ids,
             start_year: Number(getYearString(form.value.start_year)),
@@ -1071,15 +1058,13 @@ onMounted(fetchCatalog);
 
                 <div class="create-box-grid create-box-grid--two">
                     <label>
-                        <span>N de Caja <b>*</b></span>
+                        <span>Código de Caja (automático)</span>
                         <InputText
                             v-model="form.box_code"
                             type="text"
                             class="w-full"
-                            :disabled="isLoading"
-                            maxlength="120"
-                            placeholder="Ej: C-090826-001"
-                            @input="onBoxNumberInput"
+                            disabled
+                            placeholder="Se asigna al guardar"
                         />
                     </label>
                     <label>
@@ -1101,17 +1086,17 @@ onMounted(fetchCatalog);
                 </div>
 
                 <label class="create-box-field">
-                    <span>Series / Subseries <b>*</b></span>
+                        <span>Serie / Subseries <b>*</b></span>
                     <MultiSelect
                         v-model="form.classification_ids"
                         :options="seriesOptions"
                         optionLabel="label"
                         optionValue="value"
-                        placeholder="Seleccionar series o subseries"
+                        placeholder="Seleccionar subseries"
                         display="chip"
                         filter
                         :maxSelectedLabels="3"
-                        selectedItemsLabel="{0} series/subseries seleccionadas"
+                        selectedItemsLabel="{0} subseries seleccionadas"
                         class="w-full"
                         :disabled="isLoading"
                     />
@@ -1310,13 +1295,13 @@ onMounted(fetchCatalog);
                 <h3>Agregar Documento</h3>
 
                 <label class="create-box-field">
-                    <span>Serie / Subserie <b>*</b></span>
+                    <span>Serie / Subseries <b>*</b></span>
                     <Dropdown
                         v-model="docForm.classification_id"
                         :options="selectedSeriesOptions"
                         optionLabel="label"
                         optionValue="value"
-                        placeholder="Seleccionar serie documental"
+                        placeholder="Seleccionar subserie documental"
                         class="w-full"
                     />
                 </label>
