@@ -13,6 +13,20 @@ class XlsxRowsReader
      */
     public static function read(string $path): array
     {
+        $workbook = self::readWorkbook($path);
+
+        if ($workbook === []) {
+            throw new RuntimeException('El archivo no contiene hojas legibles.');
+        }
+
+        return $workbook['Hoja1'] ?? reset($workbook);
+    }
+
+    /**
+     * @return array<string, array<int, array<int, string>>>
+     */
+    public static function readWorkbook(string $path): array
+    {
         $zip = new ZipArchive();
 
         if ($zip->open($path) !== true) {
@@ -20,17 +34,70 @@ class XlsxRowsReader
         }
 
         $sharedStrings = self::readSharedStrings($zip);
-        $sheetXml = $zip->getFromName('xl/worksheets/sheet1.xml');
-        $zip->close();
+        $workbookXml = $zip->getFromName('xl/workbook.xml');
+        $relationshipsXml = $zip->getFromName('xl/_rels/workbook.xml.rels');
 
-        if ($sheetXml === false) {
-            throw new RuntimeException('El archivo no contiene la hoja esperada.');
+        if ($workbookXml === false || $relationshipsXml === false) {
+            $zip->close();
+            throw new RuntimeException('El archivo no contiene la estructura de hojas esperada.');
         }
 
+        $workbook = simplexml_load_string($workbookXml);
+        $relationships = simplexml_load_string($relationshipsXml);
+
+        if (!$workbook instanceof SimpleXMLElement || !$relationships instanceof SimpleXMLElement) {
+            $zip->close();
+            throw new RuntimeException('No se pudo leer la estructura del archivo Excel.');
+        }
+
+        $mainNamespace = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+        $relationshipNamespace = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+        $relationshipMap = [];
+
+        foreach ($relationships->xpath('//*[local-name()="Relationship"]') ?: [] as $relationship) {
+            $relationshipId = (string) ($relationship['Id'] ?? '');
+
+            if ($relationshipId !== '') {
+                $relationshipMap[$relationshipId] = (string) ($relationship['Target'] ?? '');
+            }
+        }
+
+        $sheets = [];
+
+        $sheetNodes = $workbook->xpath('//*[local-name()="sheet"]') ?: [];
+
+        foreach ($sheetNodes as $sheetIndex => $sheetNode) {
+            $attributes = $sheetNode->attributes();
+            $relationshipAttributes = $sheetNode->attributes('r', true);
+            $relationshipId = (string) ($relationshipAttributes['id'] ?? '');
+            $target = $relationshipMap[$relationshipId]
+                ?? 'worksheets/sheet' . ((int) $sheetIndex + 1) . '.xml';
+
+            $sheetPath = str_starts_with($target, '/') ? ltrim($target, '/') : 'xl/' . ltrim($target, '/');
+            $sheetXml = $zip->getFromName($sheetPath);
+
+            if ($sheetXml === false) {
+                continue;
+            }
+
+            $sheets[(string) $attributes['name']] = self::parseSheet($sheetXml, $sharedStrings);
+        }
+
+        $zip->close();
+
+        return $sheets;
+    }
+
+    /**
+     * @param array<int, string> $sharedStrings
+     * @return array<int, array<int, string>>
+     */
+    private static function parseSheet(string $sheetXml, array $sharedStrings): array
+    {
         $sheet = simplexml_load_string($sheetXml);
 
         if (!$sheet instanceof SimpleXMLElement) {
-            throw new RuntimeException('No se pudo leer la hoja del archivo.');
+            throw new RuntimeException('No se pudo leer una hoja del archivo.');
         }
 
         $namespace = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
@@ -52,7 +119,10 @@ class XlsxRowsReader
                 if ($type === 's') {
                     $value = $sharedStrings[(int) $cellNode->children($namespace)->v] ?? '';
                 } elseif ($type === 'inlineStr') {
-                    $value = (string) ($cellNode->children($namespace)->is->children($namespace)->t ?? '');
+                    $texts = $cellNode->xpath('.//*[local-name()="t"]');
+                    $value = collect($texts)
+                        ->map(fn ($text) => (string) $text)
+                        ->implode('');
                 } else {
                     $value = (string) ($cellNode->children($namespace)->v ?? '');
                 }

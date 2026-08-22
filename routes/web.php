@@ -133,6 +133,10 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/api/documentary-series', [DocumentarySeriesController::class, 'index'])
         ->middleware('permission:endpoint.api.documentary-series.read');
+    Route::get('/api/documentary-series/import-template', [DocumentarySeriesController::class, 'downloadImportTemplate'])
+        ->middleware('permission:endpoint.api.documentary-series.create');
+    Route::post('/api/documentary-series/import', [DocumentarySeriesController::class, 'import'])
+        ->middleware('permission:endpoint.api.documentary-series.create');
     Route::post('/api/documentary-series', [DocumentarySeriesController::class, 'store'])
         ->middleware('permission:endpoint.api.documentary-series.create');
     Route::put('/api/documentary-series/{id}', [DocumentarySeriesController::class, 'update'])
