@@ -13,7 +13,9 @@ const profilesList = ref([]);
 const loading = ref(true);
 const isSaving = ref(false);
 const isResettingPassword = ref(false);
+const isImporting = ref(false);
 const formSubmitted = ref(false);
+const importFileInput = ref(null);
 
 const rowsPerPageOptions = ref([5, 10, 25, 50]);
 const filters = ref({
@@ -372,6 +374,52 @@ const saveUser = async () => {
     }
 };
 
+const downloadTemplate = () => {
+    window.location.href = "/api/users/import-template";
+};
+
+const openImportFilePicker = () => {
+    if (!isImporting.value) {
+        importFileInput.value?.click();
+    }
+};
+
+const importUsers = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) return;
+
+    isImporting.value = true;
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+        const { data } = await axios.post("/api/users/import", formData, {
+            headers: { "Content-Type": "multipart/form-data" },
+        });
+
+        toast.add({
+            severity: "success",
+            summary: "Carga completada",
+            detail: data.message,
+            life: 5000,
+        });
+        await fetchData();
+    } catch (error) {
+        toast.add({
+            severity: "error",
+            summary: "No se pudo cargar el archivo",
+            detail:
+                error.response?.data?.message ||
+                "Revise la plantilla e intente nuevamente.",
+            life: 7000,
+        });
+    } finally {
+        isImporting.value = false;
+    }
+};
+
 const resetUserPassword = async () => {
     if (!selectedUserForReset.value || !adminPasswordForReset.value) {
         toast.add({
@@ -422,6 +470,15 @@ const goBack = () => {
 
 <template>
     <Toast />
+
+    <input
+        ref="importFileInput"
+        type="file"
+        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        class="users-import-input"
+        @change="importUsers"
+    />
+
     <div class="mb-4">
         <section class="reports-hero shadow-1">
             <div class="reports-hero__nav">
@@ -473,6 +530,26 @@ const goBack = () => {
                     class="w-auto px-3 flex-shrink-0 filters-toolbar__clear"
                     @click="clearFilter"
                 />
+
+                <Button
+                    label="Descargar plantilla"
+                    icon="pi pi-download"
+                    severity="secondary"
+                    outlined
+                    class="w-auto px-3 flex-shrink-0 filters-toolbar__template"
+                    @click="downloadTemplate"
+                />
+
+                <Button
+                    label="Cargar registros"
+                    icon="pi pi-upload"
+                    severity="secondary"
+                    outlined
+                    class="w-auto px-3 flex-shrink-0 filters-toolbar__import"
+                    :loading="isImporting"
+                    @click="openImportFilePicker"
+                />
+
                 <Button
                     label="Nuevo Usuario"
                     icon="pi pi-user-plus"
@@ -1151,6 +1228,8 @@ const goBack = () => {
     }
 
     .filters-toolbar__clear,
+    .filters-toolbar__template,
+    .filters-toolbar__import,
     .filters-toolbar__primary {
         width: 100%;
         margin-left: 0;
@@ -1176,7 +1255,7 @@ const goBack = () => {
 @media (min-width: 992px) {
     .filters-toolbar {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto auto;
+        grid-template-columns: minmax(0, 1fr) repeat(4, auto);
         align-items: center;
         gap: 0.75rem;
     }
@@ -1188,5 +1267,9 @@ const goBack = () => {
     .filters-toolbar__primary {
         margin-left: 0;
     }
+}
+
+.users-import-input {
+    display: none;
 }
 </style>

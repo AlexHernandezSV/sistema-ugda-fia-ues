@@ -105,6 +105,10 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/api/units', [UnitController::class, 'index'])
         ->middleware('permission:endpoint.api.units.read');
+    Route::get('/api/units/import-template', [UnitController::class, 'downloadImportTemplate'])
+        ->middleware('permission:endpoint.api.units.create');
+    Route::post('/api/units/import', [UnitController::class, 'import'])
+        ->middleware('permission:endpoint.api.units.create');
     Route::post('/api/units', [UnitController::class, 'store'])
         ->middleware('permission:endpoint.api.units.create');
     Route::put('/api/units/{id}', [UnitController::class, 'update'])
@@ -114,6 +118,10 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/api/users', [UserController::class, 'index'])
         ->middleware('permission:endpoint.api.users.read');
+    Route::get('/api/users/import-template', [UserController::class, 'downloadImportTemplate'])
+        ->middleware('permission:endpoint.api.users.create');
+    Route::post('/api/users/import', [UserController::class, 'import'])
+        ->middleware('permission:endpoint.api.users.create');
     Route::post('/api/users', [UserController::class, 'store'])
         ->middleware('permission:endpoint.api.users.create');
     Route::put('/api/users/{id}', [UserController::class, 'update'])

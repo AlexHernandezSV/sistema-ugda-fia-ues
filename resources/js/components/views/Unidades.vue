@@ -11,6 +11,9 @@ const units = ref([]);
 const loading = ref(true);
 const isSaving = ref(false);
 
+const isImporting = ref(false);
+const importFileInput = ref(null);
+
 // Paginación
 const rowsPerPageOptions = ref([5, 10, 25, 50]);
 
@@ -222,6 +225,50 @@ const saveUnit = async () => {
     }
 };
 
+const downloadTemplate = () => {
+    window.location.href = "/api/units/import-template";
+};
+
+const openImportFilePicker = () => {
+    if (!isImporting.value) {
+        importFileInput.value?.click();
+    }
+};
+
+const importUnits = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) return;
+
+    isImporting.value = true;
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+        const { data } = await axios.post("/api/units/import", formData, {
+            headers: { "Content-Type": "multipart/form-data" },
+        });
+
+        toast.add({
+            severity: "success",
+            summary: "Carga completada",
+            detail: data.message,
+            life: 5000,
+        });
+        await fetchUnits();
+    } catch (error) {
+        toast.add({
+            severity: "error",
+            summary: "No se pudo cargar el archivo",
+            detail: error.response?.data?.message || "Revise la plantilla e intente nuevamente.",
+            life: 7000,
+        });
+    } finally {
+        isImporting.value = false;
+    }
+};
+
 const clearFilter = () => {
     filters.value.global.value = null;
 };
@@ -229,6 +276,14 @@ const clearFilter = () => {
 
 <template>
     <Toast />
+
+    <input
+        ref="importFileInput"
+        type="file"
+        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        class="units-import-input"
+        @change="importUnits"
+    />
 
     <div class="mb-4">
         <section class="reports-hero shadow-1">
@@ -284,6 +339,25 @@ const clearFilter = () => {
                     outlined
                     class="w-auto px-3 flex-shrink-0 filters-toolbar__clear"
                     @click="clearFilter"
+                />
+
+                <Button
+                    label="Descargar plantilla"
+                    icon="pi pi-download"
+                    severity="secondary"
+                    outlined
+                    class="w-auto px-3 flex-shrink-0 filters-toolbar__template"
+                    @click="downloadTemplate"
+                />
+
+                <Button
+                    label="Cargar registros"
+                    icon="pi pi-upload"
+                    severity="secondary"
+                    outlined
+                    class="w-auto px-3 flex-shrink-0 filters-toolbar__import"
+                    :loading="isImporting"
+                    @click="openImportFilePicker"
                 />
 
                 <Button
@@ -581,7 +655,7 @@ const clearFilter = () => {
 .filters-toolbar__actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.75rem;
+    gap: 0.5rem;
     align-items: center;
     justify-content: space-between;
 }
@@ -609,7 +683,7 @@ const clearFilter = () => {
 @media (min-width: 992px) {
     .filters-toolbar {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto auto;
+        grid-template-columns: minmax(0, 1fr) repeat(4, auto);
         align-items: center;
         gap: 0.75rem;
     }
@@ -622,4 +696,8 @@ const clearFilter = () => {
         margin-left: 0;
     }
 }
+.units-import-input {
+    display: none;
+}
+
 </style>

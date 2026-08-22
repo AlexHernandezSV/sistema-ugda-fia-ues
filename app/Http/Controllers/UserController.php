@@ -5,9 +5,12 @@ namespace App\Http\Controllers;
 use App\Mail\UserCredentialsMail;
 use App\Mail\TemporaryPasswordMail;
 use App\Models\Profile;
+use App\Models\Unit;
 use App\Models\User;
 use App\Services\UserActivityLogger;
+use App\Support\XlsxRowsReader;
 use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -37,6 +40,71 @@ class UserController extends Controller
         return response()->json(
             $users->map(fn (User $user) => $this->mapUserForResponse($user))
         );
+    }
+
+    public function downloadImportTemplate()
+    {
+        $path = resource_path('templates/Usuarios UGDA.xlsx');
+
+        abort_unless(is_file($path), 404, 'La plantilla de usuarios no está disponible.');
+
+        return response()->download(
+            $path,
+            'Usuarios UGDA.xlsx',
+            ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
+        );
+    }
+
+    public function import(Request $request): JsonResponse
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:xlsx', 'max:5120'],
+        ], [
+            'file.required' => 'Seleccione un archivo Excel.',
+            'file.file' => 'El archivo seleccionado no es válido.',
+            'file.mimes' => 'El archivo debe tener formato .xlsx.',
+            'file.max' => 'El archivo no puede superar los 5 MB.',
+        ]);
+
+        try {
+            $rows = XlsxRowsReader::read($request->file('file')->getRealPath());
+            $records = $this->parseImportRows($rows);
+            $this->validateImportRecords($records);
+            $credentials = DB::transaction(fn (): array => $this->createUsersFromRecords($records));
+            $credentialsSent = 0;
+
+            foreach ($credentials as $credential) {
+                try {
+                    Mail::to($credential['email'])->send(new UserCredentialsMail([
+                        'name' => $credential['name'],
+                        'email' => $credential['email'],
+                        'password' => $credential['password'],
+                    ]));
+                    $credentialsSent++;
+                } catch (\Throwable $exception) {
+                    report($exception);
+                }
+            }
+
+            return response()->json([
+                'message' => sprintf(
+                    'Carga completada correctamente. Se crearon %d usuarios.',
+                    count($credentials)
+                ),
+                'created_count' => count($credentials),
+                'credentials_sent' => $credentialsSent,
+            ]);
+        } catch (\InvalidArgumentException|\RuntimeException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+            ], 422);
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudo procesar el archivo de usuarios.',
+            ], 422);
+        }
     }
 
     public function store(Request $request)
@@ -240,6 +308,308 @@ class UserController extends Controller
         });
 
         return response()->json(['message' => 'Usuario eliminado correctamente']);
+    }
+
+    /**
+     * @param array<int, array<int, string>> $rows
+     * @return array<int, array{
+     *     row:int,
+     *     first_name:string,
+     *     second_name:?string,
+     *     first_last_name:string,
+     *     second_last_name:?string,
+     *     carnet:?string,
+     *     carnet_key:?string,
+     *     email:string,
+     *     email_key:string,
+     *     unit_name:string,
+     *     unit_key:string,
+     *     role_name:string,
+     *     role_key:string
+     * }>
+     */
+    private function parseImportRows(array $rows): array
+    {
+        if ($rows === []) {
+            throw new \InvalidArgumentException('El archivo Excel está vacío.');
+        }
+
+        $headerAliases = [
+            'first_name' => ['primernombre'],
+            'second_name' => ['segundonombre'],
+            'first_last_name' => ['primerapellido'],
+            'carnet' => ['carnet'],
+            'email' => ['correoelectronico', 'correoelectrnico'],
+            'unit' => ['unidad'],
+            'role' => ['roldeusuario'],
+        ];
+        $headerLabels = [
+            'first_name' => 'Primer Nombre',
+            'second_name' => 'Segundo Nombre',
+            'first_last_name' => 'Primer Apellido',
+            'carnet' => 'Carnet',
+            'email' => 'Correo Electrónico',
+            'unit' => 'Unidad',
+            'role' => 'Rol de Usuario',
+        ];
+        $headers = array_map(
+            fn ($header) => $this->normalizeImportHeader((string) $header),
+            $rows[0]
+        );
+        $columnIndexes = [];
+
+        foreach ($headerAliases as $field => $aliases) {
+            $columnIndexes[$field] = false;
+
+            foreach ($aliases as $alias) {
+                $index = array_search($alias, $headers, true);
+
+                if ($index !== false) {
+                    $columnIndexes[$field] = $index;
+                    break;
+                }
+            }
+
+            if ($columnIndexes[$field] === false) {
+                throw new \InvalidArgumentException(
+                    'La plantilla debe contener las columnas: ' . implode(', ', array_values($headerLabels)) . '.'
+                );
+            }
+        }
+
+        $records = [];
+
+        foreach (array_slice($rows, 1) as $index => $row) {
+            $excelRow = $index + 2;
+            $values = array_map(fn ($value) => trim((string) $value), $row);
+
+            if (collect($values)->every(fn (string $value) => $value === '')) {
+                continue;
+            }
+
+            $firstName = $this->nullableImportValue($values[$columnIndexes['first_name']] ?? null);
+            $secondName = $this->nullableImportValue($values[$columnIndexes['second_name']] ?? null);
+            $firstLastName = $this->nullableImportValue($values[$columnIndexes['first_last_name']] ?? null);
+            $carnet = $this->nullableImportValue($values[$columnIndexes['carnet']] ?? null);
+            $email = $this->nullableImportValue($values[$columnIndexes['email']] ?? null);
+            $unit = $this->nullableImportValue($values[$columnIndexes['unit']] ?? null);
+            $role = $this->nullableImportValue($values[$columnIndexes['role']] ?? null);
+
+            if ($firstName === null) {
+                throw new \InvalidArgumentException("La fila {$excelRow} no tiene Primer Nombre.");
+            }
+
+            if ($firstLastName === null) {
+                throw new \InvalidArgumentException("La fila {$excelRow} no tiene Primer Apellido.");
+            }
+
+            if ($email === null) {
+                throw new \InvalidArgumentException("La fila {$excelRow} no tiene Correo Electrónico.");
+            }
+
+            if ($unit === null) {
+                throw new \InvalidArgumentException("La fila {$excelRow} no tiene Unidad.");
+            }
+
+            if ($role === null) {
+                throw new \InvalidArgumentException("La fila {$excelRow} no tiene Rol de Usuario.");
+            }
+
+            foreach ([
+                'Primer Nombre' => $firstName,
+                'Segundo Nombre' => $secondName,
+                'Primer Apellido' => $firstLastName,
+            ] as $label => $value) {
+                if ($value !== null && (mb_strlen($value) > 30 || preg_match('/^[\pL\s]+$/u', $value) !== 1)) {
+                    throw new \InvalidArgumentException(
+                        "El {$label} de la fila {$excelRow} solo puede contener letras, espacios y hasta 30 caracteres."
+                    );
+                }
+            }
+
+            if ($carnet !== null && (mb_strlen($carnet) > 20 || preg_match('/^[A-Z0-9]+$/', strtoupper($carnet)) !== 1)) {
+                throw new \InvalidArgumentException(
+                    "El Carnet de la fila {$excelRow} solo puede contener letras mayúsculas y números, hasta 20 caracteres."
+                );
+            }
+
+            if (mb_strlen($email) > 255 || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+                throw new \InvalidArgumentException("El Correo Electrónico de la fila {$excelRow} no es válido.");
+            }
+
+            $records[] = [
+                'row' => $excelRow,
+                'first_name' => $firstName,
+                'second_name' => $secondName,
+                'first_last_name' => $firstLastName,
+                'second_last_name' => null,
+                'carnet' => $carnet === null ? null : strtoupper($carnet),
+                'carnet_key' => $carnet === null ? null : $this->normalizeImportCarnet($carnet),
+                'email' => $this->normalizeImportEmail($email),
+                'email_key' => $this->normalizeImportEmail($email),
+                'unit_name' => $unit,
+                'unit_key' => $this->normalizeImportReference($unit),
+                'role_name' => $role,
+                'role_key' => $this->normalizeImportReference($role),
+            ];
+        }
+
+        if ($records === []) {
+            throw new \InvalidArgumentException('El archivo no contiene registros de usuarios.');
+        }
+
+        return $records;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $records
+     */
+    private function validateImportRecords(array &$records): void
+    {
+        $existingEmailKeys = User::query()
+            ->pluck('email')
+            ->map(fn (string $email) => $this->normalizeImportEmail($email))
+            ->filter()
+            ->unique()
+            ->flip()
+            ->all();
+        $existingCarnetKeys = DB::table('person')
+            ->whereNotNull('carnet')
+            ->pluck('carnet')
+            ->map(fn (string $carnet) => $this->normalizeImportCarnet($carnet))
+            ->filter()
+            ->unique()
+            ->flip()
+            ->all();
+        $unitsByKey = Unit::query()
+            ->get(['id', 'name'])
+            ->keyBy(fn (Unit $unit) => $this->normalizeImportReference($unit->name));
+        $profilesByKey = Profile::query()
+            ->where('is_active', true)
+            ->get(['id', 'name'])
+            ->keyBy(fn (Profile $profile) => $this->normalizeImportReference($profile->name));
+        $seenEmails = [];
+        $seenCarnets = [];
+
+        foreach ($records as $index => &$record) {
+            $row = $record['row'];
+
+            if (isset($seenEmails[$record['email_key']])) {
+                throw new \InvalidArgumentException(
+                    "El correo '{$record['email']}' aparece más de una vez en el archivo (filas {$seenEmails[$record['email_key']]} y {$row})."
+                );
+            }
+
+            if (isset($existingEmailKeys[$record['email_key']])) {
+                throw new \InvalidArgumentException(
+                    "El correo '{$record['email']}' de la fila {$row} ya existe en la base de datos."
+                );
+            }
+
+            $seenEmails[$record['email_key']] = $row;
+
+            if ($record['carnet_key'] !== null) {
+                if (isset($seenCarnets[$record['carnet_key']])) {
+                    throw new \InvalidArgumentException(
+                        "El carnet '{$record['carnet']}' aparece más de una vez en el archivo (filas {$seenCarnets[$record['carnet_key']]} y {$row})."
+                    );
+                }
+
+                if (isset($existingCarnetKeys[$record['carnet_key']])) {
+                    throw new \InvalidArgumentException(
+                        "El carnet '{$record['carnet']}' de la fila {$row} ya existe en la base de datos."
+                    );
+                }
+
+                $seenCarnets[$record['carnet_key']] = $row;
+            }
+
+            if (!isset($unitsByKey[$record['unit_key']])) {
+                throw new \InvalidArgumentException(
+                    "La unidad '{$record['unit_name']}' de la fila {$row} no existe en el sistema."
+                );
+            }
+
+            if (!isset($profilesByKey[$record['role_key']])) {
+                throw new \InvalidArgumentException(
+                    "El rol '{$record['role_name']}' de la fila {$row} no existe o está inactivo en el sistema."
+                );
+            }
+
+            $record['unit_id'] = $unitsByKey[$record['unit_key']]->id;
+            $record['profile_name'] = $profilesByKey[$record['role_key']]->name;
+        }
+        unset($record);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $records
+     * @return array<int, array{name:string, email:string, password:string}>
+     */
+    private function createUsersFromRecords(array $records): array
+    {
+        $credentials = [];
+
+        foreach ($records as $record) {
+            $temporaryPassword = Str::random(8);
+            $user = User::create([
+                'email' => $record['email'],
+                'password' => Hash::make($temporaryPassword),
+                'is_active' => true,
+                'two_factor_method' => 'email',
+                'must_change_password' => true,
+                'temporary_password_expires_at' => Carbon::now()->addDays(7),
+            ]);
+
+            $user->person()->create([
+                'first_name' => $record['first_name'],
+                'second_name' => $record['second_name'],
+                'first_last_name' => $record['first_last_name'],
+                'second_last_name' => $record['second_last_name'],
+                'carnet' => $record['carnet'],
+            ]);
+
+            $this->assignProfileToUser($user, $record['profile_name']);
+            $this->assignUnitsToUser($user, [$record['unit_id']]);
+
+            $credentials[] = [
+                'name' => trim($record['first_name'] . ' ' . $record['first_last_name']),
+                'email' => $record['email'],
+                'password' => $temporaryPassword,
+            ];
+        }
+
+        return $credentials;
+    }
+
+    private function nullableImportValue(mixed $value): ?string
+    {
+        $value = trim((string) ($value ?? ''));
+
+        return $value === '' ? null : $value;
+    }
+
+    private function normalizeImportHeader(string $value): string
+    {
+        return preg_replace('/[^a-z0-9]/', '', strtolower(Str::ascii(trim($value)))) ?? '';
+    }
+
+    private function normalizeImportReference(string $value): string
+    {
+        $normalized = Str::ascii(trim($value));
+        $normalized = preg_replace('/\s+/u', ' ', $normalized) ?? $normalized;
+
+        return mb_strtolower(trim($normalized));
+    }
+
+    private function normalizeImportEmail(string $value): string
+    {
+        return mb_strtolower(trim($value));
+    }
+
+    private function normalizeImportCarnet(string $value): string
+    {
+        return strtoupper(trim($value));
     }
 
     private function assignProfileToUser(User $user, string $profileName): void
