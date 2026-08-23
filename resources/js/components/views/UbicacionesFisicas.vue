@@ -8,6 +8,8 @@ const router = useRouter();
 const toast = useToast();
 const loading = ref(false);
 const saving = ref(false);
+const isImporting = ref(false);
+const importFileInput = ref(null);
 const offices = ref([]);
 const aisles = ref([]);
 const shelves = ref([]);
@@ -117,6 +119,54 @@ watch(
 
 const showError = (detail) => {
     toast.add({ severity: "error", summary: "Error", detail, life: 4200 });
+};
+
+const downloadTemplate = () => {
+    window.location.href = "/api/physical-locations/import-template";
+};
+
+const openImportFilePicker = () => {
+    if (!isImporting.value) {
+        importFileInput.value?.click();
+    }
+};
+
+const importLocations = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+        return;
+    }
+
+    isImporting.value = true;
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+        const { data } = await axios.post(
+            "/api/physical-locations/import",
+            formData,
+            {
+                headers: { "Content-Type": "multipart/form-data" },
+            },
+        );
+
+        toast.add({
+            severity: "success",
+            summary: "Carga completada",
+            detail: data.message ?? "Ubicaciones cargadas correctamente.",
+            life: 4200,
+        });
+        await Promise.all([fetchCatalog(), fetchLocationOptions()]);
+    } catch (error) {
+        showError(
+            error.response?.data?.message ??
+                "No se pudo procesar la plantilla de ubicaciones.",
+        );
+    } finally {
+        isImporting.value = false;
+    }
 };
 
 const characterCounter = (value) =>
@@ -373,6 +423,14 @@ const goBack = () => {
 
 <template>
     <div class="locations-page fadein animation-duration-500">
+        <input
+            ref="importFileInput"
+            type="file"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            class="locations-import-input"
+            @change="importLocations"
+        />
+
         <div class="mb-4">
             <section class="reports-hero shadow-1">
                 <div class="reports-hero__nav">
@@ -397,6 +455,32 @@ const goBack = () => {
                 </div>
             </section>
         </div>
+
+        <section class="locations-toolbar surface-card shadow-1">
+            <div class="locations-toolbar__copy">
+                <i class="pi pi-file-excel"></i>
+                <span>Administre oficinas, pasillos y estantes mediante una plantilla Excel.</span>
+            </div>
+            <div class="locations-toolbar__actions">
+                <Button
+                    label="Descargar plantilla"
+                    icon="pi pi-download"
+                    severity="secondary"
+                    outlined
+                    class="locations-toolbar__template"
+                    @click="downloadTemplate"
+                />
+                <Button
+                    label="Cargar registros"
+                    icon="pi pi-upload"
+                    severity="secondary"
+                    outlined
+                    class="locations-toolbar__import"
+                    :loading="isImporting"
+                    @click="openImportFilePicker"
+                />
+            </div>
+        </section>
 
         <main class="locations-grid">
             <section class="locations-panel">
@@ -751,6 +835,39 @@ const goBack = () => {
     gap: 1.5rem;
 }
 
+.locations-toolbar {
+    align-items: center;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+}
+
+.locations-toolbar__copy {
+    align-items: center;
+    color: #53657d;
+    display: flex;
+    font-size: 0.9rem;
+    gap: 0.65rem;
+    min-width: 0;
+}
+
+.locations-toolbar__copy i {
+    color: #1768c4;
+    font-size: 1.1rem;
+}
+
+.locations-toolbar__actions {
+    align-items: center;
+    display: flex;
+    flex-shrink: 0;
+    gap: 0.65rem;
+}
+
+.locations-import-input {
+    display: none;
+}
+
 .locations-header {
     display: flex;
     justify-content: space-between;
@@ -988,6 +1105,25 @@ const goBack = () => {
 }
 
 @media (max-width: 768px) {
+    .locations-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .locations-toolbar__copy {
+        align-items: flex-start;
+    }
+
+    .locations-toolbar__actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .locations-toolbar__actions :deep(.p-button) {
+        justify-content: center;
+        width: 100%;
+    }
+
     .locations-panel {
         padding: 1rem;
     }

@@ -5,11 +5,15 @@ namespace App\Http\Controllers;
 use App\Models\PhysicalLocationAisle;
 use App\Models\PhysicalLocationOffice;
 use App\Models\PhysicalLocationShelf;
+use App\Support\XlsxRowsReader;
+use App\Support\XlsxWorkbookWriter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Throwable;
@@ -30,6 +34,118 @@ class PhysicalLocationController extends Controller
     public function options(): JsonResponse
     {
         return response()->json($this->cachedCatalogPayload(true));
+    }
+
+    public function downloadImportTemplate(Request $request)
+    {
+        if (!$this->canManagePhysicalLocations($request)) {
+            return $this->adminOnlyResponse();
+        }
+
+        $offices = PhysicalLocationOffice::query()
+            ->with(['aisles.shelves'])
+            ->get()
+            ->sortBy(fn (PhysicalLocationOffice $office) => $this->catalogSortKey($office->code, $office->name))
+            ->values();
+
+        $officeRows = [];
+        $aisleRows = [];
+        $shelfRows = [];
+
+        foreach ($offices as $office) {
+            $officeRows[] = [$office->code, $office->name];
+
+            $aisles = $office->aisles
+                ->sortBy(fn (PhysicalLocationAisle $aisle) => $this->catalogSortKey($aisle->code, $aisle->name))
+                ->values();
+
+            foreach ($aisles as $aisle) {
+                $aisleRows[] = [$office->code, $aisle->code, $aisle->name];
+
+                $shelves = $aisle->shelves
+                    ->sortBy(fn (PhysicalLocationShelf $shelf) => $this->catalogSortKey($shelf->code, $shelf->name))
+                    ->values();
+
+                foreach ($shelves as $shelf) {
+                    $shelfRows[] = [$office->code, $aisle->code, $shelf->code, $shelf->name];
+                }
+            }
+        }
+
+        $path = tempnam(sys_get_temp_dir(), 'physical-locations-template-');
+
+        if ($path === false) {
+            abort(500, 'No se pudo preparar la plantilla de ubicaciones físicas.');
+        }
+
+        XlsxWorkbookWriter::write($path, [
+            [
+                'name' => 'Oficinas',
+                'headers' => ['Código de Oficina', 'Nombre de Oficina'],
+                'rows' => $officeRows,
+            ],
+            [
+                'name' => 'Pasillos',
+                'headers' => ['Código de Oficina', 'Código de Pasillo', 'Nombre de Pasillo'],
+                'rows' => $aisleRows,
+            ],
+            [
+                'name' => 'Estantes',
+                'headers' => ['Código de Oficina', 'Código de Pasillo', 'Código de Estante', 'Nombre de Estante'],
+                'rows' => $shelfRows,
+            ],
+        ]);
+
+        return response()
+            ->download(
+                $path,
+                'Ubicaciones.xlsx',
+                ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
+            )
+            ->deleteFileAfterSend(true);
+    }
+
+    public function import(Request $request): JsonResponse
+    {
+        if (!$this->canManagePhysicalLocations($request)) {
+            return $this->adminOnlyResponse();
+        }
+
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:xlsx', 'max:5120'],
+        ], [
+            'file.required' => 'Seleccione un archivo Excel.',
+            'file.file' => 'El archivo seleccionado no es válido.',
+            'file.mimes' => 'El archivo debe tener formato .xlsx.',
+            'file.max' => 'El archivo no puede superar 5 MB.',
+        ]);
+
+        try {
+            $workbook = XlsxRowsReader::readWorkbook($request->file('file')->getRealPath());
+            $records = $this->parseImportWorkbook($workbook);
+            $this->validateImportRecords($records);
+            $result = DB::transaction(fn (): array => $this->syncImportRecords($records));
+
+            return response()->json([
+                'message' => sprintf(
+                    'Carga completada correctamente. Se procesaron %d oficinas, %d pasillos y %d estantes.',
+                    $result['offices_count'],
+                    $result['aisles_count'],
+                    $result['shelves_count']
+                ),
+                ...$result,
+            ]);
+        } catch (\InvalidArgumentException|\RuntimeException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+            ], 422);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudo procesar el archivo de ubicaciones físicas.',
+            ], 422);
+        }
     }
 
     public function storeOffice(Request $request): JsonResponse
@@ -316,6 +432,412 @@ class PhysicalLocationController extends Controller
         $this->refreshCatalogCacheVersion();
 
         return response()->json(['message' => 'Estante eliminado correctamente.']);
+    }
+
+    /**
+     * @param array<string, array<int, array<int, string>>> $workbook
+     * @return array<string, array<int, array<string, string|int>>>
+     */
+    private function parseImportWorkbook(array $workbook): array
+    {
+        $requiredSheets = ['Oficinas', 'Pasillos', 'Estantes'];
+
+        foreach ($requiredSheets as $sheetName) {
+            if (!array_key_exists($sheetName, $workbook)) {
+                throw new \InvalidArgumentException("El archivo debe contener la hoja '{$sheetName}'.");
+            }
+        }
+
+        return [
+            'offices' => $this->parseImportSheet(
+                $workbook['Oficinas'],
+                [
+                    'code' => ['codigodeoficina', 'codigooficina'],
+                    'name' => ['nombredeoficina', 'nombreoficina'],
+                ],
+                'Oficinas'
+            ),
+            'aisles' => $this->parseImportSheet(
+                $workbook['Pasillos'],
+                [
+                    'office_code' => ['codigodeoficina', 'codigooficina'],
+                    'code' => ['codigodepasillo', 'codigopasillo'],
+                    'name' => ['nombredepasillo', 'nombrepasillo'],
+                ],
+                'Pasillos'
+            ),
+            'shelves' => $this->parseImportSheet(
+                $workbook['Estantes'],
+                [
+                    'office_code' => ['codigodeoficina', 'codigooficina'],
+                    'aisle_code' => ['codigodepasillo', 'codigopasillo'],
+                    'code' => ['codigodeestante', 'codigoestante'],
+                    'name' => ['nombredeestante', 'nombreestante'],
+                ],
+                'Estantes'
+            ),
+        ];
+    }
+
+    /**
+     * @param array<int, array<int, string>> $rows
+     * @param array<string, array<int, string>> $columns
+     * @return array<int, array<string, string|int>>
+     */
+    private function parseImportSheet(array $rows, array $columns, string $sheetName): array
+    {
+        if ($rows === []) {
+            throw new \InvalidArgumentException("La hoja {$sheetName} está vacía.");
+        }
+
+        $headers = array_values(array_map(
+            fn ($header) => $this->normalizeImportHeader((string) $header),
+            $rows[0]
+        ));
+        $headerIndexes = [];
+
+        foreach ($headers as $index => $header) {
+            if ($header !== '' && !array_key_exists($header, $headerIndexes)) {
+                $headerIndexes[$header] = $index;
+            }
+        }
+
+        $columnIndexes = [];
+
+        foreach ($columns as $field => $aliases) {
+            $normalizedAliases = array_map(
+                fn ($alias) => $this->normalizeImportHeader((string) $alias),
+                $aliases
+            );
+            $matchedIndex = null;
+
+            foreach ($normalizedAliases as $alias) {
+                if (array_key_exists($alias, $headerIndexes)) {
+                    $matchedIndex = $headerIndexes[$alias];
+                    break;
+                }
+            }
+
+            if ($matchedIndex === null) {
+                $foundHeaders = implode(', ', array_filter($headers, fn (string $header) => $header !== ''));
+                $expectedHeaders = implode(' / ', $normalizedAliases);
+
+                throw new \InvalidArgumentException(
+                    "La hoja {$sheetName} no contiene la columna requerida '{$expectedHeaders}'. Encabezados encontrados: {$foundHeaders}."
+                );
+            }
+
+            $columnIndexes[$field] = $matchedIndex;
+        }
+
+        $records = [];
+
+        foreach (array_slice($rows, 1) as $index => $row) {
+            $excelRow = $index + 2;
+            $values = array_values(array_map(fn ($value) => trim((string) $value), $row));
+
+            if (collect($values)->every(fn (string $value) => $value === '')) {
+                continue;
+            }
+
+            $record = ['row' => $excelRow];
+
+            foreach (array_keys($columns) as $field) {
+                $value = trim((string) ($values[$columnIndexes[$field]] ?? ''));
+
+                if ($value === '') {
+                    throw new \InvalidArgumentException(
+                        "La fila {$excelRow} de la hoja {$sheetName} tiene campos obligatorios vacíos."
+                    );
+                }
+
+                $record[$field] = $value;
+            }
+
+            $records[] = $record;
+        }
+
+        if ($records === []) {
+            throw new \InvalidArgumentException("La hoja {$sheetName} no contiene registros.");
+        }
+
+        return $records;
+    }
+
+    /**
+     * @param array<string, array<int, array<string, string|int>>> $records
+     */
+    private function validateImportRecords(array &$records): void
+    {
+        $officeCodes = [];
+
+        foreach (PhysicalLocationOffice::query()->get(['code']) as $office) {
+            $officeCodes[$this->normalizeCode((string) $office->code)] = true;
+        }
+
+        $incomingOfficeCodes = [];
+
+        foreach ($records['offices'] as &$record) {
+            $row = (int) $record['row'];
+            $record['code'] = $this->normalizeCode((string) $record['code']);
+            $record['name'] = trim((string) $record['name']);
+            $this->validateImportValue($record['code'], "El código de oficina de la fila {$row}");
+            $this->validateImportValue($record['name'], "El nombre de oficina de la fila {$row}");
+
+            if (isset($incomingOfficeCodes[$record['code']])) {
+                throw new \InvalidArgumentException(
+                    "El código de oficina '{$record['code']}' está repetido en las filas {$incomingOfficeCodes[$record['code']]} y {$row}."
+                );
+            }
+
+            $incomingOfficeCodes[$record['code']] = $row;
+            $officeCodes[$record['code']] = true;
+        }
+        unset($record);
+
+        $aisleKeys = [];
+
+        foreach (PhysicalLocationAisle::query()->with('office:id,code')->get() as $aisle) {
+            $aisleKeys[$this->locationAisleKey(
+                (string) $aisle->office?->code,
+                (string) $aisle->code
+            )] = true;
+        }
+
+        $incomingAisleKeys = [];
+
+        foreach ($records['aisles'] as &$record) {
+            $row = (int) $record['row'];
+            $record['office_code'] = $this->normalizeCode((string) $record['office_code']);
+            $record['code'] = $this->normalizeCode((string) $record['code']);
+            $record['name'] = trim((string) $record['name']);
+            $this->validateImportValue($record['office_code'], "El código de oficina del pasillo en la fila {$row}");
+            $this->validateImportValue($record['code'], "El código de pasillo de la fila {$row}");
+            $this->validateImportValue($record['name'], "El nombre de pasillo de la fila {$row}");
+
+            if (!isset($officeCodes[$record['office_code']])) {
+                throw new \InvalidArgumentException(
+                    "La oficina '{$record['office_code']}' del pasillo en la fila {$row} no existe en la base de datos ni en la hoja Oficinas."
+                );
+            }
+
+            $key = $this->locationAisleKey($record['office_code'], $record['code']);
+
+            if (isset($incomingAisleKeys[$key])) {
+                throw new \InvalidArgumentException(
+                    "El pasillo '{$record['code']}' de la oficina '{$record['office_code']}' está repetido en las filas {$incomingAisleKeys[$key]} y {$row}."
+                );
+            }
+
+            $incomingAisleKeys[$key] = $row;
+            $aisleKeys[$key] = true;
+        }
+        unset($record);
+
+        $incomingShelfKeys = [];
+
+        foreach ($records['shelves'] as &$record) {
+            $row = (int) $record['row'];
+            $record['office_code'] = $this->normalizeCode((string) $record['office_code']);
+            $record['aisle_code'] = $this->normalizeCode((string) $record['aisle_code']);
+            $record['code'] = $this->normalizeCode((string) $record['code']);
+            $record['name'] = trim((string) $record['name']);
+            $this->validateImportValue($record['office_code'], "El código de oficina del estante en la fila {$row}");
+            $this->validateImportValue($record['aisle_code'], "El código de pasillo del estante en la fila {$row}");
+            $this->validateImportValue($record['code'], "El código de estante de la fila {$row}");
+            $this->validateImportValue($record['name'], "El nombre de estante de la fila {$row}");
+
+            if (!isset($officeCodes[$record['office_code']])) {
+                throw new \InvalidArgumentException(
+                    "La oficina '{$record['office_code']}' del estante en la fila {$row} no existe en la base de datos ni en la hoja Oficinas."
+                );
+            }
+
+            $aisleKey = $this->locationAisleKey($record['office_code'], $record['aisle_code']);
+
+            if (!isset($aisleKeys[$aisleKey])) {
+                throw new \InvalidArgumentException(
+                    "El pasillo '{$record['aisle_code']}' de la oficina '{$record['office_code']}' del estante en la fila {$row} no existe en la base de datos ni en la hoja Pasillos."
+                );
+            }
+
+            $key = $this->locationShelfKey(
+                $record['office_code'],
+                $record['aisle_code'],
+                $record['code']
+            );
+
+            if (isset($incomingShelfKeys[$key])) {
+                throw new \InvalidArgumentException(
+                    "El estante '{$record['code']}' del pasillo '{$record['aisle_code']}' está repetido en las filas {$incomingShelfKeys[$key]} y {$row}."
+                );
+            }
+
+            $incomingShelfKeys[$key] = $row;
+        }
+        unset($record);
+    }
+
+    private function validateImportValue(string $value, string $label): void
+    {
+        if ($value === '') {
+            throw new \InvalidArgumentException("{$label} es obligatorio.");
+        }
+
+        if (mb_strlen($value) > 100) {
+            throw new \InvalidArgumentException("{$label} no puede superar 100 caracteres.");
+        }
+    }
+
+    /**
+     * @param array<string, array<int, array<string, string|int>>> $records
+     * @return array<string, int>
+     */
+    private function syncImportRecords(array $records): array
+    {
+        $officeModels = PhysicalLocationOffice::query()->get()->keyBy(
+            fn (PhysicalLocationOffice $office) => $this->normalizeCode((string) $office->code)
+        );
+        $officeIds = $officeModels->mapWithKeys(
+            fn (PhysicalLocationOffice $office, string $code) => [$code => $office->id]
+        )->all();
+        $officesCreated = 0;
+        $officesUpdated = 0;
+
+        foreach ($records['offices'] as $record) {
+            $code = (string) $record['code'];
+            $office = $officeModels->get($code);
+
+            if ($office) {
+                $office->update(['name' => $record['name']]);
+                $officesUpdated++;
+            } else {
+                $office = PhysicalLocationOffice::query()->create([
+                    'code' => $code,
+                    'name' => $record['name'],
+                    'is_active' => true,
+                ]);
+                $officeModels->put($code, $office);
+                $officesCreated++;
+            }
+
+            $officeIds[$code] = $office->id;
+        }
+
+        $aisleModels = PhysicalLocationAisle::query()
+            ->with('office:id,code')
+            ->get()
+            ->keyBy(fn (PhysicalLocationAisle $aisle) => $this->locationAisleKey(
+                (string) $aisle->office?->code,
+                (string) $aisle->code
+            ));
+        $aisleIds = $aisleModels->mapWithKeys(
+            fn (PhysicalLocationAisle $aisle, string $key) => [$key => $aisle->id]
+        )->all();
+        $aislesCreated = 0;
+        $aislesUpdated = 0;
+
+        foreach ($records['aisles'] as $record) {
+            $key = $this->locationAisleKey($record['office_code'], $record['code']);
+            $aisle = $aisleModels->get($key);
+
+            if ($aisle) {
+                $aisle->update(['name' => $record['name']]);
+                $aislesUpdated++;
+            } else {
+                $aisle = PhysicalLocationAisle::query()->create([
+                    'physical_location_office_id' => $officeIds[$record['office_code']],
+                    'code' => $record['code'],
+                    'name' => $record['name'],
+                    'is_active' => true,
+                ]);
+                $aisleModels->put($key, $aisle);
+                $aislesCreated++;
+            }
+
+            $aisleIds[$key] = $aisle->id;
+        }
+
+        $shelfModels = PhysicalLocationShelf::query()
+            ->with('aisle.office')
+            ->get()
+            ->keyBy(fn (PhysicalLocationShelf $shelf) => $this->locationShelfKey(
+                (string) $shelf->aisle?->office?->code,
+                (string) $shelf->aisle?->code,
+                (string) $shelf->code
+            ));
+        $shelvesCreated = 0;
+        $shelvesUpdated = 0;
+
+        foreach ($records['shelves'] as $record) {
+            $key = $this->locationShelfKey(
+                $record['office_code'],
+                $record['aisle_code'],
+                $record['code']
+            );
+            $shelf = $shelfModels->get($key);
+
+            if ($shelf) {
+                $shelf->update(['name' => $record['name']]);
+                $shelvesUpdated++;
+            } else {
+                $shelf = PhysicalLocationShelf::query()->create([
+                    'physical_location_aisle_id' => $aisleIds[
+                        $this->locationAisleKey($record['office_code'], $record['aisle_code'])
+                    ],
+                    'code' => $record['code'],
+                    'name' => $record['name'],
+                    'is_active' => true,
+                ]);
+                $shelfModels->put($key, $shelf);
+                $shelvesCreated++;
+            }
+        }
+
+        $this->refreshCatalogCacheVersion();
+
+        return [
+            'offices_count' => count($records['offices']),
+            'aisles_count' => count($records['aisles']),
+            'shelves_count' => count($records['shelves']),
+            'offices_created' => $officesCreated,
+            'offices_updated' => $officesUpdated,
+            'aisles_created' => $aislesCreated,
+            'aisles_updated' => $aislesUpdated,
+            'shelves_created' => $shelvesCreated,
+            'shelves_updated' => $shelvesUpdated,
+        ];
+    }
+
+    private function normalizeImportHeader(string $value): string
+    {
+        $value = preg_replace('/^\xEF\xBB\xBF/u', '', $value) ?? $value;
+        $value = preg_replace('/[\x{200B}-\x{200D}\x{FEFF}]/u', '', $value) ?? $value;
+
+        return preg_replace('/[^a-z0-9]/', '', strtolower(Str::ascii(trim($value)))) ?? '';
+    }
+
+    private function catalogSortKey(string $code, string $name): string
+    {
+        $normalizedCode = strtoupper(trim($code));
+        $normalizedCode = preg_replace_callback(
+            '/\d+/',
+            fn (array $matches) => str_pad($matches[0], 12, '0', STR_PAD_LEFT),
+            $normalizedCode
+        ) ?? $normalizedCode;
+
+        return $normalizedCode . '|' . mb_strtolower(trim($name));
+    }
+
+    private function locationAisleKey(string $officeCode, string $aisleCode): string
+    {
+        return $this->normalizeCode($officeCode) . '|' . $this->normalizeCode($aisleCode);
+    }
+
+    private function locationShelfKey(string $officeCode, string $aisleCode, string $shelfCode): string
+    {
+        return $this->locationAisleKey($officeCode, $aisleCode)
+            . '|' . $this->normalizeCode($shelfCode);
     }
 
     private function cachedCatalogPayload(bool $onlyActive): array

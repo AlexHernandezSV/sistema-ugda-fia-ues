@@ -180,6 +180,8 @@ Route::middleware('auth')->group(function () {
     Route::put('/api/archive/documents/{id}/box', [ArchiveController::class, 'updateDocumentBox']);
     Route::get('/api/physical-locations/options', [PhysicalLocationController::class, 'options']);
     Route::get('/api/physical-locations', [PhysicalLocationController::class, 'index']);
+    Route::get('/api/physical-locations/import-template', [PhysicalLocationController::class, 'downloadImportTemplate']);
+    Route::post('/api/physical-locations/import', [PhysicalLocationController::class, 'import']);
     Route::post('/api/physical-location-offices', [PhysicalLocationController::class, 'storeOffice']);
     Route::put('/api/physical-location-offices/{id}', [PhysicalLocationController::class, 'updateOffice']);
     Route::delete('/api/physical-location-offices/{id}', [PhysicalLocationController::class, 'destroyOffice']);
