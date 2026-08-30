@@ -14,13 +14,16 @@ use App\Models\TransferDocument;
 use App\Models\TransferEvent;
 use App\Models\Unit;
 use App\Models\User;
+use App\Support\RequestNumberGenerator;
 use Carbon\Carbon;
+use Database\Seeders\Concerns\SeedsUserAccounts;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 class RequestWorkflowDemoSeeder extends Seeder
 {
+    use SeedsUserAccounts;
+
     private array $statusIds = [];
 
     private array $units = [];
@@ -29,9 +32,19 @@ class RequestWorkflowDemoSeeder extends Seeder
 
     public function run(): void
     {
+        $this->call([
+            RoleSeeder::class,
+            ProfileSeeder::class,
+            ProfileRoleSeeder::class,
+            EndpointRoleSeeder::class,
+            RequestStatusCatalogSeeder::class,
+        ]);
+
         $this->seedUnits();
         $this->seedUsers();
         $this->loadStatuses();
+        $this->normalizeLegacyTransferCodes();
+        $this->normalizeLegacyLoanNumbers();
         $this->seedTransfers();
         $this->seedLoans();
     }
@@ -51,10 +64,13 @@ class RequestWorkflowDemoSeeder extends Seeder
         ];
 
         foreach ($catalog as $code => $name) {
-            $this->units[$code] = Unit::updateOrCreate(
+            $this->units[$code] = Unit::withTrashed()->updateOrCreate(
                 ['code' => $code],
                 ['name' => $name, 'is_active' => true]
             );
+            if ($this->units[$code]->trashed()) {
+                $this->units[$code]->restore();
+            }
         }
     }
 
@@ -121,8 +137,31 @@ class RequestWorkflowDemoSeeder extends Seeder
             'carlos_eduardo' => ['email' => 'carlos.eduardo@yopmail.com', 'first_name' => 'Carlos', 'second_name' => 'Eduardo', 'first_last_name' => 'Flores', 'second_last_name' => null, 'unit' => 'EIC'],
         ];
 
+        $catalogKeys = array_keys($catalog);
+
         foreach ($catalog as $key => $data) {
-            $this->users[$key] = $this->createUser($data);
+            $demoIndex = array_search($key, $catalogKeys, true) + 1;
+            $profileName = match ($key) {
+                'carlos_rodriguez_ugda' => 'Usuario UGDA',
+                'francisco_alarcon' => 'Director/Jefe de Unidad',
+                default => 'Unidad Solicitante',
+            };
+
+            $this->users[$key] = $this->seedUserWithProfileAndUnits(
+                email: $data['email'],
+                password: 'password',
+                personData: [
+                    'first_name' => $data['first_name'],
+                    'second_name' => $data['second_name'],
+                    'first_last_name' => $data['first_last_name'],
+                    'second_last_name' => $data['second_last_name'],
+                    'carnet' => $key === 'carlos_rodriguez_ugda'
+                        ? 'UGDA2026'
+                        : 'DEMO' . str_pad((string) $demoIndex, 3, '0', STR_PAD_LEFT),
+                ],
+                profileName: $profileName,
+                unitIds: [$this->units[$data['unit']]->id],
+            );
         }
     }
 
@@ -137,7 +176,7 @@ class RequestWorkflowDemoSeeder extends Seeder
     {
         $transfers = [
             [
-                'code' => '000964',
+                'code' => 'TRF-2025-00001',
                 'requester' => 'luis_barrera',
                 'unit' => 'DEC-FIA',
                 'requested_at' => '19/04/2025 08:30',
@@ -171,7 +210,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 ],
             ],
             [
-                'code' => '000965',
+                'code' => 'TRF-2025-00002',
                 'requester' => 'karla_baires',
                 'unit' => 'EII',
                 'requested_at' => '19/04/2025 08:30',
@@ -195,7 +234,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 ],
             ],
             [
-                'code' => '000967',
+                'code' => 'TRF-2025-00003',
                 'requester' => 'karla_baires',
                 'unit' => 'EII',
                 'requested_at' => '17/04/2025 11:45',
@@ -218,7 +257,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 ],
             ],
             [
-                'code' => '000973',
+                'code' => 'TRF-2025-00004',
                 'requester' => 'patricia_morales',
                 'unit' => 'EII',
                 'requested_at' => '10/04/2025 15:30',
@@ -243,7 +282,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 ],
             ],
             [
-                'code' => '000975',
+                'code' => 'TRF-2025-00005',
                 'requester' => 'fernando_garcia',
                 'unit' => 'DEC-FIA',
                 'requested_at' => '12/04/2025 16:00',
@@ -279,7 +318,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 ],
             ],
             [
-                'code' => '000976',
+                'code' => 'TRF-2025-00006',
                 'requester' => 'sandra_lopez',
                 'unit' => 'EII',
                 'requested_at' => '08/04/2025 13:20',
@@ -307,7 +346,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 ],
             ],
             [
-                'code' => '000977',
+                'code' => 'TRF-2026-00001',
                 'requester' => 'mario_flores',
                 'unit' => 'EIM',
                 'requested_at' => '10/02/2026 09:30',
@@ -336,7 +375,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 ],
             ],
             [
-                'code' => '000978',
+                'code' => 'TRF-2026-00002',
                 'requester' => 'carmen_martinez',
                 'unit' => 'DEC-FIA',
                 'requested_at' => '09/02/2026 14:20',
@@ -359,7 +398,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 ],
             ],
             [
-                'code' => '000970',
+                'code' => 'TRF-2025-00007',
                 'requester' => 'roberto_martinez',
                 'unit' => 'EIC',
                 'requested_at' => '15/03/2025 10:15',
@@ -391,11 +430,64 @@ class RequestWorkflowDemoSeeder extends Seeder
         }
     }
 
+    private function normalizeLegacyTransferCodes(): void
+    {
+        $legacyCodes = [
+            '000964' => 'TRF-2025-00001',
+            '000965' => 'TRF-2025-00002',
+            '000967' => 'TRF-2025-00003',
+            '000973' => 'TRF-2025-00004',
+            '000975' => 'TRF-2025-00005',
+            '000976' => 'TRF-2025-00006',
+            '000977' => 'TRF-2026-00001',
+            '000978' => 'TRF-2026-00002',
+            '000970' => 'TRF-2025-00007',
+        ];
+
+        foreach ($legacyCodes as $legacyCode => $standardCode) {
+            $legacyTransfer = Transfer::query()->where('code', $legacyCode)->first();
+
+            if (!$legacyTransfer || Transfer::query()->where('code', $standardCode)->exists()) {
+                continue;
+            }
+
+            $legacyTransfer->update(['code' => $standardCode]);
+        }
+    }
+
+    private function normalizeLegacyLoanNumbers(): void
+    {
+        $legacyNumbers = [
+            'PREST-001' => 'PRT-2026-00001',
+            'PREST-002' => 'PRT-2026-00002',
+            'PREST-003' => 'PRT-2026-00003',
+            'PREST-004' => 'PRT-2026-00004',
+            'PREST-005' => 'PRT-2026-00005',
+            'PREST-006' => 'PRT-2026-00006',
+            'PREST-007' => 'PRT-2026-00007',
+            'PREST-008' => 'PRT-2026-00008',
+            'PREST-009' => 'PRT-2026-00009',
+            'PREST-010' => 'PRT-2025-00001',
+            '000974' => 'PRT-2025-00002',
+            '000966' => 'PRT-2025-00003',
+        ];
+
+        foreach ($legacyNumbers as $legacyNumber => $standardNumber) {
+            $legacyLoan = Loan::query()->where('number', $legacyNumber)->first();
+
+            if (!$legacyLoan || Loan::query()->where('number', $standardNumber)->exists()) {
+                continue;
+            }
+
+            $legacyLoan->update(['number' => $standardNumber]);
+        }
+    }
+
     private function seedLoans(): void
     {
         $loans = [
             [
-                'number' => 'PREST-001',
+                'number' => 'PRT-2026-00001',
                 'requester' => 'maria_rodriguez',
                 'unit' => 'EIC',
                 'requested_at' => '16/02/2026 09:15',
@@ -404,15 +496,15 @@ class RequestWorkflowDemoSeeder extends Seeder
                 'view_mode' => 'detail',
                 'description' => null,
                 'documents' => [
-                    $this->loanDocPayload('system', 'Documentos del Sistema (2)', 'Actas de Junta Directiva 2023', 'Actas y Resoluciones', 'CAJA-001', '2023', null, 'Copia', 'info', null, null),
-                    $this->loanDocPayload('system', 'Documentos del Sistema (2)', 'Expedientes Estudiantiles 2022', 'Expedientes Academicos', 'CAJA-015', '2022', null, 'Original', 'warning', null, null),
+                    $this->loanDocPayload('system', 'Documentos del Sistema (2)', 'Actas de Junta Directiva 2023', 'Actas y Resoluciones', 'C-2025-00001', '2023', null, 'Copia', 'info', null, null),
+                    $this->loanDocPayload('system', 'Documentos del Sistema (2)', 'Expedientes Estudiantiles 2022', 'Expedientes Academicos', 'C-2025-00002', '2022', null, 'Original', 'warning', null, null),
                 ],
                 'events' => [
                     $this->loanEventPayload('status', 'Creado', 'Solicitud de prestamo creada por Lic. Maria Elena Rodriguez', '16/02/2026 09:15', 'maria_rodriguez', null),
                 ],
             ],
             [
-                'number' => 'PREST-002',
+                'number' => 'PRT-2026-00002',
                 'requester' => 'carlos_martinez',
                 'unit' => 'EIE',
                 'requested_at' => '15/02/2026 14:30',
@@ -422,7 +514,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 'authorized_at' => '16/02/2026 10:00',
                 'view_mode' => 'manage',
                 'documents' => [
-                    $this->loanDocPayload('system', 'Documentos del Sistema (1)', 'Contratos y Convenios 2021-2023', 'Documentación Administrativa', 'CAJA-028', '2021-2023', null, 'Copia', 'info', null, null),
+                    $this->loanDocPayload('system', 'Documentos del Sistema (1)', 'Contratos y Convenios 2021-2023', 'Documentación Administrativa', 'C-2025-00003', '2021-2023', null, 'Copia', 'info', null, null),
                     $this->loanDocPayload('additional', 'Documentos Adicionales (1)', 'Expedientes de Graduacion 2015', null, null, '2015', 'Escuela de Ingenieria Electrica', 'Original', 'warning', '3 cajas', 'Se transfirieron el 10 de marzo de 2022'),
                 ],
                 'events' => [
@@ -431,7 +523,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 ],
             ],
             [
-                'number' => 'PREST-003',
+                'number' => 'PRT-2026-00003',
                 'requester' => 'ana_gomez',
                 'unit' => 'ARQ',
                 'requested_at' => '14/02/2026 11:00',
@@ -451,7 +543,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 ],
             ],
             [
-                'number' => 'PREST-004',
+                'number' => 'PRT-2026-00004',
                 'requester' => 'roberto_flores',
                 'unit' => 'EIM',
                 'requested_at' => '13/02/2026 16:45',
@@ -461,7 +553,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 'authorized_at' => '14/02/2026 08:00',
                 'view_mode' => 'manage',
                 'documents' => [
-                    $this->loanDocPayload('system', 'Documentos del Sistema (1)', 'Proyectos de Investigacion 2020', 'Investigacion y Desarrollo', 'CAJA-042', '2020', null, 'Copia', 'info', null, null),
+                    $this->loanDocPayload('system', 'Documentos del Sistema (1)', 'Proyectos de Investigacion 2020', 'Investigacion y Desarrollo', 'C-2025-00004', '2020', null, 'Copia', 'info', null, null),
                 ],
                 'events' => [
                     $this->loanEventPayload('observation', 'Observación UGDA', 'Se requiere especificar con mayor precision el ano de los documentos solicitados. Algunos expedientes abarcan multiples anos.', '15/02/2026 10:30', 'carlos_rodriguez_ugda'),
@@ -470,7 +562,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 ],
             ],
             [
-                'number' => 'PREST-010',
+                'number' => 'PRT-2025-00001',
                 'requester' => 'carlos_eduardo',
                 'unit' => 'EIC',
                 'requested_at' => '05/04/2025 11:30',
@@ -480,8 +572,8 @@ class RequestWorkflowDemoSeeder extends Seeder
                 'authorized_at' => '06/04/2025 09:20',
                 'view_mode' => 'manage',
                 'documents' => [
-                    $this->loanDocPayload('system', 'Documentos del Sistema (2)', 'Informes de Auditoria 2022', 'Auditoria y Control', 'CAJA-033', '2022', null, 'Original', 'warning', null, null),
-                    $this->loanDocPayload('system', 'Documentos del Sistema (2)', 'Actas de Junta Directiva 2023', 'Actas y Resoluciones', 'CAJA-001', '2023', null, 'Copia', 'info', null, null),
+                    $this->loanDocPayload('system', 'Documentos del Sistema (2)', 'Informes de Auditoria 2022', 'Auditoria y Control', 'C-2025-00004', '2022', null, 'Original', 'warning', null, null),
+                    $this->loanDocPayload('system', 'Documentos del Sistema (2)', 'Actas de Junta Directiva 2023', 'Actas y Resoluciones', 'C-2025-00001', '2023', null, 'Copia', 'info', null, null),
                 ],
                 'events' => [
                     $this->loanEventPayload('status', 'Autorizado UGDA', 'Solicitud autorizada por UGDA para iniciar busqueda de documentos.', '06/04/2025 09:20', 'maria_elena_guardado', 'loan_status_authorized'),
@@ -489,7 +581,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 ],
             ],
             [
-                'number' => 'PREST-005',
+                'number' => 'PRT-2026-00005',
                 'requester' => 'patricia_ramirez',
                 'unit' => 'DEC-FIA',
                 'requested_at' => '12/02/2026 10:00',
@@ -504,8 +596,8 @@ class RequestWorkflowDemoSeeder extends Seeder
                 'search_started_at' => '13/02/2026 09:45',
                 'view_mode' => 'manage',
                 'documents' => [
-                    $this->loanDocPayload('system', 'Documentos del Sistema (2)', 'Informes de Auditoria 2022', 'Auditoria y Control', 'CAJA-033', '2022', null, 'Original', 'warning', null, null),
-                    $this->loanDocPayload('system', 'Documentos del Sistema (2)', 'Actas de Junta Directiva 2023', 'Actas y Resoluciones', 'CAJA-001', '2023', null, 'Copia', 'info', null, null),
+                    $this->loanDocPayload('system', 'Documentos del Sistema (2)', 'Informes de Auditoria 2022', 'Auditoria y Control', 'C-2025-00004', '2022', null, 'Original', 'warning', null, null),
+                    $this->loanDocPayload('system', 'Documentos del Sistema (2)', 'Actas de Junta Directiva 2023', 'Actas y Resoluciones', 'C-2025-00001', '2023', null, 'Copia', 'info', null, null),
                 ],
                 'events' => [
                     $this->loanEventPayload('status', 'Busqueda en proceso', 'UGDA ha iniciado el proceso de busqueda y localizacion fisica de los documentos solicitados.', '13/02/2026 09:45', 'carlos_rodriguez_ugda', 'loan_search_in_progress'),
@@ -515,7 +607,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 ],
             ],
             [
-                'number' => 'PREST-006',
+                'number' => 'PRT-2026-00006',
                 'requester' => 'jose_hernandez',
                 'unit' => 'EII',
                 'requested_at' => '10/02/2026 08:30',
@@ -533,7 +625,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 'search_comments' => 'Se encontro el expediente de estudiantes, pero las tesis de grado 2018 no estan disponibles en este momento.',
                 'view_mode' => 'manage',
                 'documents' => [
-                    $this->loanDocPayload('system', 'Documentos del Sistema (1)', 'Expedientes Estudiantiles 2022', 'Expedientes Academicos', 'CAJA-015', '2022', null, 'Copia', 'info', null, null, true),
+                    $this->loanDocPayload('system', 'Documentos del Sistema (1)', 'Expedientes Estudiantiles 2022', 'Expedientes Academicos', 'C-2025-00002', '2022', null, 'Copia', 'info', null, null, true),
                     $this->loanDocPayload('additional', 'Documentos Adicionales (1)', 'Tesis de grado 2018', null, null, '2018', 'Escuela de Ingenieria Industrial', 'Copia', 'info', '5 expedientes', 'Tesis relacionadas con optimizacion de procesos', false),
                 ],
                 'events' => [
@@ -547,7 +639,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 'return' => null,
             ],
             [
-                'number' => 'PREST-007',
+                'number' => 'PRT-2026-00007',
                 'requester' => 'luis_ramirez',
                 'unit' => 'ARQ',
                 'requested_at' => '08/02/2026 09:00',
@@ -565,7 +657,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 'search_comments' => 'Todos los documentos solicitados fueron encontrados.',
                 'view_mode' => 'manage',
                 'documents' => [
-                    $this->loanDocPayload('system', 'Documentos del Sistema (1)', 'Contratos y Convenios 2021-2023', 'Documentación Administrativa', 'CAJA-028', '2021-2023', null, 'Original', 'warning', null, null, true, true),
+                    $this->loanDocPayload('system', 'Documentos del Sistema (1)', 'Contratos y Convenios 2021-2023', 'Documentación Administrativa', 'C-2025-00003', '2021-2023', null, 'Original', 'warning', null, null, true, true),
                 ],
                 'events' => [
                     $this->loanEventPayload('status', 'Prestado', 'Documentos entregados a Arq. Luis Fernando Ramirez. Fecha de devolución: 15/02/2026', '12/02/2026 11:15', 'carlos_rodriguez_ugda', 'loan_status_loaned'),
@@ -585,7 +677,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 ],
             ],
             [
-                'number' => 'PREST-008',
+                'number' => 'PRT-2026-00008',
                 'requester' => 'sandra_beatriz',
                 'unit' => 'EIQ',
                 'requested_at' => '05/02/2026 11:30',
@@ -603,7 +695,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 'search_comments' => 'Documentos listos para entrega.',
                 'view_mode' => 'detail',
                 'documents' => [
-                    $this->loanDocPayload('system', 'Documentos del Sistema (1)', 'Proyectos de Investigacion 2020', 'Investigacion y Desarrollo', 'CAJA-042', '2020', null, 'Copia', 'info', null, null, true, true, true),
+                    $this->loanDocPayload('system', 'Documentos del Sistema (1)', 'Proyectos de Investigacion 2020', 'Investigacion y Desarrollo', 'C-2025-00004', '2020', null, 'Copia', 'info', null, null, true, true, true),
                     $this->loanDocPayload('additional', 'Documentos Adicionales (1)', 'Informes de laboratorio 2019', null, null, '2019', 'Escuela de Ingenieria Quimica', 'Copia', 'info', '1 caja', 'Informes de practicas de laboratorio', false),
                 ],
                 'events' => [
@@ -632,7 +724,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 ],
             ],
             [
-                'number' => 'PREST-009',
+                'number' => 'PRT-2026-00009',
                 'requester' => 'miguel_torres',
                 'unit' => 'EIS',
                 'requested_at' => '03/02/2026 15:00',
@@ -655,7 +747,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 ],
             ],
             [
-                'number' => '000974',
+                'number' => 'PRT-2025-00002',
                 'requester' => 'carlos_eduardo',
                 'unit' => 'EIC',
                 'requested_at' => '05/04/2025 11:30',
@@ -665,8 +757,8 @@ class RequestWorkflowDemoSeeder extends Seeder
                 'authorized_at' => '06/04/2025 09:20',
                 'view_mode' => 'manage',
                 'documents' => [
-                    $this->loanDocPayload('system', 'Documentos del Sistema (2)', 'Informes de Auditoria 2022', 'Auditoria y Control', 'CAJA-033', '2022', null, 'Original', 'warning', null, null),
-                    $this->loanDocPayload('system', 'Documentos del Sistema (2)', 'Actas de Junta Directiva 2023', 'Actas y Resoluciones', 'CAJA-001', '2023', null, 'Copia', 'info', null, null),
+                    $this->loanDocPayload('system', 'Documentos del Sistema (2)', 'Informes de Auditoria 2022', 'Auditoria y Control', 'C-2025-00004', '2022', null, 'Original', 'warning', null, null),
+                    $this->loanDocPayload('system', 'Documentos del Sistema (2)', 'Actas de Junta Directiva 2023', 'Actas y Resoluciones', 'C-2025-00001', '2023', null, 'Copia', 'info', null, null),
                 ],
                 'events' => [
                     $this->loanEventPayload('status', 'Autorizado UGDA', 'Solicitud autorizada por UGDA.', '06/04/2025 09:20', 'maria_elena_guardado', 'loan_status_authorized'),
@@ -674,7 +766,7 @@ class RequestWorkflowDemoSeeder extends Seeder
                 ],
             ],
             [
-                'number' => '000966',
+                'number' => 'PRT-2025-00003',
                 'requester' => 'luis_barrera',
                 'unit' => 'DEC-FIA',
                 'requested_at' => '18/04/2025 10:15',
@@ -725,15 +817,28 @@ class RequestWorkflowDemoSeeder extends Seeder
             ]
         );
 
+        $existingBoxCodes = $transfer->boxes()
+            ->get()
+            ->keyBy(fn (TransferBox $box) => (int) $box->box_number);
+
         $transfer->events()->delete();
         $transfer->boxes()->delete();
 
         foreach ($payload['boxes'] as $boxPayload) {
+            $existingBoxCode = $existingBoxCodes->get((int) $boxPayload['number'])?->box_code;
+            $boxDate = !empty($boxPayload['assigned_at'])
+                ? $this->parseDateTime($boxPayload['assigned_at'])
+                : $this->parseDateTime($payload['requested_at']);
+            $boxCode = is_string($existingBoxCode) && preg_match('/^C-\d{4}-\d{5}$/', $existingBoxCode) === 1
+                ? $existingBoxCode
+                : RequestNumberGenerator::box($boxDate);
+
             $box = $transfer->boxes()->create([
                 'series_name' => $boxPayload['series_name'],
                 'start_year' => $boxPayload['start_year'],
                 'end_year' => $boxPayload['end_year'],
                 'box_number' => (int) $boxPayload['number'],
+                'box_code' => $boxCode,
                 'title' => $boxPayload['title'],
                 'period_label' => $boxPayload['period_label'],
                 'location_code' => $boxPayload['location_code'],
@@ -838,35 +943,6 @@ class RequestWorkflowDemoSeeder extends Seeder
                 }
             }
         }
-    }
-
-    private function createUser(array $data): User
-    {
-        $user = User::updateOrCreate(
-            ['email' => $data['email']],
-            ['password' => 'password', 'is_active' => true]
-        );
-
-        DB::table('person')->updateOrInsert(
-            ['user_id' => $user->id],
-            [
-                'first_name' => $data['first_name'],
-                'second_name' => $data['second_name'],
-                'first_last_name' => $data['first_last_name'],
-                'second_last_name' => $data['second_last_name'],
-                'carnet' => strtoupper(Str::random(8)),
-                'user_id' => $user->id,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]
-        );
-
-        DB::table('user_unit')->updateOrInsert(
-            ['user_id' => $user->id, 'unit_id' => $this->units[$data['unit']]->id],
-            ['is_active' => true, 'created_at' => now(), 'updated_at' => now(), 'deleted_at' => null]
-        );
-
-        return $user->fresh('person');
     }
 
     private function transferBoxPayload(string $number, string $title, string $period, ?string $locationCode, ?string $assignedBy, ?string $assignedAt, string $seriesName, int $startYear, int $endYear, array $documents): array

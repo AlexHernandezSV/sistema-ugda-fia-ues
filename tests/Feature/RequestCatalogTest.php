@@ -57,11 +57,11 @@ class RequestCatalogTest extends TestCase
     {
         $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
 
-        $response = $this->actingAs($admin)->getJson('/api/loans/PREST-001');
+        $response = $this->actingAs($admin)->getJson('/api/loans/PRT-2026-00001');
 
         $response->assertOk()
             ->assertJson([
-                'number' => 'PREST-001',
+                'number' => 'PRT-2026-00001',
                 'applicant' => 'Lic. Maria Elena Rodriguez',
                 'requestedAt' => '16/02/2026 09:15',
             ])
@@ -73,11 +73,11 @@ class RequestCatalogTest extends TestCase
     {
         $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
 
-        $response = $this->actingAs($admin)->get(SignedPdfUrl::loanSummarySheet('PREST-007'));
+        $response = $this->actingAs($admin)->get(SignedPdfUrl::loanSummarySheet('PRT-2026-00007'));
 
         $response->assertOk()
             ->assertHeader('content-type', 'application/pdf')
-            ->assertSee('PREST-007', false)
+            ->assertSee('PRT-2026-00007', false)
             ->assertSee('RECIBIDO POR', false)
             ->assertSee('Firma', false);
     }
@@ -85,7 +85,7 @@ class RequestCatalogTest extends TestCase
     public function test_ugda_can_modify_an_active_loan_registration(): void
     {
         $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
-        $loan = Loan::where('number', 'PREST-007')->firstOrFail();
+        $loan = Loan::where('number', 'PRT-2026-00007')->firstOrFail();
         $originalDocument = $loan->documents()->firstOrFail();
         $replacementDocument = $loan->documents()->create([
             'document_kind' => 'system',
@@ -104,7 +104,7 @@ class RequestCatalogTest extends TestCase
         $dispatch = $loan->latestDispatch()->with('items')->firstOrFail();
 
         $this->actingAs($admin)
-            ->putJson('/api/loans/PREST-007/register', [
+            ->putJson('/api/loans/PRT-2026-00007/register', [
                 'selected_ids' => [$replacementDocument->id],
                 'loan_date' => '20/08/2026',
                 'due_date' => '27/08/2026',
@@ -112,7 +112,7 @@ class RequestCatalogTest extends TestCase
                 'observations' => 'Registro corregido antes de reimprimir.',
             ])
             ->assertOk()
-            ->assertJsonPath('message', 'El registro del préstamo #PREST-007 fue modificado correctamente.');
+            ->assertJsonPath('message', 'El registro del préstamo #PRT-2026-00007 fue modificado correctamente.');
 
         $dispatch->refresh();
 
@@ -141,7 +141,7 @@ class RequestCatalogTest extends TestCase
         $requester = User::where('email', 'unidad.solicitante@yopmail.com')->firstOrFail();
 
         $this->actingAs($requester)
-            ->get(SignedPdfUrl::loanSummarySheet('PREST-007'))
+            ->get(SignedPdfUrl::loanSummarySheet('PRT-2026-00007'))
             ->assertNotFound();
     }
 
@@ -150,7 +150,7 @@ class RequestCatalogTest extends TestCase
         $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
 
         $this->actingAs($admin)
-            ->postJson('/api/loans/PREST-001/register', [
+            ->postJson('/api/loans/PRT-2026-00001/register', [
                 'selected_ids' => [1],
                 'loan_date' => '08/08/2026',
                 'due_date' => '07/08/2026',
@@ -280,7 +280,7 @@ class RequestCatalogTest extends TestCase
             'sort_order' => 2,
         ]);
 
-        $loan = Loan::where('number', 'PREST-007')->firstOrFail();
+        $loan = Loan::where('number', 'PRT-2026-00007')->firstOrFail();
         $loanDocument = $loan->documents()->create([
             'document_kind' => 'system',
             'group_title' => 'Documentos del Sistema (1)',
@@ -339,7 +339,7 @@ class RequestCatalogTest extends TestCase
     {
         $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
 
-        $response = $this->actingAs($admin)->getJson('/api/transfers/000964');
+        $response = $this->actingAs($admin)->getJson('/api/transfers/TRF-2025-00001');
 
         $response->assertOk()
             ->assertJsonPath('boxes.0.number', '001')
@@ -350,7 +350,7 @@ class RequestCatalogTest extends TestCase
             ->assertJsonPath('boxes.0.documents.0.digitalAvailable', true);
 
         $this->assertStringContainsString(
-            '/api/transfers/000964/documents/document-',
+            '/api/transfers/TRF-2025-00001/documents/document-',
             (string) $response->json('boxes.0.documents.0.digitalUrl')
         );
     }
@@ -373,7 +373,7 @@ class RequestCatalogTest extends TestCase
 
         $this->assertNotNull($document);
         $this->assertSame('A-03-2-05', $document['box']['location']);
-        $this->assertSame('000964', $document['transfer']['code']);
+        $this->assertSame('TRF-2025-00001', $document['transfer']['code']);
     }
 
     public function test_admin_can_search_general_archive_by_completed_transfer_date(): void
@@ -498,18 +498,18 @@ class RequestCatalogTest extends TestCase
     {
         $requester = User::where('email', 'unidad.solicitante@yopmail.com')->firstOrFail();
         $ugdaUnit = Unit::where('code', 'UGDA')->firstOrFail();
-        $scheduledTransfer = Transfer::where('code', '000965')->firstOrFail();
+        $scheduledTransfer = Transfer::where('code', 'TRF-2025-00002')->firstOrFail();
 
         $requester->units()->sync([$ugdaUnit->id]);
         $scheduledTransfer->update(['unit_id' => $ugdaUnit->id]);
 
         $this->actingAs($requester)
-            ->getJson('/api/transfers/000965')
+            ->getJson('/api/transfers/TRF-2025-00002')
             ->assertOk()
             ->assertJsonPath('processCard', null);
 
         $this->actingAs($requester)
-            ->postJson('/api/transfers/000965/start-physical-review')
+            ->postJson('/api/transfers/TRF-2025-00002/start-physical-review')
             ->assertForbidden()
             ->assertJsonPath('message', 'Solo UGDA puede iniciar la revision fisica.');
     }
@@ -518,7 +518,7 @@ class RequestCatalogTest extends TestCase
     {
         $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
 
-        $response = $this->actingAs($admin)->getJson('/api/transfers/000975');
+        $response = $this->actingAs($admin)->getJson('/api/transfers/TRF-2025-00005');
 
         $response->assertOk()
             ->assertJsonPath('mode', 'review')
@@ -536,7 +536,7 @@ class RequestCatalogTest extends TestCase
         $ugda = User::where('email', 'usuario.ugda@yopmail.com')->firstOrFail();
         $pendingAuth = RequestStatusCatalog::where('code', 'transfer_auth_pending')->firstOrFail();
         $pendingWorkflow = RequestStatusCatalog::where('code', 'transfer_status_pending')->firstOrFail();
-        $transfer = Transfer::where('code', '000975')->firstOrFail();
+        $transfer = Transfer::where('code', 'TRF-2025-00005')->firstOrFail();
         $notes = 'Se completaron las fichas descriptivas y se adjunto la firma solicitada.';
 
         $transfer->update([
@@ -558,12 +558,12 @@ class RequestCatalogTest extends TestCase
             'occurred_at' => now()->addMinute(),
         ]);
 
-        $this->actingAs($director)->getJson('/api/transfers/000975')
+        $this->actingAs($director)->getJson('/api/transfers/TRF-2025-00005')
             ->assertOk()
             ->assertJsonPath('subsanationSummary.title', 'Aclaraciones del solicitante')
             ->assertJsonPath('subsanationSummary.notes', $notes);
 
-        $this->actingAs($ugda)->getJson('/api/transfers/000975')
+        $this->actingAs($ugda)->getJson('/api/transfers/TRF-2025-00005')
             ->assertOk()
             ->assertJsonPath('subsanationSummary.title', 'Aclaraciones del solicitante')
             ->assertJsonPath('subsanationSummary.notes', $notes);
@@ -576,7 +576,7 @@ class RequestCatalogTest extends TestCase
         $ugda = User::where('email', 'usuario.ugda@yopmail.com')->firstOrFail();
         $authorizedAuth = RequestStatusCatalog::where('code', 'transfer_auth_authorized')->firstOrFail();
         $physicalReview = RequestStatusCatalog::where('code', 'transfer_status_physical_review')->firstOrFail();
-        $transfer = Transfer::where('code', '000975')->firstOrFail();
+        $transfer = Transfer::where('code', 'TRF-2025-00005')->firstOrFail();
 
         $transfer->update([
             'authorization_status_id' => $authorizedAuth->id,
@@ -584,15 +584,15 @@ class RequestCatalogTest extends TestCase
             'scheduled_for' => now()->addDay(),
         ]);
 
-        $this->actingAs($requester)->getJson('/api/transfers/000975')
+        $this->actingAs($requester)->getJson('/api/transfers/TRF-2025-00005')
             ->assertOk()
             ->assertJsonPath('physicalObservations', null);
 
-        $this->actingAs($director)->getJson('/api/transfers/000975')
+        $this->actingAs($director)->getJson('/api/transfers/TRF-2025-00005')
             ->assertOk()
             ->assertJsonPath('physicalObservations', null);
 
-        $this->actingAs($ugda)->getJson('/api/transfers/000975')
+        $this->actingAs($ugda)->getJson('/api/transfers/TRF-2025-00005')
             ->assertOk()
             ->assertJsonPath('physicalObservations', null);
     }
@@ -603,7 +603,7 @@ class RequestCatalogTest extends TestCase
         $ugda = User::where('email', 'usuario.ugda@yopmail.com')->firstOrFail();
         $authorizedAuth = RequestStatusCatalog::where('code', 'transfer_auth_authorized')->firstOrFail();
         $physicalObserved = RequestStatusCatalog::where('code', 'transfer_status_physical_observed')->firstOrFail();
-        $transfer = Transfer::where('code', '000975')->firstOrFail();
+        $transfer = Transfer::where('code', 'TRF-2025-00005')->firstOrFail();
         $physicalMessage = 'Falta rotular fisicamente la caja 2.';
 
         $transfer->update([
@@ -625,7 +625,7 @@ class RequestCatalogTest extends TestCase
             'occurred_at' => now()->addMinute(),
         ]);
 
-        $this->actingAs($requester)->getJson('/api/transfers/000975')
+        $this->actingAs($requester)->getJson('/api/transfers/TRF-2025-00005')
             ->assertOk()
             ->assertJsonPath('physicalObservations.count', 1)
             ->assertJsonPath('physicalObservations.canCorrect', true)
@@ -636,7 +636,7 @@ class RequestCatalogTest extends TestCase
     {
         $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
 
-        $response = $this->actingAs($admin)->getJson('/api/transfers/000973');
+        $response = $this->actingAs($admin)->getJson('/api/transfers/TRF-2025-00004');
 
         $response->assertOk()
             ->assertJsonPath('auth', 'Denegado')
@@ -650,11 +650,11 @@ class RequestCatalogTest extends TestCase
     {
         $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
 
-        $response = $this->actingAs($admin)->get('/api/transfers/000964/documents/EXP-GRAD-2024/download');
+        $response = $this->actingAs($admin)->get('/api/transfers/TRF-2025-00001/documents/EXP-GRAD-2024/download');
 
         $response->assertOk();
         $response->assertHeader('content-disposition', 'attachment; filename=EXP-GRAD-2024.pdf');
-        $this->assertStringContainsString('Transferencia: 000964', $response->streamedContent());
+        $this->assertStringContainsString('Transferencia: TRF-2025-00001', $response->streamedContent());
         $this->assertStringContainsString('Código: EXP-GRAD-2024', $response->streamedContent());
     }
 

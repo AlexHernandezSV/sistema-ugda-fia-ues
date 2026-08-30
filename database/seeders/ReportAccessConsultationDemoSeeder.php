@@ -7,17 +7,29 @@ use App\Models\RequestStatusCatalog;
 use App\Models\Transfer;
 use App\Models\Unit;
 use App\Models\User;
+use App\Support\RequestNumberGenerator;
 use Carbon\Carbon;
+use Database\Seeders\Concerns\SeedsUserAccounts;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
 class ReportAccessConsultationDemoSeeder extends Seeder
 {
+    use SeedsUserAccounts;
+
     private array $statusIds = [];
+
+    private ?string $demoTransferCode = null;
 
     public function run(): void
     {
-        $this->call(RequestStatusCatalogSeeder::class);
+        $this->call([
+            RoleSeeder::class,
+            ProfileSeeder::class,
+            ProfileRoleSeeder::class,
+            EndpointRoleSeeder::class,
+            RequestStatusCatalogSeeder::class,
+        ]);
         $this->statusIds = RequestStatusCatalog::query()->pluck('id', 'code')->all();
 
         DB::transaction(function () {
@@ -34,7 +46,11 @@ class ReportAccessConsultationDemoSeeder extends Seeder
     private function deletePreviousDemoData(): void
     {
         Loan::query()
-            ->where('number', 'like', 'RPT-LOAN-%')
+            ->where(function ($query) {
+                $query
+                    ->where('number', 'like', 'RPT-LOAN-%')
+                    ->orWhere('description', 'Solicitud de prestamo de prueba para reportes.');
+            })
             ->get()
             ->each(function (Loan $loan) {
                 $loan->dispatches()->each(fn ($dispatch) => $dispatch->items()->delete());
@@ -47,7 +63,11 @@ class ReportAccessConsultationDemoSeeder extends Seeder
             });
 
         Transfer::query()
-            ->where('code', 'like', 'RPT-ACC-%')
+            ->where(function ($query) {
+                $query
+                    ->where('code', 'RPT-ACC-2026-001')
+                    ->orWhere('description', 'Datos de prueba para reportes de consulta y acceso.');
+            })
             ->get()
             ->each(function (Transfer $transfer) {
                 $transfer->boxes->each(function ($box) {
@@ -61,86 +81,74 @@ class ReportAccessConsultationDemoSeeder extends Seeder
 
     private function seedUnits(): array
     {
-        return [
-            'decanato' => Unit::updateOrCreate(
+        $units = [
+            'decanato' => Unit::withTrashed()->updateOrCreate(
                 ['code' => 'RPT-DEC'],
                 ['name' => 'Decanato', 'is_active' => true]
             ),
-            'academica' => Unit::updateOrCreate(
+            'academica' => Unit::withTrashed()->updateOrCreate(
                 ['code' => 'RPT-SA'],
                 ['name' => 'Secretaria Academica', 'is_active' => true]
             ),
-            'civil' => Unit::updateOrCreate(
+            'civil' => Unit::withTrashed()->updateOrCreate(
                 ['code' => 'RPT-EIC'],
                 ['name' => 'Escuela de Ingenieria Civil', 'is_active' => true]
             ),
-            'arquitectura' => Unit::updateOrCreate(
+            'arquitectura' => Unit::withTrashed()->updateOrCreate(
                 ['code' => 'RPT-ARQ'],
                 ['name' => 'Escuela de Arquitectura', 'is_active' => true]
             ),
         ];
+
+        foreach ($units as $unit) {
+            if ($unit->trashed()) {
+                $unit->restore();
+            }
+        }
+
+        return $units;
     }
 
     private function seedUsers(array $units): array
     {
         return [
-            'ugda' => $this->seedUser('rpt.ugda@yopmail.com', 'RPT-UGDA', 'Carlos', 'Rodriguez', $units['decanato']->id),
-            'maria' => $this->seedUser('rpt.maria@yopmail.com', 'RPT-MG', 'Maria', 'Gonzalez', $units['decanato']->id),
-            'juan' => $this->seedUser('rpt.juan@yopmail.com', 'RPT-JP', 'Juan', 'Perez', $units['decanato']->id),
-            'ana' => $this->seedUser('rpt.ana@yopmail.com', 'RPT-AM', 'Ana', 'Martinez', $units['academica']->id),
-            'carlos' => $this->seedUser('rpt.carlos@yopmail.com', 'RPT-CL', 'Carlos', 'Lopez', $units['civil']->id),
-            'laura' => $this->seedUser('rpt.laura@yopmail.com', 'RPT-LH', 'Laura', 'Hernandez', $units['arquitectura']->id),
+            'ugda' => $this->seedUser('rpt.ugda@yopmail.com', 'RPT-UGDA', 'Carlos', 'Rodriguez', $units['decanato']->id, 'Usuario UGDA'),
+            'maria' => $this->seedUser('rpt.maria@yopmail.com', 'RPT-MG', 'Maria', 'Gonzalez', $units['decanato']->id, 'Unidad Solicitante'),
+            'juan' => $this->seedUser('rpt.juan@yopmail.com', 'RPT-JP', 'Juan', 'Perez', $units['decanato']->id, 'Unidad Solicitante'),
+            'ana' => $this->seedUser('rpt.ana@yopmail.com', 'RPT-AM', 'Ana', 'Martinez', $units['academica']->id, 'Unidad Solicitante'),
+            'carlos' => $this->seedUser('rpt.carlos@yopmail.com', 'RPT-CL', 'Carlos', 'Lopez', $units['civil']->id, 'Unidad Solicitante'),
+            'laura' => $this->seedUser('rpt.laura@yopmail.com', 'RPT-LH', 'Laura', 'Hernandez', $units['arquitectura']->id, 'Unidad Solicitante'),
         ];
     }
 
-    private function seedUser(string $email, string $carnet, string $firstName, string $lastName, int $unitId): User
+    private function seedUser(string $email, string $carnet, string $firstName, string $lastName, int $unitId, string $profileName): User
     {
-        $user = User::updateOrCreate(
-            ['email' => $email],
-            [
-                'password' => 'password',
-                'is_active' => true,
-            ]
-        );
-
-        DB::table('person')->updateOrInsert(
-            ['user_id' => $user->id],
-            [
+        return $this->seedUserWithProfileAndUnits(
+            email: $email,
+            password: 'password',
+            personData: [
                 'first_name' => $firstName,
                 'second_name' => null,
                 'first_last_name' => $lastName,
                 'second_last_name' => null,
                 'carnet' => $carnet,
-                'user_id' => $user->id,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]
-        );
-
-        DB::table('user_unit')->updateOrInsert(
-            [
-                'user_id' => $user->id,
-                'unit_id' => $unitId,
             ],
-            [
-                'is_active' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-                'deleted_at' => null,
-            ]
+            profileName: $profileName,
+            unitIds: [$unitId],
         );
-
-        return $user;
     }
 
     private function seedArchiveDocuments(User $ugdaUser, array $units): array
     {
+        $requestDate = Carbon::parse('2026-04-28 08:00');
+        $this->demoTransferCode = RequestNumberGenerator::transfer($requestDate);
+
         $transfer = Transfer::query()->create([
-            'code' => 'RPT-ACC-2026-001',
+            'code' => $this->demoTransferCode,
             'user_id' => $ugdaUser->id,
             'unit_id' => $units['decanato']->id,
-            'request_date' => '2026-04-28',
-            'requested_at' => Carbon::parse('2026-04-28 08:00'),
+            'request_date' => $requestDate->toDateString(),
+            'requested_at' => $requestDate,
             'status' => 'Aprobada',
             'authorization_status_id' => $this->statusIds['transfer_auth_authorized'] ?? null,
             'workflow_status_id' => $this->statusIds['transfer_status_transferred'] ?? null,
@@ -154,12 +162,15 @@ class ReportAccessConsultationDemoSeeder extends Seeder
             'description' => 'Datos de prueba para reportes de consulta y acceso.',
         ]);
 
+        $boxCode = RequestNumberGenerator::box(Carbon::parse('2026-04-30 16:00'));
+
         $box = $transfer->boxes()->create([
             'series_name' => 'Consultas y Prestamos',
             'start_year' => '2020',
             'end_year' => '2026',
             'box_number' => 1,
-            'title' => 'Caja de datos de prueba para reportes',
+            'box_code' => $boxCode,
+            'title' => 'Caja ' . $boxCode,
             'period_label' => '2020-2026',
             'location_code' => 'RPT-A1-E1-B1',
             'assigned_by_user_id' => $ugdaUser->id,
@@ -230,7 +241,7 @@ class ReportAccessConsultationDemoSeeder extends Seeder
             $searchCompletedAt = $searchStartedAt->copy()->addMinutes($minutes);
 
             $loan = Loan::query()->create([
-                'number' => 'RPT-LOAN-2026-' . str_pad((string) ($index + 1), 3, '0', STR_PAD_LEFT),
+                'number' => RequestNumberGenerator::loan($requestedAt),
                 'user_id' => $requester->id,
                 'unit_id' => $unit->id,
                 'requested_at' => $requestedAt,
@@ -255,7 +266,7 @@ class ReportAccessConsultationDemoSeeder extends Seeder
                 'group_title' => 'Documentos del Sistema (1)',
                 'title' => $document->name,
                 'series_label' => $document->series_label,
-                'box_code' => 'CAJA-001',
+                'box_code' => $box->boxCode(),
                 'year_label' => $document->year_label,
                 'unit_name_snapshot' => $unit->name,
                 'document_type_label' => 'Copia',

@@ -2,15 +2,14 @@
 
 namespace Database\Seeders;
 
-use App\Models\DocumentarySeries;
-use App\Models\Profile;
 use App\Models\Unit;
-use App\Models\User;
+use Database\Seeders\Concerns\SeedsUserAccounts;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
 
 class DatabaseSeeder extends Seeder
 {
+    use SeedsUserAccounts;
+
     public function run(): void
     {
         $this->call([
@@ -22,22 +21,27 @@ class DatabaseSeeder extends Seeder
             RequestStatusCatalogSeeder::class,
         ]);
 
-        $now = now();
-        $ugdaUnit = Unit::updateOrCreate(
+        $ugdaUnit = Unit::withTrashed()->updateOrCreate(
             ['code' => 'UGDA'],
             [
                 'name' => 'Unidad de Gestión Documental y Archivos',
                 'is_active' => true,
             ]
         );
+        if ($ugdaUnit->trashed()) {
+            $ugdaUnit->restore();
+        }
 
-        $decanatoUnit = Unit::updateOrCreate(
+        $decanatoUnit = Unit::withTrashed()->updateOrCreate(
             ['code' => 'DEC-FIA'],
             [
                 'name' => 'Decanato FIA',
                 'is_active' => true,
             ]
         );
+        if ($decanatoUnit->trashed()) {
+            $decanatoUnit->restore();
+        }
 
         $this->seedUserWithProfileAndUnits(
             email: 'admin-ugda@yopmail.com',
@@ -51,7 +55,6 @@ class DatabaseSeeder extends Seeder
             ],
             profileName: 'Administrador',
             unitIds: [$ugdaUnit->id],
-            now: $now,
         );
 
         $this->seedUserWithProfileAndUnits(
@@ -66,7 +69,6 @@ class DatabaseSeeder extends Seeder
             ],
             profileName: 'Usuario UGDA',
             unitIds: [$ugdaUnit->id],
-            now: $now,
         );
 
         $this->seedUserWithProfileAndUnits(
@@ -81,7 +83,6 @@ class DatabaseSeeder extends Seeder
             ],
             profileName: 'Unidad Solicitante',
             unitIds: [$decanatoUnit->id],
-            now: $now,
         );
 
         $this->seedUserWithProfileAndUnits(
@@ -96,97 +97,10 @@ class DatabaseSeeder extends Seeder
             ],
             profileName: 'Director/Jefe de Unidad',
             unitIds: [$decanatoUnit->id],
-            now: $now,
         );
 
         $this->call([
             RequestWorkflowDemoSeeder::class,
         ]);
-    }
-
-    private function seedUserWithProfileAndUnits(
-        string $email,
-        string $password,
-        array $personData,
-        string $profileName,
-        array $unitIds,
-        $now
-    ): void {
-        $user = User::updateOrCreate(
-            ['email' => $email],
-            [
-                'password' => $password,
-                'is_active' => true,
-            ]
-        );
-
-        DB::table('person')->updateOrInsert(
-            ['user_id' => $user->id],
-            array_merge($personData, [
-                'user_id' => $user->id,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ])
-        );
-
-        $profile = Profile::withTrashed()->firstOrCreate(
-            ['name' => $profileName],
-            [
-                'description' => null,
-                'is_active' => true,
-            ]
-        );
-
-        if ($profile->trashed()) {
-            $profile->restore();
-        }
-
-        if (!$profile->is_active) {
-            $profile->is_active = true;
-            $profile->save();
-        }
-
-        DB::table('user_profile')
-            ->where('user_id', $user->id)
-            ->update([
-                'is_active' => false,
-                'updated_at' => $now,
-            ]);
-
-        DB::table('user_profile')->updateOrInsert(
-            [
-                'user_id' => $user->id,
-                'profile_id' => $profile->id,
-            ],
-            [
-                'is_active' => true,
-                'updated_at' => $now,
-                'created_at' => $now,
-                'deleted_at' => null,
-            ]
-        );
-
-        DB::table('user_unit')
-            ->where('user_id', $user->id)
-            ->update([
-                'is_active' => false,
-                'updated_at' => $now,
-                'deleted_at' => $now,
-            ]);
-
-        foreach ($unitIds as $index => $unitId) {
-            DB::table('user_unit')->updateOrInsert(
-                [
-                    'user_id' => $user->id,
-                    'unit_id' => $unitId,
-                ],
-                [
-                    'is_active' => $index === 0,
-                    'updated_at' => $now,
-                    'created_at' => $now,
-                    'deleted_at' => null,
-                ]
-            );
-        }
     }
 }

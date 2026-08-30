@@ -2,8 +2,8 @@
 
 namespace Database\Seeders;
 
+use App\Models\Role;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class RoleSeeder extends Seeder
@@ -14,24 +14,27 @@ class RoleSeeder extends Seeder
             return;
         }
 
-        $now = now();
         $baseRoles = [
             'Administrador',
+            'Usuario UGDA',
             'Unidad Solicitante',
             'Director/Jefe de Unidad',
         ];
 
         foreach ($baseRoles as $roleName) {
-            DB::table('roles')->updateOrInsert(
+            $role = Role::withTrashed()->firstOrCreate(
                 ['name' => $roleName],
                 [
                     'description' => null,
                     'is_active' => true,
-                    'updated_at' => $now,
-                    'created_at' => $now,
-                    'deleted_at' => null,
                 ]
             );
+
+            if ($role->trashed()) {
+                $role->restore();
+            }
+
+            $role->update(['is_active' => true]);
         }
     }
 }

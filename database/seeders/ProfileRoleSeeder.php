@@ -15,34 +15,33 @@ class ProfileRoleSeeder extends Seeder
         }
 
         $now = now();
-        $profiles = DB::table('profiles')->select('id', 'name')->get();
+        $profiles = DB::table('profiles')
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->select('id', 'name')
+            ->get();
 
         foreach ($profiles as $profile) {
-            $roleId = DB::table('roles')->where('name', $profile->name)->value('id');
+            $roleId = DB::table('roles')
+                ->where('name', $profile->name)
+                ->where('is_active', true)
+                ->whereNull('deleted_at')
+                ->value('id');
 
             if ($roleId === null) {
-                $roleId = DB::table('roles')->insertGetId([
-                    'name' => $profile->name,
-                    'description' => null,
-                    'is_active' => true,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                    'deleted_at' => null,
-                ]);
+                continue;
             }
 
-            DB::table('profile_role')->updateOrInsert(
+            DB::table('profile_role')->upsert([
                 [
                     'role_id' => $roleId,
                     'profile_id' => $profile->id,
-                ],
-                [
                     'is_active' => true,
-                    'updated_at' => $now,
                     'created_at' => $now,
+                    'updated_at' => $now,
                     'deleted_at' => null,
-                ]
-            );
+                ],
+            ], ['role_id', 'profile_id'], ['is_active', 'updated_at', 'deleted_at']);
         }
     }
 }

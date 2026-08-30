@@ -2,8 +2,8 @@
 
 namespace Database\Seeders;
 
+use App\Models\Profile;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class ProfileSeeder extends Seeder
@@ -14,7 +14,6 @@ class ProfileSeeder extends Seeder
             return;
         }
 
-        $now = now();
         $profiles = [
             ['name' => 'Administrador', 'description' => 'Acceso administrativo completo'],
             ['name' => 'Usuario UGDA', 'description' => 'Perfil operativo para consulta de reportes y gestión documental UGDA'],
@@ -23,16 +22,22 @@ class ProfileSeeder extends Seeder
         ];
 
         foreach ($profiles as $profile) {
-            DB::table('profiles')->updateOrInsert(
+            $model = Profile::withTrashed()->firstOrCreate(
                 ['name' => $profile['name']],
                 [
                     'description' => $profile['description'],
                     'is_active' => true,
-                    'updated_at' => $now,
-                    'created_at' => $now,
-                    'deleted_at' => null,
                 ]
             );
+
+            if ($model->trashed()) {
+                $model->restore();
+            }
+
+            $model->update([
+                'description' => $profile['description'],
+                'is_active' => true,
+            ]);
         }
     }
 }

@@ -34,18 +34,23 @@ class EndpointRoleSeeder extends Seeder
             'endpoint.ui.reports.read' => 'Permite acceder al modulo de reportes dinamicos',
         ];
 
+        $roleRows = [];
         foreach ($endpointRoles as $name => $description) {
-            DB::table('roles')->updateOrInsert(
-                ['name' => $name],
-                [
-                    'description' => $description,
-                    'is_active' => true,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                    'deleted_at' => null,
-                ]
-            );
+            $roleRows[] = [
+                'name' => $name,
+                'description' => $description,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+                'deleted_at' => null,
+            ];
         }
+
+        DB::table('roles')->upsert(
+            $roleRows,
+            ['name'],
+            ['description', 'is_active', 'updated_at', 'deleted_at']
+        );
 
         $permissionsByProfile = [
             'Administrador' => array_keys($endpointRoles),
@@ -67,7 +72,11 @@ class EndpointRoleSeeder extends Seeder
         ];
 
         foreach ($permissionsByProfile as $profileName => $permissions) {
-            $profileId = DB::table('profiles')->where('name', $profileName)->value('id');
+            $profileId = DB::table('profiles')
+                ->where('name', $profileName)
+                ->where('is_active', true)
+                ->whereNull('deleted_at')
+                ->value('id');
 
             if ($profileId === null) {
                 continue;
@@ -78,18 +87,16 @@ class EndpointRoleSeeder extends Seeder
                 ->pluck('id');
 
             foreach ($roleIds as $roleId) {
-                DB::table('profile_role')->updateOrInsert(
+                DB::table('profile_role')->upsert([
                     [
                         'profile_id' => $profileId,
                         'role_id' => $roleId,
-                    ],
-                    [
                         'is_active' => true,
                         'created_at' => $now,
                         'updated_at' => $now,
                         'deleted_at' => null,
-                    ]
-                );
+                    ],
+                ], ['role_id', 'profile_id'], ['is_active', 'updated_at', 'deleted_at']);
             }
         }
     }
