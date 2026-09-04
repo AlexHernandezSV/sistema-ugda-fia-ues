@@ -69,6 +69,18 @@ class SystemNotificationService
             'reference_id' => $transfer->id,
             'reference_number' => $transfer->code,
         ]);
+
+        $this->notifyUsers([$transfer->user_id], $actor, [
+            'type' => 'transfer_authorized_by_unit',
+            'title' => 'Transferencia autorizada',
+            'short_message' => 'Transferencia #' . $transfer->code . ' fue autorizada por jefatura.',
+            'body' => 'La jefatura de la unidad autorizó la transferencia documental. UGDA continuará con la revisión y programación de la entrega física.',
+            'tone' => 'success',
+            'action_url' => '/solicitudes/transferencias/' . $transfer->code,
+            'reference_type' => 'transfer',
+            'reference_id' => $transfer->id,
+            'reference_number' => $transfer->code,
+        ]);
     }
 
     public function transferDeniedByUnit(Transfer $transfer, User $actor, string $reason): void
@@ -235,6 +247,18 @@ class SystemNotificationService
             'short_message' => 'Préstamo #' . $loan->number . ' listo para búsqueda.',
             'body' => 'La jefatura autorizó el préstamo de ' . ($loan->unit?->name ?? 'la unidad solicitante') . '. UGDA debe iniciar la búsqueda de documentos.',
             'tone' => 'info',
+            'action_url' => '/solicitudes/prestamos/' . $loan->number,
+            'reference_type' => 'loan',
+            'reference_id' => $loan->id,
+            'reference_number' => $loan->number,
+        ]);
+
+        $this->notifyUsers([$loan->user_id], $actor, [
+            'type' => 'loan_authorized_by_unit',
+            'title' => 'Préstamo autorizado',
+            'short_message' => 'Préstamo #' . $loan->number . ' fue autorizado por jefatura.',
+            'body' => 'La jefatura de la unidad autorizó la solicitud de préstamo. UGDA continuará con la búsqueda de los documentos solicitados.',
+            'tone' => 'success',
             'action_url' => '/solicitudes/prestamos/' . $loan->number,
             'reference_type' => 'loan',
             'reference_id' => $loan->id,

@@ -147,6 +147,7 @@ class SystemNotificationController extends Controller
         return match ($type) {
             'transfer_pending_unit_authorization' => 'Transferencia por autorizar',
             'transfer_pending_ugda_review' => 'Transferencia para UGDA',
+            'transfer_authorized_by_unit' => 'Transferencia autorizada',
             'transfer_denied_by_unit' => 'Transferencia denegada',
             'transfer_observed' => 'Transferencia observada',
             'transfer_scheduled' => 'Transferencia agendada',
@@ -154,6 +155,7 @@ class SystemNotificationController extends Controller
             'transfer_denied_by_ugda' => 'Transferencia denegada por UGDA',
             'loan_pending_search' => 'Préstamo para búsqueda',
             'loan_pending_unit_authorization' => 'Préstamo por autorizar',
+            'loan_authorized_by_unit' => 'Préstamo autorizado',
             'loan_observed' => 'Préstamo observado',
             'loan_denied' => 'Préstamo denegado',
             'loan_search_started' => 'Búsqueda iniciada',

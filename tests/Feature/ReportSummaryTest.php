@@ -123,6 +123,32 @@ class ReportSummaryTest extends TestCase
             ]);
     }
 
+    public function test_classification_report_can_filter_by_a_series_and_subseries_label(): void
+    {
+        $user = User::where('email', 'usuario.ugda@yopmail.com')->firstOrFail();
+        $document = TransferDocument::query()
+            ->whereHas('box.transfer.workflowStatus', fn ($query) =>
+                $query->where('code', 'transfer_status_transferred')
+            )
+            ->firstOrFail();
+        $seriesLabel = '010 - ACTAS / 01 - Actas Asamblea General Universitaria';
+
+        $document->update(['series_label' => $seriesLabel]);
+
+        $response = $this->actingAs($user)->getJson(
+            '/api/reports/classification-organization/series-subseries?' . http_build_query([
+                'series' => $seriesLabel,
+            ])
+        );
+
+        $response->assertOk()
+            ->assertJsonPath('summary.filtered_documents', 1)
+            ->assertJsonFragment([
+                'label' => $seriesLabel,
+                'documents_count' => 1,
+            ]);
+    }
+
     public function test_reports_merge_physical_support_variants(): void
     {
         $user = User::where('email', 'usuario.ugda@yopmail.com')->firstOrFail();

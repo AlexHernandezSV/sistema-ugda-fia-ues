@@ -1188,12 +1188,8 @@ class ArchiveController extends Controller
                     $query->orWhereHas('box', function (Builder $boxQuery) use ($term, $searchDate) {
                         $this->addSearchClauses($boxQuery, [
                             'transfer_boxes.box_code',
-                            'transfer_boxes.series_name',
                             'transfer_boxes.box_number',
-                            'transfer_boxes.title',
-                            'transfer_boxes.period_label',
                             'transfer_boxes.location_code',
-                            'transfer_boxes.content_description',
                         ], $term);
 
                         if ($searchDate !== null) {
@@ -1202,15 +1198,7 @@ class ArchiveController extends Controller
                     });
 
                     $query->orWhereHas('box.transfer', function (Builder $transferQuery) use ($term, $searchDate) {
-                        $this->addSearchClauses($transferQuery, [
-                            'transfers.code',
-                            'transfers.status',
-                            'transfers.request_date',
-                            'transfers.requested_at',
-                            'transfers.completed_at',
-                            'transfers.description',
-                            'transfers.observation',
-                        ], $term);
+                        $this->addSearchClauses($transferQuery, ['transfers.code'], $term);
 
                         if ($searchDate !== null) {
                             $transferQuery

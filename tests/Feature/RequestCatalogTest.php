@@ -374,6 +374,39 @@ class RequestCatalogTest extends TestCase
         $this->assertNotNull($document);
         $this->assertSame('A-03-2-05', $document['box']['location']);
         $this->assertSame('TRF-2025-00001', $document['transfer']['code']);
+
+        $documentCodeResponse = $this->actingAs($admin)
+            ->getJson('/api/archive/documents?q=EXP-GRAD-2024');
+
+        $documentCodeResponse->assertOk();
+        $this->assertTrue(
+            collect($documentCodeResponse->json('results'))
+                ->pluck('code')
+                ->contains('EXP-GRAD-2024')
+        );
+
+        $boxCodeResponse = $this->actingAs($admin)
+            ->getJson('/api/archive/documents?q=C-2025-00001');
+
+        $boxCodeResponse->assertOk();
+        $boxResultCodes = collect($boxCodeResponse->json('results'))->pluck('code');
+
+        $this->assertTrue($boxResultCodes->contains('EXP-GRAD-2024'));
+        $this->assertTrue($boxResultCodes->contains('ACTA-GRAD-2024'));
+    }
+
+    public function test_general_archive_does_not_return_sibling_documents_for_a_document_name_search(): void
+    {
+        $admin = User::where('email', 'admin-ugda@yopmail.com')->firstOrFail();
+
+        $response = $this->actingAs($admin)->getJson('/api/archive/documents?q=EXPEDIENTE');
+
+        $response->assertOk();
+
+        $codes = collect($response->json('results'))->pluck('code');
+
+        $this->assertTrue($codes->contains('EXP-GRAD-2024'));
+        $this->assertFalse($codes->contains('ACTA-GRAD-2024'));
     }
 
     public function test_admin_can_search_general_archive_by_completed_transfer_date(): void

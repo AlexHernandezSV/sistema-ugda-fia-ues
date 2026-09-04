@@ -821,7 +821,7 @@ class ReportController extends Controller
         $normalizedColumn = "REPLACE(REPLACE(LOWER(COALESCE({$column}, '')), ' ', ''), ';', '|')";
 
         $query->whereRaw(
-            "('|' || {$normalizedColumn} || '|') LIKE ? ESCAPE '\\\\'",
+            "('|' || {$normalizedColumn} || '|') LIKE ? ESCAPE '\\'",
             ["%|{$escapedLabel}|%"]
         );
     }
