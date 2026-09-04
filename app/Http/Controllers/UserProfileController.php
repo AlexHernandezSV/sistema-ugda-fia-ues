@@ -7,6 +7,7 @@ use App\Models\Transfer;
 use App\Models\User;
 use App\Services\AuthenticatorCodeService;
 use App\Services\UserActivityLogger;
+use App\Support\PasswordSecurity;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -97,6 +98,18 @@ class UserProfileController extends Controller
 
         if (!Hash::check($request->current_password, $user->password)) {
             return response()->json(['message' => 'La contraseña actual no es correcta.'], 422);
+        }
+
+        $passwordViolations = PasswordSecurity::violations(
+            (string) $request->input('password'),
+            (string) $request->input('current_password')
+        );
+
+        if ($passwordViolations !== []) {
+            return response()->json([
+                'message' => $passwordViolations[0],
+                'errors' => ['password' => $passwordViolations],
+            ], 422);
         }
 
         $user->update([

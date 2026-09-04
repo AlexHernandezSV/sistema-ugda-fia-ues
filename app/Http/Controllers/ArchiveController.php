@@ -12,13 +12,16 @@ use App\Models\TransferBox;
 use App\Models\TransferDocument;
 use App\Models\Unit;
 use App\Models\User;
+use App\Services\UserActivityLogger;
 use App\Support\RequestNumberGenerator;
 use App\Support\SignedPdfUrl;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -557,7 +560,7 @@ class ArchiveController extends Controller
         }
     }
 
-    public function destroyBox(Request $request, int $id): JsonResponse
+    public function destroyBox(Request $request, int $id, UserActivityLogger $activityLogger): JsonResponse
     {
         if (!$this->canManageArchive($request)) {
             return response()->json([
@@ -565,19 +568,65 @@ class ArchiveController extends Controller
             ], 403);
         }
 
+        $validator = Validator::make($request->all(), [
+            'current_password' => ['required', 'string'],
+        ], [
+            'current_password.required' => 'Ingrese su contraseña para confirmar la eliminacion.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'La contraseña es obligatoria para eliminar la caja.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        if (!Hash::check((string) $request->input('current_password'), (string) $request->user()->password)) {
+            return response()->json([
+                'message' => 'La contraseña ingresada no es correcta.',
+            ], 422);
+        }
+
         try {
             $box = TransferBox::query()->with('transfer')->findOrFail($id);
+            $transfer = $box->transfer;
 
-            if ($box->transfer?->view_mode !== 'archive') {
+            if ($transfer?->view_mode !== 'archive') {
                 return response()->json([
                     'message' => 'Solo se pueden eliminar cajas creadas directamente desde Archivo General.',
                 ], 422);
             }
 
-            $box->transfer?->delete();
+            $boxCode = $box->boxCode($transfer->code);
+            $deletionType = in_array(SoftDeletes::class, class_uses_recursive($transfer), true)
+                ? 'soft delete'
+                : 'hard delete';
+            $activityLog = DB::transaction(function () use (
+                $activityLogger,
+                $request,
+                $box,
+                $boxCode,
+                $deletionType,
+                $transfer,
+            ) {
+                $log = $activityLogger->log(
+                    $request->user(),
+                    $request->user(),
+                    'archive_box_deleted',
+                    'Eliminacion de caja (' . $deletionType . ')',
+                    'Numero de caja eliminada: ' . $box->box_number
+                        . ' (' . $boxCode . '). Tipo de eliminacion: ' . $deletionType . '.',
+                    $request,
+                );
+
+                $transfer->delete();
+
+                return $log;
+            });
 
             return response()->json([
                 'message' => 'Caja eliminada correctamente.',
+                'event_id' => $activityLog->id,
             ]);
         } catch (Throwable $exception) {
             report($exception);

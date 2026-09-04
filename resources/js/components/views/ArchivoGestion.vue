@@ -46,6 +46,9 @@ const reopenEditDocumentDialogAfterPreview = ref(false);
 const deleteDialogVisible = ref(false);
 const deletingBox = ref(false);
 const boxPendingDelete = ref(null);
+const deleteForm = ref({
+    current_password: '',
+});
 const rowsPerPageOptions = [5, 10, 25, 50];
 const pagination = ref({
     current_page: 1,
@@ -587,6 +590,7 @@ const deleteBox = (box) => {
     }
 
     boxPendingDelete.value = box;
+    deleteForm.value.current_password = '';
     deleteDialogVisible.value = true;
 };
 
@@ -597,6 +601,7 @@ const closeDeleteDialog = () => {
 
     deleteDialogVisible.value = false;
     boxPendingDelete.value = null;
+    deleteForm.value.current_password = '';
 };
 
 const confirmDeleteBox = async () => {
@@ -604,11 +609,20 @@ const confirmDeleteBox = async () => {
         return;
     }
 
+    if (!deleteForm.value.current_password) {
+        showError('Ingrese su contraseña para confirmar la eliminación.');
+        return;
+    }
+
     deletingBox.value = true;
 
     try {
         const box = boxPendingDelete.value;
-        await axios.delete(`/api/archive/boxes/${box.id}`);
+        await axios.delete(`/api/archive/boxes/${box.id}`, {
+            data: {
+                current_password: deleteForm.value.current_password,
+            },
+        });
         toast.add({
             severity: 'success',
             summary: 'Caja eliminada',
@@ -617,6 +631,7 @@ const confirmDeleteBox = async () => {
         });
         deleteDialogVisible.value = false;
         boxPendingDelete.value = null;
+        deleteForm.value.current_password = '';
         await fetchBoxes();
     } catch (error) {
         toast.add({
@@ -961,7 +976,19 @@ onMounted(fetchBoxes);
                     Se eliminara la caja
                     <strong>{{ boxPendingDelete.box_code || boxPendingDelete.boxCode || boxPendingDelete.code }}</strong>.
                 </p>
-                <p>Esta accion no se puede revertir.</p>
+                <p>Esta acción no se puede revertir.</p>
+                <label class="archive-delete-dialog__password">
+                    <span>Ingrese su contraseña para confirmar</span>
+                    <InputText
+                        v-model="deleteForm.current_password"
+                        type="password"
+                        autocomplete="current-password"
+                        placeholder="Ingrese su contraseña"
+                        :disabled="deletingBox"
+                        class="w-full"
+                        @keyup.enter="confirmDeleteBox"
+                    />
+                </label>
             </div>
 
             <template #footer>
@@ -1353,6 +1380,18 @@ onMounted(fetchBoxes);
 .archive-delete-dialog__body strong {
     color: #111827;
     font-weight: 700;
+}
+
+.archive-delete-dialog__password {
+    display: grid;
+    gap: 0.4rem;
+    margin-top: 0.35rem;
+}
+
+.archive-delete-dialog__password span {
+    color: #334155;
+    font-size: 0.9rem;
+    font-weight: 600;
 }
 
 @media (max-width: 991px) {

@@ -6,6 +6,7 @@ use App\Mail\TwoFactorCodeMail;
 use App\Models\User;
 use App\Services\AuthenticatorCodeService;
 use App\Services\UserActivityLogger;
+use App\Support\PasswordSecurity;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -128,6 +129,18 @@ class AuthController extends Controller
             return response()->json([
                 'message' => 'La contrasena temporal ha expirado. Solicite un nuevo restablecimiento.',
             ], 401);
+        }
+
+        $passwordViolations = PasswordSecurity::violations(
+            (string) $request->input('password'),
+            (string) $request->input('current_password')
+        );
+
+        if ($passwordViolations !== []) {
+            return response()->json([
+                'message' => $passwordViolations[0],
+                'errors' => ['password' => $passwordViolations],
+            ], 422);
         }
 
         $user->update([

@@ -356,7 +356,7 @@ onMounted(fetchProfile);
                             <InputText v-model="passwordForm.password" type="password" autocomplete="new-password" placeholder="Minimo 10 caracteres" />
                         </label>
                         <p class="perfil-password-policy">
-                            Usa al menos 10 caracteres con mayúscula, minúscula, número y símbolo.
+                            Usa al menos 10 caracteres con mayúscula, minúscula, número y símbolo. No uses secuencias de números o letras consecutivos ni una contraseña similar a la anterior.
                         </p>
                         <label>
                             <span>Confirmar nueva contrasena</span>

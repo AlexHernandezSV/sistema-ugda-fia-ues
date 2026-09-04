@@ -15,8 +15,8 @@ class UserActivityLogger
         string $title,
         ?string $description = null,
         ?Request $request = null
-    ): void {
-        UserActivityLog::create([
+    ): UserActivityLog {
+        return UserActivityLog::create([
             'user_id' => $user->id,
             'actor_user_id' => $actor?->id,
             'event_type' => $eventType,

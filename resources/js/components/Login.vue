@@ -699,7 +699,7 @@ onBeforeUnmount(() => {
                         </div>
 
                         <p class="login-password-policy">
-                            Usa al menos 10 caracteres con mayúscula, minúscula, número y símbolo.
+                            Usa al menos 10 caracteres con mayúscula, minúscula, número y símbolo. No uses secuencias de números o letras consecutivos ni una contraseña similar a la anterior.
                         </p>
 
                         <Button label="Actualizar y continuar" icon="pi pi-check"
