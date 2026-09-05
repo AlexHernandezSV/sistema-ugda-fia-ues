@@ -19,6 +19,9 @@ const submitting = ref(false);
 const removingId = ref(null);
 const removeDialogVisible = ref(false);
 const documentPendingRemoval = ref(null);
+const removeForm = ref({
+    current_password: '',
+});
 let availableSearchTimer = null;
 let reservedSearchTimer = null;
 
@@ -47,18 +50,36 @@ const supportTone = (support) => {
     return 'reserved-support-badge--physical';
 };
 
-const boxLabel = (document) => {
-    const number = document?.box?.number;
-    return number ? `#${number}` : 'Sin caja';
+const currentBox = (document) => document?.current_box ?? document?.box ?? {};
+
+const boxCode = (document) => {
+    const box = currentBox(document);
+
+    return box.code
+        || box.box_code
+        || box.boxCode
+        || document?.box_code
+        || null;
 };
 
-const locationLabel = (document) => document?.box?.location ?? 'Ubicación pendiente';
+const boxLabel = (document) => {
+    return boxCode(document) || 'Código de caja no disponible';
+};
+
+const locationLabel = (document) => {
+    const box = currentBox(document);
+
+    return box.location
+        ?? box.location_code
+        ?? document?.box_location
+        ?? 'Ubicación pendiente';
+};
 
 const documentMetadata = (document) => [
     document.series ? `Serie: ${document.series}` : null,
     document.unit?.name ? `Unidad: ${document.unit.name}` : null,
     document.year ? `Año: ${document.year}` : null,
-    `Caja: ${boxLabel(document)}`,
+    `Caja actual: ${boxLabel(document)}`,
 ].filter(Boolean);
 
 const fetchReservedDocuments = async () => {
@@ -163,6 +184,7 @@ const addReservedDocument = async () => {
 
 const removeReservedDocument = (document) => {
     documentPendingRemoval.value = document;
+    removeForm.value.current_password = '';
     removeDialogVisible.value = true;
 };
 
@@ -173,6 +195,7 @@ const closeRemoveDialog = () => {
 
     removeDialogVisible.value = false;
     documentPendingRemoval.value = null;
+    removeForm.value.current_password = '';
 };
 
 const confirmRemoveReservedDocument = async () => {
@@ -180,11 +203,25 @@ const confirmRemoveReservedDocument = async () => {
         return;
     }
 
+    if (!removeForm.value.current_password) {
+        toast.add({
+            severity: 'warn',
+            summary: 'Confirmacion requerida',
+            detail: 'Ingrese su contraseña para confirmar la eliminación.',
+            life: 3200,
+        });
+        return;
+    }
+
     const document = documentPendingRemoval.value;
     removingId.value = document.id;
 
     try {
-        const { data } = await axios.delete(`/api/archive/reserved-documents/${document.id}`);
+        const { data } = await axios.delete(`/api/archive/reserved-documents/${document.id}`, {
+            data: {
+                current_password: removeForm.value.current_password,
+            },
+        });
         toast.add({
             severity: 'success',
             summary: 'Documento removido',
@@ -193,6 +230,7 @@ const confirmRemoveReservedDocument = async () => {
         });
         removeDialogVisible.value = false;
         documentPendingRemoval.value = null;
+        removeForm.value.current_password = '';
         await fetchReservedDocuments();
     } catch (error) {
         toast.add({
@@ -303,7 +341,7 @@ onBeforeUnmount(() => {
                                 <span v-for="item in documentMetadata(document)" :key="item">{{ item }}</span>
                             </div>
                             <small>
-                                Ubicación: {{ locationLabel(document) }}
+                                Ubicación actual: {{ locationLabel(document) }}
                                 <template v-if="document.reserved_at_label">
                                     · Reservado: {{ document.reserved_at_label }}
                                 </template>
@@ -449,6 +487,18 @@ onBeforeUnmount(() => {
                     de documentos reservados.
                 </p>
                 <p>Esta accion no se puede revertir.</p>
+                <label class="reserved-remove-dialog__password">
+                    <span>Ingrese su contraseña para confirmar</span>
+                    <InputText
+                        v-model="removeForm.current_password"
+                        type="password"
+                        autocomplete="current-password"
+                        placeholder="Ingrese su contraseña"
+                        :disabled="!!removingId"
+                        class="w-full"
+                        @keyup.enter="confirmRemoveReservedDocument"
+                    />
+                </label>
             </div>
 
             <template #footer>
@@ -472,8 +522,10 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .reserved-page {
-    background: #f8fafc;
-    color: #0f172a;
+    background: var(--ugda-surface-page);
+    color: var(--ugda-text-primary);
+    font-family: var(--ugda-font-family);
+    font-size: var(--ugda-font-body);
     margin: -1.5rem;
     min-height: 100vh;
 }
@@ -481,11 +533,11 @@ onBeforeUnmount(() => {
 .reserved-header {
     align-items: center;
     background: #ffffff;
-    border-bottom: 1px solid #dbe3ed;
+    border-bottom: 1px solid var(--ugda-border);
     display: flex;
     gap: 1rem;
     min-height: 5.25rem;
-    padding: 0 2rem;
+    padding: 0 var(--ugda-space-xl);
 }
 
 .reserved-back-button,
@@ -493,7 +545,7 @@ onBeforeUnmount(() => {
     align-items: center;
     background: transparent;
     border: 0;
-    color: #0f4c8f;
+    color: var(--ugda-brand-hover);
     cursor: pointer;
     display: inline-flex;
     font: inherit;
@@ -502,43 +554,45 @@ onBeforeUnmount(() => {
 }
 
 .reserved-header-separator {
-    background: #dbe3ed;
+    background: var(--ugda-border);
     height: 1.6rem;
     width: 1px;
 }
 
 .reserved-header h1 {
-    font-size: 1.55rem;
-    font-weight: 600;
+    color: var(--ugda-brand) !important;
+    font-size: 1.55rem !important;
+    font-weight: var(--ugda-weight-semibold) !important;
+    line-height: 1.15;
     margin: 0;
 }
 
 .reserved-main {
     display: grid;
-    gap: 1.5rem;
-    padding: 2rem;
+    gap: var(--ugda-space-lg);
+    padding: var(--ugda-space-xl);
 }
 
 .reserved-warning {
     align-items: flex-start;
-    background: #fffbeb;
-    border: 1px solid #f7c948;
-    border-radius: 0.55rem;
-    color: #9a3412;
+    background: var(--ugda-warning-soft);
+    border: 1px solid var(--ugda-warning);
+    border-radius: var(--ugda-radius-md);
+    color: var(--ugda-warning-text);
     display: flex;
-    font-size: 0.86rem;
+    font-size: var(--ugda-font-body);
     gap: 0.75rem;
     padding: 0.85rem 1rem;
 }
 
 .reserved-warning i {
-    color: #f97316;
+    color: var(--ugda-warning);
     margin-top: 0.1rem;
 }
 
 .reserved-warning strong {
     display: block;
-    font-size: 0.88rem;
+    font-size: var(--ugda-font-body);
     margin-bottom: 0.35rem;
 }
 
@@ -548,19 +602,19 @@ onBeforeUnmount(() => {
 }
 
 .reserved-card {
-    background: #ffffff;
-    border: 1px solid #d8e1ec;
-    border-radius: 0.65rem;
+    background: var(--ugda-surface-card);
+    border: 1px solid var(--ugda-border);
+    border-radius: var(--ugda-radius-lg);
     overflow: hidden;
 }
 
 .reserved-card__header {
     align-items: center;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--ugda-border);
     display: flex;
     gap: 1rem;
     justify-content: space-between;
-    padding: 1rem 1.5rem;
+    padding: var(--ugda-space-md) var(--ugda-space-lg);
 }
 
 .reserved-title {
@@ -570,12 +624,15 @@ onBeforeUnmount(() => {
 }
 
 .reserved-title i {
-    color: #0f4c8f;
+    color: var(--ugda-brand-hover);
     font-size: 1.2rem;
 }
 
 .reserved-title h2 {
-    font-size: 1.25rem;
+    color: var(--ugda-text-primary) !important;
+    font-size: var(--ugda-font-card-title) !important;
+    font-weight: var(--ugda-weight-semibold) !important;
+    line-height: 1.25;
     margin: 0;
 }
 
@@ -588,8 +645,8 @@ onBeforeUnmount(() => {
 
 .reserved-search {
     align-items: center;
-    border: 1px solid #d8e1ec;
-    border-radius: 0.4rem;
+    border: 1px solid var(--ugda-border-strong);
+    border-radius: var(--ugda-radius-md);
     display: flex;
     flex: 1;
     gap: 0.65rem;
@@ -598,14 +655,14 @@ onBeforeUnmount(() => {
 }
 
 .reserved-search i {
-    color: #64748b;
+    color: var(--ugda-text-muted);
 }
 
 .reserved-search :deep(.p-inputtext) {
     border: 0;
     box-shadow: none;
-    font-size: 0.9rem;
-    min-height: 2.25rem;
+    font-size: var(--ugda-font-body) !important;
+    min-height: var(--ugda-control-height);
     padding-left: 0;
     width: 100%;
 }
@@ -622,7 +679,7 @@ onBeforeUnmount(() => {
 .reserved-empty,
 .reserved-state {
     align-items: center;
-    color: #64748b;
+    color: var(--ugda-text-muted);
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
@@ -643,14 +700,14 @@ onBeforeUnmount(() => {
 .reserved-row,
 .reserved-option {
     align-items: center;
-    background: #ffffff;
+    background: var(--ugda-surface-card);
     border: 0;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--ugda-border);
     color: inherit;
     display: flex;
     gap: 0.85rem;
     justify-content: space-between;
-    padding: 0.8rem 1.25rem;
+    padding: var(--ugda-space-sm) var(--ugda-space-lg);
     text-align: left;
     width: 100%;
 }
@@ -673,47 +730,48 @@ onBeforeUnmount(() => {
 }
 
 .reserved-row__topline strong {
-    color: #334155;
-    font-size: 0.82rem;
+    color: var(--ugda-text-secondary);
+    font-size: var(--ugda-font-helper);
 }
 
 .reserved-row h3,
 .reserved-option h3 {
-    color: #111827;
-    font-size: 0.92rem;
+    color: var(--ugda-text-primary) !important;
+    font-size: var(--ugda-font-body) !important;
+    font-weight: var(--ugda-weight-semibold) !important;
     line-height: 1.25;
     margin: 0 0 0.35rem;
 }
 
 .reserved-row__meta {
-    color: #475569;
+    color: var(--ugda-text-secondary);
     display: flex;
     flex-wrap: wrap;
     gap: 0.35rem 0.85rem;
-    font-size: 0.78rem;
+    font-size: var(--ugda-font-helper);
 }
 
 .reserved-row small {
-    color: #64748b;
+    color: var(--ugda-text-muted);
     display: block;
     margin-top: 0.5rem;
 }
 
 .reserved-support-badge {
     border-radius: 999px;
-    font-size: 0.68rem;
-    font-weight: 700;
+    font-size: var(--ugda-font-helper);
+    font-weight: var(--ugda-weight-semibold);
     padding: 0.16rem 0.48rem;
 }
 
 .reserved-support-badge--physical {
-    background: #f1f5f9;
-    color: #334155;
+    background: var(--ugda-surface-soft);
+    color: var(--ugda-text-secondary);
 }
 
 .reserved-support-badge--digital {
-    background: #dcfce7;
-    color: #166534;
+    background: var(--ugda-success-soft);
+    color: var(--ugda-success-text);
 }
 
 .reserved-support-badge--mixed {
@@ -726,37 +784,37 @@ onBeforeUnmount(() => {
 }
 
 .reserved-modal {
-    background: #ffffff;
-    border-radius: 0.65rem;
+    background: var(--ugda-surface-card);
+    border-radius: var(--ugda-radius-lg);
     overflow: hidden;
 }
 
 .reserved-modal__header {
     align-items: center;
-    background: #0f4c8f;
+    background: var(--ugda-brand-hover);
     color: #ffffff;
     display: flex;
     justify-content: space-between;
-    padding: 1rem 1.4rem;
+    padding: var(--ugda-space-lg);
 }
 
 .reserved-modal__header h2 {
-    color: #ffffff;
-    font-size: 1.05rem;
-    font-weight: 700;
+    color: var(--ugda-text-inverse) !important;
+    font-size: var(--ugda-font-h3) !important;
+    font-weight: var(--ugda-weight-semibold) !important;
     line-height: 1.25;
     margin: 0 0 0.25rem;
 }
 
 .reserved-modal__header p {
-    color: #ffffff;
-    font-size: 0.86rem;
+    color: var(--ugda-text-inverse);
+    font-size: var(--ugda-font-secondary);
     line-height: 1.35;
     margin: 0;
 }
 
 .reserved-modal__close {
-    color: #ffffff;
+    color: var(--ugda-text-inverse);
     font-size: 1.1rem;
     height: 2.2rem;
     justify-content: center;
@@ -765,8 +823,8 @@ onBeforeUnmount(() => {
 
 .reserved-modal__body {
     display: grid;
-    gap: 0.85rem;
-    padding: 1.25rem 1.4rem;
+    gap: var(--ugda-space-md);
+    padding: var(--ugda-space-lg);
 }
 
 .reserved-warning--modal {
@@ -774,8 +832,8 @@ onBeforeUnmount(() => {
 }
 
 .reserved-picker {
-    border: 1px solid #d8e1ec;
-    border-radius: 0.45rem;
+    border: 1px solid var(--ugda-border);
+    border-radius: var(--ugda-radius-md);
     max-height: 21.8rem;
     overflow: auto;
 }
@@ -785,17 +843,17 @@ onBeforeUnmount(() => {
 }
 
 .reserved-option:hover {
-    background: #f8fafc;
+    background: var(--ugda-surface-page);
 }
 
 .reserved-option--selected {
-    background: #eff6ff;
-    box-shadow: inset 4px 0 0 #0f4c8f;
+    background: var(--ugda-brand-soft);
+    box-shadow: inset 4px 0 0 var(--ugda-brand-hover);
 }
 
 .reserved-option > i {
     align-items: center;
-    background: #0f4c8f;
+    background: var(--ugda-brand-hover);
     border-radius: 999px;
     color: #ffffff;
     display: inline-flex;
@@ -806,18 +864,18 @@ onBeforeUnmount(() => {
 }
 
 .reserved-picker__state {
-    color: #64748b;
+    color: var(--ugda-text-muted);
     padding: 1.25rem;
     text-align: center;
 }
 
 .reserved-modal__footer {
     align-items: center;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--ugda-border);
     display: flex;
     gap: 0.75rem;
     justify-content: flex-end;
-    padding: 0.85rem 1.4rem;
+    padding: var(--ugda-space-sm) var(--ugda-space-lg);
 }
 
 .reserved-remove-dialog__header {
@@ -853,6 +911,18 @@ onBeforeUnmount(() => {
 .reserved-remove-dialog__body strong {
     color: #111827;
     font-weight: 700;
+}
+
+.reserved-remove-dialog__password {
+    display: grid;
+    gap: 0.4rem;
+    margin-top: 0.35rem;
+}
+
+.reserved-remove-dialog__password span {
+    color: #334155;
+    font-size: 0.9rem;
+    font-weight: 600;
 }
 
 @media (max-width: 768px) {

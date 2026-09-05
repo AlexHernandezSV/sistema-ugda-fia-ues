@@ -1434,12 +1434,31 @@ class ArchiveController extends Controller
         }
     }
 
-    public function destroyReservedDocument(Request $request, int $id): JsonResponse
+    public function destroyReservedDocument(Request $request, int $id, UserActivityLogger $activityLogger): JsonResponse
     {
         if (!$this->canManageArchive($request)) {
             return response()->json([
                 'message' => 'Solo el personal UGDA puede quitar documentos reservados.',
             ], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'current_password' => ['required', 'string'],
+        ], [
+            'current_password.required' => 'Ingrese su contraseña para confirmar la eliminación.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'La contraseña es obligatoria para quitar el documento de reservados.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        if (!Hash::check((string) $request->input('current_password'), (string) $request->user()->password)) {
+            return response()->json([
+                'message' => 'La contraseña ingresada no es correcta.',
+            ], 422);
         }
 
         try {
@@ -1455,14 +1474,38 @@ class ArchiveController extends Controller
             }
 
             $documentName = $document->name;
-            $document->forceFill([
-                'is_reserved' => false,
-                'reserved_by_user_id' => null,
-                'reserved_at' => null,
-            ])->save();
+            $classificationLabel = trim((string) $document->series_label) ?: 'No disponible';
+            $deletionType = 'soft delete';
+            $activityLog = DB::transaction(function () use (
+                $activityLogger,
+                $request,
+                $document,
+                $documentName,
+                $classificationLabel,
+                $deletionType,
+            ) {
+                $document->forceFill([
+                    'is_reserved' => false,
+                    'reserved_by_user_id' => null,
+                    'reserved_at' => null,
+                ])->save();
+
+                return $activityLogger->log(
+                    $request->user(),
+                    $request->user(),
+                    'reserved_document_deleted',
+                    'Eliminacion de documento reservado (' . $deletionType . ')',
+                    'Documento: ' . $document->code
+                        . ' - ' . $documentName
+                        . '. Serie: ' . $classificationLabel
+                        . '. Tipo de eliminacion: ' . $deletionType . '.',
+                    $request,
+                );
+            });
 
             return response()->json([
                 'message' => 'El documento "' . $documentName . '" fue removido de reservados.',
+                'event_id' => $activityLog->id,
             ]);
         } catch (Throwable $exception) {
             report($exception);
