@@ -34,7 +34,10 @@ axios.interceptors.response.use(
     response => response,
     error => {
         if (error.response && (error.response.status === 419 || error.response.status === 401)) {
-            if (window.location.pathname !== '/login') {
+            const path = window.location.pathname;
+            const isPublicAuthPath = path === '/login' || path.startsWith('/restablecer-contrasena/');
+
+            if (!isPublicAuthPath) {
                 window.location.href = '/login';
             }
         }

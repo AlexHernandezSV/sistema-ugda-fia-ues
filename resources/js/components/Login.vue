@@ -11,6 +11,8 @@ const route = useRoute();
 const step = ref(1);
 const loading = ref(false);
 const showHelpModal = ref(false); // Estado para controlar el modal de ayuda
+const showForgotPasswordModal = ref(false);
+const forgotPasswordLoading = ref(false);
 const showPassword = ref(false);
 const showTemporaryPassword = ref(false);
 const showNewPassword = ref(false);
@@ -19,6 +21,7 @@ const twoFactorMethod = ref('email');
 const lockoutSeconds = ref(0);
 
 const email = ref('');
+const forgotPasswordEmail = ref('');
 const password = ref('');
 const temporaryPassword = ref('');
 const newPassword = ref('');
@@ -28,6 +31,24 @@ const inputs = ref([]);
 let lockoutTimer = null;
 
 const isLockoutActive = computed(() => lockoutSeconds.value > 0);
+
+const maskedEmail = computed(() => {
+    const value = String(email.value ?? '');
+    const separatorIndex = value.indexOf('@');
+
+    if (separatorIndex <= 0 || separatorIndex === value.length - 1) {
+        return 'correo registrado';
+    }
+
+    const localPart = value.slice(0, separatorIndex);
+    const domain = value.slice(separatorIndex + 1);
+
+    if (localPart.length === 1) {
+        return `*@${domain}`;
+    }
+
+    return `${localPart[0]}${'*'.repeat(Math.max(2, localPart.length - 2))}${localPart.slice(-1)}@${domain}`;
+});
 
 const lockoutMessage = computed(() => {
     const minutes = Math.floor(lockoutSeconds.value / 60);
@@ -168,6 +189,58 @@ const handleLogin = async () => {
         handleErrors(error);
     } finally {
         loading.value = false;
+    }
+};
+
+const openForgotPassword = () => {
+    forgotPasswordEmail.value = email.value;
+    showForgotPasswordModal.value = true;
+};
+
+const closeForgotPassword = () => {
+    if (!forgotPasswordLoading.value) {
+        showForgotPasswordModal.value = false;
+    }
+};
+
+const sendResetLink = async () => {
+    if (!forgotPasswordEmail.value) {
+        toast.add({
+            severity: 'warn',
+            summary: 'Correo requerido',
+            detail: 'Ingresa el correo asociado a tu cuenta.',
+            life: 3500
+        });
+        return;
+    }
+
+    forgotPasswordLoading.value = true;
+
+    try {
+        const response = await axios.post('/forgot-password', {
+            email: forgotPasswordEmail.value
+        });
+
+        showForgotPasswordModal.value = false;
+        toast.add({
+            severity: 'success',
+            summary: 'Solicitud recibida',
+            detail: response.data.message,
+            life: 6000
+        });
+    } catch (error) {
+        if (error.response?.status === 429) {
+            toast.add({
+                severity: 'warn',
+                summary: 'Solicitud reciente',
+                detail: error.response.data.message,
+                life: 5000
+            });
+        } else {
+            handleErrors(error);
+        }
+    } finally {
+        forgotPasswordLoading.value = false;
     }
 };
 
@@ -575,6 +648,10 @@ onBeforeUnmount(() => {
                             {{ lockoutMessage }}
                         </p>
 
+                        <button type="button" class="login-forgot-link" @click="openForgotPassword">
+                            ¿Olvidaste tu contraseña?
+                        </button>
+
                         <div class="login-step__footer">
                             © 2025 Universidad de El Salvador<br />
                             Facultad de Ingeniería y Arquitectura<br />
@@ -594,7 +671,7 @@ onBeforeUnmount(() => {
                             Método de verificación: <strong>{{ twoFactorMethod === 'authenticator' ? 'Google Authenticator' : 'Correo electrónico' }}</strong>
                         </p>
                         <p class="login-step__subtitle" v-if="twoFactorMethod === 'email'">
-                            Se envió un código a <strong>{{ email }}</strong>. Usa ese código aquí.
+                            Se envió un código a <strong>{{ maskedEmail }}</strong>. Usa ese código aquí.
                         </p>
                         <p class="login-step__subtitle" v-else>
                             Abre Google Authenticator en tu teléfono y copia el código de 6 dígitos.
@@ -699,7 +776,7 @@ onBeforeUnmount(() => {
                         </div>
 
                         <p class="login-password-policy">
-                            Usa al menos 10 caracteres con mayúscula, minúscula, número y símbolo. No uses secuencias de números o letras consecutivos ni una contraseña similar a la anterior.
+                            Usa al menos 10 caracteres con mayúscula, minúscula, número y símbolo. No uses secuencias de números o letras consecutivos.
                         </p>
 
                         <Button label="Actualizar y continuar" icon="pi pi-check"
@@ -722,6 +799,32 @@ onBeforeUnmount(() => {
                 </div>
             </section>
         </main>
+
+        <div v-if="showForgotPasswordModal" class="login-modal-overlay" @click.self="closeForgotPassword">
+            <div class="login-modal login-modal--forgot-password">
+                <header class="login-modal__header">
+                    <h3 class="login-modal__title">Restablecer contraseña</h3>
+                    <button type="button" class="login-modal__close" @click="closeForgotPassword" aria-label="Cerrar ventana">
+                        <i class="pi pi-times"></i>
+                    </button>
+                </header>
+
+                <form class="login-modal__body login-modal__form" @submit.prevent="sendResetLink">
+                    <p class="login-modal__text">Ingresa tu correo electrónico y te enviaremos un enlace para crear una nueva contraseña.</p>
+                    <div class="login-modal__field">
+                        <label for="forgot-password-email" class="login-field__label">Correo electrónico</label>
+                        <input id="forgot-password-email" v-model.trim="forgotPasswordEmail" type="email"
+                            autocomplete="email" placeholder="usuario@ues.edu.sv" class="login-modal__input" />
+                    </div>
+                    <div class="login-modal__actions">
+                        <Button type="submit" label="Enviar enlace" icon="pi pi-envelope"
+                            class="login-primary-button" :loading="forgotPasswordLoading" />
+                        <Button type="button" label="Cancelar" severity="secondary" outlined
+                            class="login-secondary-button" :disabled="forgotPasswordLoading" @click="closeForgotPassword" />
+                    </div>
+                </form>
+            </div>
+        </div>
 
         <div v-if="showHelpModal" class="login-modal-overlay" @click.self="showHelpModal = false">
             <div class="login-modal">
@@ -1244,6 +1347,24 @@ onBeforeUnmount(() => {
     text-align: center;
 }
 
+.login-forgot-link {
+    align-self: center;
+    margin: 16px 0 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #2f6fad;
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.login-forgot-link:hover {
+    color: #1e4f88;
+    text-decoration: underline;
+}
+
 .login-password-policy {
     margin: -10px 0 18px;
     color: #57759a;
@@ -1359,6 +1480,37 @@ onBeforeUnmount(() => {
     display: flex;
     flex-direction: column;
     gap: 18px;
+}
+
+.login-modal__form {
+    gap: 16px;
+}
+
+.login-modal__field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.login-modal__input {
+    width: 100%;
+    min-height: 44px;
+    padding: 0 14px;
+    border: 1px solid #cfd8e6;
+    border-radius: 10px;
+    color: #334e70;
+    outline: none;
+    font: inherit;
+}
+
+.login-modal__input:focus {
+    border-color: #2c6fbf;
+    box-shadow: 0 0 0 3px rgba(44, 111, 191, 0.12);
+}
+
+.login-modal__actions {
+    display: flex;
+    flex-direction: column;
 }
 
 .login-modal__section {

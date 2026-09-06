@@ -29,10 +29,16 @@ use App\Http\Controllers\UserProfileController;
 Route::post('/login-auth', [AuthController::class, 'login']);
 Route::post('/login-verify', [AuthController::class, 'verify2FA']);
 Route::post('/login-change-password', [AuthController::class, 'completeTemporaryPassword']);
+Route::post('/forgot-password', [AuthController::class, 'sendResetLinkEmail']);
+Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+Route::get('/reset-password/{token}/validate', [AuthController::class, 'validateResetToken']);
 Route::get('/logout', [AuthController::class, 'logout']);
 Route::get('/login', function () {
     return view('welcome');
 })->name('login');
+Route::get('/restablecer-contrasena/{token}', function () {
+    return view('welcome');
+})->name('password.reset');
 
 // ------------------------------------------------------------------------
 // 2. RUTAS PROTEGIDAS (API Interna para Vue)

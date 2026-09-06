@@ -4,6 +4,7 @@ import { getCurrentUser } from './services/authSession';
 // 1. IMPORTACIÓN DE COMPONENTES
 // Ajusta estas rutas si tus archivos están en carpetas diferentes
 import Login from './components/Login.vue'; 
+import ResetPassword from './components/ResetPassword.vue';
 import Dashboard from './components/Dashboard.vue';
 import Unidades from './components/views/Unidades.vue';
 import Usuarios from './components/views/Usuarios.vue'; // <--- NUEVO IMPORT
@@ -40,6 +41,12 @@ const routes = [
         path: '/login', 
         name: 'login',
         component: Login 
+    },
+
+    {
+        path: '/restablecer-contrasena/:token',
+        name: 'password-reset',
+        component: ResetPassword
     },
 
     // Ruta Dashboard
@@ -222,7 +229,7 @@ const router = createRouter({
 });
 
 router.beforeEach(async (to) => {
-    if (to.name === 'login') {
+    if (to.name === 'login' || to.name === 'password-reset') {
         return true;
     }
 

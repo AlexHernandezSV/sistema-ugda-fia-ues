@@ -11,8 +11,10 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Password as PasswordBroker;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 
@@ -83,6 +85,191 @@ class AuthController extends Controller
         return $this->startLoginChallenge($request, $user);
     }
 
+    public function sendResetLinkEmail(Request $request)
+    {
+        $request->validate([
+            'email' => ['required', 'email'],
+        ], [
+            'email.required' => 'El correo es obligatorio.',
+            'email.email' => 'Ingresa un correo electrónico válido.',
+        ]);
+
+        $email = Str::lower(trim((string) $request->input('email')));
+
+        if (User::where('email', $email)->where('is_active', true)->exists()) {
+            try {
+                $status = PasswordBroker::broker()->sendResetLink(['email' => $email]);
+            } catch (\Throwable $exception) {
+                report($exception);
+
+                return response()->json([
+                    'message' => 'No fue posible enviar el enlace. Intenta nuevamente más tarde.',
+                ], 500);
+            }
+
+            if ($status === PasswordBroker::RESET_THROTTLED) {
+                return response()->json([
+                    'message' => 'Ya se solicitó un enlace recientemente. Espera un minuto antes de intentarlo de nuevo.',
+                    'retry_after' => 60,
+                ], 429);
+            }
+        }
+
+        return response()->json([
+            'message' => 'Si el correo corresponde a un usuario activo, recibirás un enlace para restablecer tu contraseña.',
+        ]);
+    }
+
+    public function resetPassword(Request $request)
+    {
+        $request->validate([
+            'token' => ['required', 'string'],
+            'password' => [
+                'required',
+                'string',
+                Password::min(10)->mixedCase()->numbers()->symbols(),
+                'confirmed',
+            ],
+        ], [
+            'token.required' => 'El enlace de restablecimiento no es válido.',
+            'password.required' => 'La nueva contraseña es obligatoria.',
+            'password.confirmed' => 'La confirmación de la contraseña no coincide.',
+            'password.min' => 'La contraseña debe tener al menos 10 caracteres.',
+            'password.mixed' => 'La contraseña debe incluir mayúsculas y minúsculas.',
+            'password.numbers' => 'La contraseña debe incluir al menos un número.',
+            'password.symbols' => 'La contraseña debe incluir al menos un símbolo.',
+        ]);
+
+        $passwordViolations = PasswordSecurity::violations(
+            (string) $request->input('password'),
+            ''
+        );
+
+        if ($passwordViolations !== []) {
+            return response()->json([
+                'message' => $passwordViolations[0],
+                'errors' => ['password' => $passwordViolations],
+            ], 422);
+        }
+
+        $payload = $this->decodePasswordResetToken((string) $request->input('token'));
+        $email = Str::lower(trim((string) ($payload['email'] ?? '')));
+        $brokerToken = (string) ($payload['token'] ?? '');
+
+        if ($email === '' || $brokerToken === '') {
+            return response()->json([
+                'message' => 'El enlace no es válido o ya expiró.',
+            ], 422);
+        }
+
+        $user = User::where('email', $email)->where('is_active', true)->first();
+
+        if (!$user) {
+            return response()->json([
+                'message' => 'El enlace no es válido o ya expiró.',
+            ], 422);
+        }
+
+        if (Hash::check((string) $request->input('password'), (string) $user->password)) {
+            return response()->json([
+                'message' => 'La nueva contraseña debe ser diferente a la contraseña actual.',
+                'errors' => [
+                    'password' => ['La nueva contraseña debe ser diferente a la contraseña actual.'],
+                ],
+            ], 422);
+        }
+
+        $status = PasswordBroker::broker()->reset(
+            [
+                'email' => $email,
+                'password' => $request->input('password'),
+                'password_confirmation' => $request->input('password_confirmation'),
+                'token' => $brokerToken,
+            ],
+            function (User $user, string $password): void {
+                $user->forceFill([
+                    'password' => $password,
+                    'must_change_password' => false,
+                    'temporary_password_expires_at' => null,
+                    'password_changed_at' => Carbon::now(),
+                ])->save();
+            }
+        );
+
+        if ($status !== PasswordBroker::PASSWORD_RESET) {
+            return response()->json([
+                'message' => 'El enlace no es válido o ya expiró.',
+            ], 422);
+        }
+
+        $this->activityLogger->log(
+            $user,
+            null,
+            'password_reset',
+            'Restablecimiento de contraseña',
+            'El usuario restableció su contraseña mediante el enlace de recuperación.',
+            $request
+        );
+
+        return response()->json([
+            'message' => 'Tu contraseña fue restablecida correctamente. Ya puedes iniciar sesión.',
+        ]);
+    }
+
+    public function validateResetToken(string $token)
+    {
+        $payload = $this->decodePasswordResetToken($token);
+        $email = Str::lower(trim((string) ($payload['email'] ?? '')));
+        $brokerToken = (string) ($payload['token'] ?? '');
+
+        if ($email === '' || $brokerToken === '') {
+            return response()->json([
+                'message' => 'El enlace no es válido o ya expiró.',
+            ], 422);
+        }
+
+        $user = User::where('email', $email)->where('is_active', true)->first();
+
+        if (!$user || !PasswordBroker::broker()->tokenExists($user, $brokerToken)) {
+            return response()->json([
+                'message' => 'El enlace no es válido o ya expiró.',
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'El enlace de restablecimiento es válido.',
+        ]);
+    }
+
+    private function decodePasswordResetToken(string $encodedToken): ?array
+    {
+        $encodedToken = strtr($encodedToken, '-_', '+/');
+        $padding = strlen($encodedToken) % 4;
+
+        if ($padding > 0) {
+            $encodedToken .= str_repeat('=', 4 - $padding);
+        }
+
+        $encryptedPayload = base64_decode($encodedToken, true);
+
+        if ($encryptedPayload === false) {
+            return null;
+        }
+
+        try {
+            $payload = json_decode(
+                Crypt::decryptString($encryptedPayload),
+                true,
+                512,
+                JSON_THROW_ON_ERROR
+            );
+        } catch (\Throwable $exception) {
+            return null;
+        }
+
+        return is_array($payload) ? $payload : null;
+    }
+
     public function completeTemporaryPassword(Request $request)
     {
         $request->validate([
@@ -131,9 +318,18 @@ class AuthController extends Controller
             ], 401);
         }
 
+        if (Hash::check((string) $request->input('password'), (string) $user->password)) {
+            return response()->json([
+                'message' => 'La nueva contraseña debe ser diferente a la contraseña temporal actual.',
+                'errors' => [
+                    'password' => ['La nueva contraseña debe ser diferente a la contraseña temporal actual.'],
+                ],
+            ], 422);
+        }
+
         $passwordViolations = PasswordSecurity::violations(
             (string) $request->input('password'),
-            (string) $request->input('current_password')
+            ''
         );
 
         if ($passwordViolations !== []) {

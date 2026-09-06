@@ -12,9 +12,13 @@ const reservedQuery = ref('');
 const loadingReserved = ref(false);
 const addDialogVisible = ref(false);
 const availableDocuments = ref([]);
+const availableResultsCount = ref(0);
 const availableQuery = ref('');
 const loadingAvailable = ref(false);
-const selectedDocument = ref(null);
+const classificationOptions = ref([]);
+const selectedClassification = ref(null);
+const selectedDocuments = ref([]);
+const loadingClassifications = ref(false);
 const submitting = ref(false);
 const removingId = ref(null);
 const removeDialogVisible = ref(false);
@@ -30,7 +34,43 @@ const alreadyReservedIds = computed(() => new Set(reservedDocuments.value.map((d
 const availableResults = computed(() =>
     availableDocuments.value.filter((document) => !alreadyReservedIds.value.has(document.id) && !document.is_reserved)
 );
-const canSubmit = computed(() => selectedDocument.value !== null && !submitting.value);
+const selectedDocumentIds = computed(() => new Set(selectedDocuments.value.map((document) => document.id)));
+const selectedClassificationOption = computed(() => (
+    classificationOptions.value.find((option) => option.value === selectedClassification.value) ?? null
+));
+const allVisibleSelected = computed(() => (
+    availableResults.value.length > 0
+    && availableResults.value.every((document) => selectedDocumentIds.value.has(document.id))
+));
+const canSubmit = computed(() => (
+    ((selectedClassification.value !== null && availableResultsCount.value > 0)
+        || selectedDocuments.value.length > 0)
+    && !loadingAvailable.value
+    && !submitting.value
+));
+const selectionSummary = computed(() => {
+    if (selectedClassificationOption.value) {
+        if (loadingAvailable.value) {
+            return `Consultando documentos disponibles de ${selectedClassificationOption.value.label}...`;
+        }
+
+        if (availableResultsCount.value === 0) {
+            return `No hay documentos disponibles de ${selectedClassificationOption.value.label}.`;
+        }
+
+        const countLabel = availableResultsCount.value === 1
+            ? '1 documento disponible'
+            : `${availableResultsCount.value} documentos disponibles`;
+
+        return `Se reservarán todos los documentos de ${selectedClassificationOption.value.label} (${countLabel}).`;
+    }
+
+    if (selectedDocuments.value.length > 0) {
+        return `${selectedDocuments.value.length} documento(s) seleccionado(s).`;
+    }
+
+    return 'Seleccione uno o más documentos, o una subserie completa.';
+});
 
 const goBack = () => {
     router.push('/archivo-general/gestion');
@@ -91,6 +131,8 @@ const fetchReservedDocuments = async () => {
         });
         reservedDocuments.value = Array.isArray(data.documents) ? data.documents : [];
     } catch (error) {
+        availableDocuments.value = [];
+        availableResultsCount.value = 0;
         toast.add({
             severity: 'error',
             summary: 'Error',
@@ -106,11 +148,14 @@ const fetchAvailableDocuments = async () => {
     loadingAvailable.value = true;
 
     try {
-        const params = availableQuery.value.trim()
-            ? { q: availableQuery.value.trim() }
-            : { all: 1 };
+        const params = selectedClassification.value
+            ? { classification_id: selectedClassification.value, all: 1, available_for_reservation: 1 }
+            : (availableQuery.value.trim()
+                ? { q: availableQuery.value.trim(), available_for_reservation: 1 }
+                : { all: 1, available_for_reservation: 1 });
         const { data } = await axios.get('/api/archive/documents', { params });
         availableDocuments.value = Array.isArray(data.results) ? data.results : [];
+        availableResultsCount.value = Number(data.results_count ?? availableDocuments.value.length);
     } catch (error) {
         toast.add({
             severity: 'error',
@@ -123,11 +168,35 @@ const fetchAvailableDocuments = async () => {
     }
 };
 
+const fetchClassificationOptions = async () => {
+    loadingClassifications.value = true;
+
+    try {
+        const { data } = await axios.get('/api/archive/catalog');
+        const subseries = Array.isArray(data.series) ? data.series : [];
+
+        classificationOptions.value = subseries.map((option) => ({
+            value: option.value,
+            label: option.label,
+        }));
+    } catch (error) {
+        toast.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: error.response?.data?.message ?? 'No se pudieron cargar las subseries documentales.',
+            life: 4000,
+        });
+    } finally {
+        loadingClassifications.value = false;
+    }
+};
+
 const openAddDialog = async () => {
-    selectedDocument.value = null;
+    selectedClassification.value = null;
+    selectedDocuments.value = [];
     availableQuery.value = '';
     addDialogVisible.value = true;
-    await fetchAvailableDocuments();
+    await Promise.all([fetchClassificationOptions(), fetchAvailableDocuments()]);
 };
 
 const closeAddDialog = () => {
@@ -136,11 +205,47 @@ const closeAddDialog = () => {
     }
 
     addDialogVisible.value = false;
-    selectedDocument.value = null;
+    selectedClassification.value = null;
+    selectedDocuments.value = [];
 };
 
 const selectDocument = (document) => {
-    selectedDocument.value = document;
+    if (selectedClassification.value) {
+        return;
+    }
+
+    selectedDocuments.value = selectedDocumentIds.value.has(document.id)
+        ? selectedDocuments.value.filter((item) => item.id !== document.id)
+        : [...selectedDocuments.value, document];
+};
+
+const toggleAllVisible = () => {
+    if (selectedClassification.value) {
+        return;
+    }
+
+    const visibleIds = new Set(availableResults.value.map((document) => document.id));
+
+    selectedDocuments.value = allVisibleSelected.value
+        ? selectedDocuments.value.filter((document) => !visibleIds.has(document.id))
+        : [
+            ...selectedDocuments.value,
+            ...availableResults.value.filter((document) => !selectedDocumentIds.value.has(document.id)),
+        ];
+};
+
+const clearSelectedDocuments = () => {
+    selectedDocuments.value = [];
+};
+
+const onClassificationChange = async () => {
+    selectedDocuments.value = [];
+
+    if (selectedClassification.value) {
+        availableQuery.value = '';
+    }
+
+    await fetchAvailableDocuments();
 };
 
 const addReservedDocument = async () => {
@@ -148,7 +253,7 @@ const addReservedDocument = async () => {
         toast.add({
             severity: 'warn',
             summary: 'Documento requerido',
-            detail: 'Seleccione un documento para marcarlo como reservado.',
+            detail: 'Seleccione uno o más documentos, o una subserie completa, para reservar.',
             life: 3000,
         });
         return;
@@ -157,18 +262,20 @@ const addReservedDocument = async () => {
     submitting.value = true;
 
     try {
-        const { data } = await axios.post('/api/archive/reserved-documents', {
-            document_id: selectedDocument.value.id,
-        });
+        const payload = selectedClassification.value
+            ? { classification_id: selectedClassification.value }
+            : { document_ids: selectedDocuments.value.map((document) => document.id) };
+        const { data } = await axios.post('/api/archive/reserved-documents', payload);
 
         toast.add({
             severity: 'success',
             summary: 'Documento reservado',
-            detail: data.message ?? `El documento "${selectedDocument.value.title}" fue agregado a reservados.`,
+            detail: data.message ?? 'Los documentos seleccionados fueron agregados a reservados.',
             life: 3500,
         });
         addDialogVisible.value = false;
-        selectedDocument.value = null;
+        selectedClassification.value = null;
+        selectedDocuments.value = [];
         await fetchReservedDocuments();
     } catch (error) {
         toast.add({
@@ -374,8 +481,8 @@ onBeforeUnmount(() => {
                 <div class="reserved-modal">
                     <header class="reserved-modal__header">
                         <div>
-                            <h2>Agregar documento a reservados</h2>
-                            <p>Busca y selecciona el documento que deseas marcar como reservado.</p>
+                            <h2>Agregar documentos a reservados</h2>
+                            <p>Seleccione varios documentos o una subserie completa para reservar.</p>
                         </div>
                         <button type="button" class="reserved-modal__close" @click="closeAddDialog">
                             <i class="pi pi-arrow-left"></i>
@@ -403,6 +510,49 @@ onBeforeUnmount(() => {
                             />
                         </label>
 
+                        <div class="reserved-bulk-selection">
+                            <label class="reserved-field-label" for="reserved-classification">
+                                Serie / Subseries
+                            </label>
+                            <Dropdown
+                                id="reserved-classification"
+                                v-model="selectedClassification"
+                                :options="classificationOptions"
+                                optionLabel="label"
+                                optionValue="value"
+                                placeholder="Seleccionar subserie"
+                                :loading="loadingClassifications"
+                                showClear
+                                filter
+                                class="w-full"
+                                @change="onClassificationChange"
+                            />
+                        </div>
+
+                        <div class="reserved-selection-toolbar">
+                            <span class="reserved-selection-summary">{{ selectionSummary }}</span>
+                            <div v-if="!selectedClassification" class="reserved-selection-actions">
+                                <Button
+                                    type="button"
+                                    severity="secondary"
+                                    text
+                                    size="small"
+                                    :label="allVisibleSelected ? 'Quitar visibles' : 'Seleccionar visibles'"
+                                    :disabled="availableResults.length === 0"
+                                    @click="toggleAllVisible"
+                                />
+                                <Button
+                                    v-if="selectedDocuments.length > 0"
+                                    type="button"
+                                    severity="secondary"
+                                    text
+                                    size="small"
+                                    label="Limpiar selección"
+                                    @click="clearSelectedDocuments"
+                                />
+                            </div>
+                        </div>
+
                         <div class="reserved-picker" role="list">
                             <div v-if="loadingAvailable" class="reserved-picker__state">
                                 <i class="pi pi-spin pi-spinner"></i>
@@ -414,7 +564,8 @@ onBeforeUnmount(() => {
                                     :key="document.id"
                                     type="button"
                                     class="reserved-option"
-                                    :class="{ 'reserved-option--selected': selectedDocument?.id === document.id }"
+                                    :class="{ 'reserved-option--selected': selectedDocumentIds.has(document.id) }"
+                                    :disabled="!!selectedClassification"
                                     @click="selectDocument(document)"
                                 >
                                     <div>
@@ -429,7 +580,7 @@ onBeforeUnmount(() => {
                                             <span v-for="item in documentMetadata(document)" :key="item">{{ item }}</span>
                                         </div>
                                     </div>
-                                    <i v-if="selectedDocument?.id === document.id" class="pi pi-check"></i>
+                                    <i v-if="selectedDocumentIds.has(document.id)" class="pi pi-check"></i>
                                 </button>
                             </template>
                             <div
@@ -453,7 +604,7 @@ onBeforeUnmount(() => {
                         <Button
                             type="button"
                             icon="pi pi-shield"
-                            label="Agregar a Reservados"
+                            :label="selectedClassification ? 'Reservar subserie completa' : 'Agregar seleccionados a Reservados'"
                             :disabled="!canSubmit"
                             :loading="submitting"
                             @click="addReservedDocument"
@@ -672,6 +823,37 @@ onBeforeUnmount(() => {
     width: 100%;
 }
 
+.reserved-bulk-selection {
+    display: grid;
+    gap: var(--ugda-space-xs);
+}
+
+.reserved-field-label {
+    color: var(--ugda-text-primary);
+    font-size: var(--ugda-font-secondary);
+    font-weight: var(--ugda-weight-medium);
+}
+
+.reserved-selection-toolbar {
+    align-items: center;
+    display: flex;
+    gap: var(--ugda-space-sm);
+    justify-content: space-between;
+    min-height: var(--ugda-control-height-sm);
+}
+
+.reserved-selection-summary {
+    color: var(--ugda-text-secondary);
+    font-size: var(--ugda-font-helper);
+}
+
+.reserved-selection-actions {
+    align-items: center;
+    display: flex;
+    flex-shrink: 0;
+    gap: var(--ugda-space-xs);
+}
+
 .reserved-add-button {
     flex: 0 0 auto;
 }
@@ -780,12 +962,19 @@ onBeforeUnmount(() => {
 }
 
 .reserved-dialog :deep(.p-dialog-content) {
+    min-height: 0;
+    overflow: hidden;
     padding: 0;
 }
 
 .reserved-modal {
     background: var(--ugda-surface-card);
     border-radius: var(--ugda-radius-lg);
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 2rem);
+    max-height: calc(100dvh - 2rem);
+    min-height: 0;
     overflow: hidden;
 }
 
@@ -794,6 +983,7 @@ onBeforeUnmount(() => {
     background: var(--ugda-brand-hover);
     color: #ffffff;
     display: flex;
+    flex: 0 0 auto;
     justify-content: space-between;
     padding: var(--ugda-space-lg);
 }
@@ -823,8 +1013,13 @@ onBeforeUnmount(() => {
 
 .reserved-modal__body {
     display: grid;
+    flex: 1 1 auto;
     gap: var(--ugda-space-md);
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
     padding: var(--ugda-space-lg);
+    scrollbar-gutter: stable;
 }
 
 .reserved-warning--modal {
@@ -834,12 +1029,16 @@ onBeforeUnmount(() => {
 .reserved-picker {
     border: 1px solid var(--ugda-border);
     border-radius: var(--ugda-radius-md);
-    max-height: 21.8rem;
-    overflow: auto;
+    overflow: visible;
 }
 
 .reserved-option {
     cursor: pointer;
+    font-family: var(--ugda-font-family);
+}
+
+.reserved-option:disabled {
+    cursor: default;
 }
 
 .reserved-option:hover {
@@ -871,8 +1070,10 @@ onBeforeUnmount(() => {
 
 .reserved-modal__footer {
     align-items: center;
+    background: var(--ugda-surface-card);
     border-top: 1px solid var(--ugda-border);
     display: flex;
+    flex: 0 0 auto;
     gap: 0.75rem;
     justify-content: flex-end;
     padding: var(--ugda-space-sm) var(--ugda-space-lg);
@@ -951,6 +1152,15 @@ onBeforeUnmount(() => {
     .reserved-row,
     .reserved-option {
         align-items: flex-start;
+    }
+
+    .reserved-selection-toolbar {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .reserved-selection-actions {
+        width: 100%;
     }
 
     .reserved-modal__footer {

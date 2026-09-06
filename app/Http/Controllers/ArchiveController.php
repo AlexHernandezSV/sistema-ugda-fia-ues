@@ -17,7 +17,6 @@ use App\Support\RequestNumberGenerator;
 use App\Support\SignedPdfUrl;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -598,24 +597,19 @@ class ArchiveController extends Controller
             }
 
             $boxCode = $box->boxCode($transfer->code);
-            $deletionType = in_array(SoftDeletes::class, class_uses_recursive($transfer), true)
-                ? 'soft delete'
-                : 'hard delete';
             $activityLog = DB::transaction(function () use (
                 $activityLogger,
                 $request,
                 $box,
                 $boxCode,
-                $deletionType,
                 $transfer,
             ) {
                 $log = $activityLogger->log(
                     $request->user(),
                     $request->user(),
                     'archive_box_deleted',
-                    'Eliminacion de caja (' . $deletionType . ')',
-                    'Numero de caja eliminada: ' . $box->box_number
-                        . ' (' . $boxCode . '). Tipo de eliminacion: ' . $deletionType . '.',
+                    'Eliminacion de caja',
+                    'Caja: ' . $boxCode,
                     $request,
                 );
 
@@ -1190,6 +1184,16 @@ class ArchiveController extends Controller
         try {
             $term = trim((string) $request->query('q', ''));
             $searchDate = $this->parseSearchDate($term);
+            $classificationId = trim((string) $request->query('classification_id', ''));
+            $classification = $classificationId !== ''
+                ? $this->resolveArchiveReservationClassification($classificationId)
+                : null;
+
+            if ($classificationId !== '' && $classification === null) {
+                return response()->json([
+                    'message' => 'La subserie documental seleccionada no es válida.',
+                ], 422);
+            }
 
             $documentsBaseQuery = TransferDocument::query()
                 ->whereHas('box.transfer', fn (Builder $query) => $query->whereNotNull('completed_at'));
@@ -1203,6 +1207,14 @@ class ArchiveController extends Controller
                     ->whereNotNull('completed_at')
                     ->count(),
             ];
+
+            if ($classification !== null) {
+                $this->applyArchiveReservationClassificationFilter($documentsBaseQuery, $classification);
+            }
+
+            if ($request->boolean('available_for_reservation')) {
+                $documentsBaseQuery->where('is_reserved', false);
+            }
 
             if ($term === '' && !$request->boolean('all')) {
                 return response()->json([
@@ -1372,59 +1384,126 @@ class ArchiveController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'document_id' => ['required', 'integer', 'exists:transfer_box_documents,id'],
+            'document_id' => [
+                'nullable',
+                'integer',
+                'exists:transfer_box_documents,id',
+                'required_without_all:document_ids,classification_id',
+            ],
+            'document_ids' => [
+                'nullable',
+                'array',
+                'min:1',
+                'required_without_all:document_id,classification_id',
+            ],
+            'document_ids.*' => ['integer', 'distinct', 'exists:transfer_box_documents,id'],
+            'classification_id' => [
+                'nullable',
+                'string',
+                'regex:/^subseries:\d+$/',
+                'required_without_all:document_id,document_ids',
+            ],
         ]);
 
         if ($validator->fails()) {
             return response()->json([
-                'message' => 'Seleccione un documento válido para reservar.',
+                'message' => 'Seleccione uno o mas documentos, o una subserie documental para reservar.',
                 'errors' => $validator->errors(),
             ], 422);
         }
 
+        $documentIds = collect($request->input('document_ids', []))
+            ->push($request->input('document_id'))
+            ->filter(fn ($id) => $id !== null && $id !== '')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+        $classificationId = trim((string) $request->input('classification_id', ''));
+        $classification = $classificationId !== ''
+            ? $this->resolveArchiveReservationClassification($classificationId)
+            : null;
+
+        if ($classificationId !== '' && $classification === null) {
+            return response()->json([
+                'message' => 'La subserie documental seleccionada no es valida.',
+            ], 422);
+        }
+
         try {
-            $document = TransferDocument::query()
-                ->with([
+            [$documents, $matchedCount] = DB::transaction(function () use ($documentIds, $classification, $request) {
+                $query = TransferDocument::query()
+                    ->whereHas('box.transfer', fn (Builder $transferQuery) => $transferQuery->whereNotNull('completed_at'));
+
+                if ($documentIds->isNotEmpty()) {
+                    $query->whereIn('transfer_box_documents.id', $documentIds->all());
+                }
+
+                if ($classification !== null) {
+                    $this->applyArchiveReservationClassificationFilter($query, $classification);
+                }
+
+                $matchedCount = (clone $query)->count();
+                $documents = $query
+                    ->where('is_reserved', false)
+                    ->lockForUpdate()
+                    ->get();
+
+                if ($documents->isEmpty()) {
+                    throw new \RuntimeException(
+                        $classification !== null
+                            ? 'Todos los documentos de la subserie seleccionada ya están reservados o no están disponibles.'
+                            : 'Los documentos seleccionados ya estan reservados o no estan disponibles en el archivo general.',
+                        422,
+                    );
+                }
+
+                $reservedAt = now();
+
+                $documents->each(fn (TransferDocument $document) => $document->forceFill([
+                    'is_reserved' => true,
+                    'reserved_by_user_id' => $request->user()->id,
+                    'reserved_at' => $reservedAt,
+                ])->save());
+
+                return [$documents, $matchedCount];
+            });
+
+            $reservedCount = $documents->count();
+            $skippedCount = max(0, $matchedCount - $reservedCount);
+            $firstDocument = $reservedCount === 1
+                ? $documents->first()->fresh([
                     'reservedBy.person',
                     'box.assignedBy.person',
                     'box.transfer.unit',
                     'box.transfer.requester.person',
                     'box.transfer.completedBy.person',
                 ])
-                ->whereKey($request->integer('document_id'))
-                ->whereHas('box.transfer', fn (Builder $query) => $query->whereNotNull('completed_at'))
-                ->first();
-
-            if ($document === null) {
-                return response()->json([
-                    'message' => 'El documento seleccionado no esta disponible en el archivo general.',
-                ], 422);
-            }
-
-            if ($document->is_reserved) {
-                return response()->json([
-                    'message' => 'El documento ya esta marcado como reservado.',
-                ], 422);
-            }
-
-            $document->forceFill([
-                'is_reserved' => true,
-                'reserved_by_user_id' => $request->user()->id,
-                'reserved_at' => now(),
-            ])->save();
-
-            $document->refresh()->load([
-                'reservedBy.person',
-                'box.assignedBy.person',
-                'box.transfer.unit',
-                'box.transfer.requester.person',
-                'box.transfer.completedBy.person',
-            ]);
+                : null;
+            $selectionLabel = $classification['label'] ?? null;
+            $message = $reservedCount === 1 && $selectionLabel === null
+                ? 'El documento "' . $documents->first()->name . '" fue agregado a reservados.'
+                : ($selectionLabel !== null
+                    ? 'Se agregaron ' . $reservedCount . ' documentos de "' . $selectionLabel . '" a reservados.'
+                    : 'Se agregaron ' . $reservedCount . ' documentos a reservados.');
 
             return response()->json([
-                'message' => 'El documento "' . $document->name . '" fue agregado a reservados.',
-                'document' => $this->mapDocument($document),
+                'message' => $message,
+                'reserved_count' => $reservedCount,
+                'skipped_count' => $skippedCount,
+                'document' => $firstDocument ? $this->mapDocument($firstDocument) : null,
             ], 201);
+        } catch (\RuntimeException $exception) {
+            if ((int) $exception->getCode() === 422) {
+                return response()->json([
+                    'message' => $exception->getMessage(),
+                ], 422);
+            }
+
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudo agregar el documento a reservados.',
+            ], 500);
         } catch (Throwable $exception) {
             report($exception);
 
@@ -1475,14 +1554,12 @@ class ArchiveController extends Controller
 
             $documentName = $document->name;
             $classificationLabel = trim((string) $document->series_label) ?: 'No disponible';
-            $deletionType = 'soft delete';
             $activityLog = DB::transaction(function () use (
                 $activityLogger,
                 $request,
                 $document,
                 $documentName,
                 $classificationLabel,
-                $deletionType,
             ) {
                 $document->forceFill([
                     'is_reserved' => false,
@@ -1494,11 +1571,10 @@ class ArchiveController extends Controller
                     $request->user(),
                     $request->user(),
                     'reserved_document_deleted',
-                    'Eliminacion de documento reservado (' . $deletionType . ')',
+                    'Eliminacion de documento reservado',
                     'Documento: ' . $document->code
                         . ' - ' . $documentName
-                        . '. Serie: ' . $classificationLabel
-                        . '. Tipo de eliminacion: ' . $deletionType . '.',
+                        . '. Serie: ' . $classificationLabel . '.',
                     $request,
                 );
             });
@@ -1576,6 +1652,45 @@ class ArchiveController extends Controller
             $method = $index === 0 ? 'whereRaw' : 'orWhereRaw';
             $query->{$method}("LOWER(CAST({$column} AS TEXT)) LIKE ?", [$like]);
         }
+    }
+
+    private function resolveArchiveReservationClassification(string $classificationId): ?array
+    {
+        if (preg_match('/^subseries:(\d+)$/', $classificationId, $matches) === 1) {
+            $option = $this->archiveClassificationOptions()
+                ->firstWhere('value', 'subseries:' . (int) $matches[1]);
+
+            return $option === null ? null : [
+                'label' => $option['label'],
+                'names' => collect([$option['label'], $option['name']])
+                    ->map(fn ($name) => trim((string) $name))
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->all(),
+            ];
+        }
+
+        return null;
+    }
+
+    private function applyArchiveReservationClassificationFilter(Builder $query, array $classification): void
+    {
+        $names = collect($classification['names'] ?? [])
+            ->map(fn ($name) => mb_strtolower(trim((string) $name)))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $query->where(function (Builder $classificationQuery) use ($names) {
+            foreach ($names as $index => $name) {
+                $method = $index === 0 ? 'whereRaw' : 'orWhereRaw';
+                $classificationQuery->{$method}(
+                    'LOWER(TRIM(CAST(transfer_box_documents.series_label AS TEXT))) = ?',
+                    [$name],
+                );
+            }
+        });
     }
 
     private function mapDocument(TransferDocument $document, array $loanedDocuments = []): array

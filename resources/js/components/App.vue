@@ -6,7 +6,7 @@ import Toast from 'primevue/toast';
 import AppSidebar from './layout/AppSidebar.vue';
 
 const route = useRoute();
-const isLoginPage = computed(() => route.name === 'login');
+const isPublicAuthPage = computed(() => ['login', 'password-reset'].includes(route.name));
 const currentPageTitle = computed(() => route.meta?.title ?? '');
 
 const toggleMobileSidebar = () => {
@@ -15,17 +15,17 @@ const toggleMobileSidebar = () => {
 </script>
 
 <template>
-    <div class="min-h-screen flex font-custom" :class="{ 'bg-gray-50': !isLoginPage }">
+    <div class="min-h-screen flex font-custom" :class="{ 'bg-gray-50': !isPublicAuthPage }">
         <Toast position="top-right" />
 
-        <AppSidebar v-if="!isLoginPage" />
+        <AppSidebar v-if="!isPublicAuthPage" />
 
         <div
             class="flex flex-column transition-all transition-duration-200 app-shell"
-            :class="[isLoginPage ? 'w-full' : 'flex-grow-1']"
+            :class="[isPublicAuthPage ? 'w-full' : 'flex-grow-1']"
         >
-            <div class="h-full flex flex-column" :class="[isLoginPage ? 'p-0' : 'app-shell__content']">
-                <div v-if="!isLoginPage" class="mobile-page-header">
+            <div class="h-full flex flex-column" :class="[isPublicAuthPage ? 'p-0' : 'app-shell__content']">
+                <div v-if="!isPublicAuthPage" class="mobile-page-header">
                     <button type="button" class="mobile-page-header__toggle" @click="toggleMobileSidebar">
                         <i class="pi pi-bars"></i>
                     </button>

@@ -24,6 +24,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             'login-auth',
             'login-verify',
+            'forgot-password',
+            'reset-password',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
