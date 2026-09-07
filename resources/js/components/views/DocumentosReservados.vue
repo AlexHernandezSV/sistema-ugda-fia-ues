@@ -49,7 +49,6 @@ const reservedPagination = ref({
     from: null,
     to: null,
 });
-let availableSearchTimer = null;
 let reservedSearchTimer = null;
 
 const reservedCount = computed(() => reservedPagination.value.total);
@@ -207,14 +206,26 @@ const onReservedPage = (event) => {
 };
 
 const fetchAvailableDocuments = async () => {
+    const searchTerm = availableQuery.value.trim();
+
+    if (!selectedClassification.value && !searchTerm) {
+        availableDocuments.value = [];
+        availableResultsCount.value = 0;
+        loadingAvailable.value = false;
+        return;
+    }
+
     loadingAvailable.value = true;
 
     try {
-        const params = selectedClassification.value
-            ? { classification_id: selectedClassification.value, all: 1, available_for_reservation: 1 }
-            : (availableQuery.value.trim()
-                ? { q: availableQuery.value.trim(), available_for_reservation: 1 }
-                : { all: 1, available_for_reservation: 1 });
+        const params = {
+            available_for_reservation: 1,
+            ...(selectedClassification.value
+                ? { classification_id: selectedClassification.value }
+                : {}),
+            ...(searchTerm ? { q: searchTerm } : {}),
+            ...(!searchTerm && selectedClassification.value ? { all: 1 } : {}),
+        };
         const { data } = await axios.get('/api/archive/documents', { params });
         availableDocuments.value = Array.isArray(data.results) ? data.results : [];
         availableResultsCount.value = Number(data.results_count ?? availableDocuments.value.length);
@@ -256,9 +267,11 @@ const fetchClassificationOptions = async () => {
 const openAddDialog = async () => {
     selectedClassification.value = null;
     selectedDocuments.value = [];
+    availableDocuments.value = [];
+    availableResultsCount.value = 0;
     availableQuery.value = '';
     addDialogVisible.value = true;
-    await Promise.all([fetchClassificationOptions(), fetchAvailableDocuments()]);
+    await fetchClassificationOptions();
 };
 
 const closeAddDialog = () => {
@@ -269,6 +282,9 @@ const closeAddDialog = () => {
     addDialogVisible.value = false;
     selectedClassification.value = null;
     selectedDocuments.value = [];
+    availableDocuments.value = [];
+    availableResultsCount.value = 0;
+    availableQuery.value = '';
 };
 
 const selectDocument = (document) => {
@@ -302,12 +318,26 @@ const clearSelectedDocuments = () => {
 
 const onClassificationChange = async () => {
     selectedDocuments.value = [];
-
-    if (selectedClassification.value) {
-        availableQuery.value = '';
-    }
+    availableQuery.value = '';
 
     await fetchAvailableDocuments();
+};
+
+const searchAvailableDocuments = async () => {
+    await fetchAvailableDocuments();
+};
+
+const clearAvailableSearch = async () => {
+    availableQuery.value = '';
+    selectedDocuments.value = [];
+
+    if (selectedClassification.value) {
+        await fetchAvailableDocuments();
+        return;
+    }
+
+    availableDocuments.value = [];
+    availableResultsCount.value = 0;
 };
 
 const addReservedDocument = async () => {
@@ -609,11 +639,6 @@ const confirmRemoveReservedDocument = async () => {
     }
 };
 
-watch(availableQuery, () => {
-    clearTimeout(availableSearchTimer);
-    availableSearchTimer = setTimeout(fetchAvailableDocuments, 250);
-});
-
 watch(reservedQuery, () => {
     clearTimeout(reservedSearchTimer);
     reservedSearchTimer = setTimeout(() => fetchReservedDocuments(1), 250);
@@ -622,7 +647,6 @@ watch(reservedQuery, () => {
 onMounted(fetchReservedDocuments);
 
 onBeforeUnmount(() => {
-    clearTimeout(availableSearchTimer);
     clearTimeout(reservedSearchTimer);
 });
 </script>
@@ -833,14 +857,35 @@ onBeforeUnmount(() => {
                             </div>
                         </section>
 
-                        <label class="reserved-search reserved-search--wide">
-                            <i class="pi pi-search"></i>
-                            <InputText
-                                v-model="availableQuery"
-                                type="text"
-                                placeholder="Buscar por código, nombre, serie o unidad productora..."
-                            />
-                        </label>
+                        <div class="reserved-search-group reserved-search-group--wide">
+                            <label class="reserved-search reserved-search--wide">
+                                <i class="pi pi-search"></i>
+                                <InputText
+                                    v-model="availableQuery"
+                                    type="text"
+                                    placeholder="Buscar por código, nombre, serie o unidad productora..."
+                                />
+                            </label>
+                            <div class="reserved-search-actions">
+                                <Button
+                                    type="button"
+                                    label="Buscar"
+                                    icon="pi pi-search"
+                                    :disabled="!availableQuery.trim() || loadingAvailable"
+                                    :loading="loadingAvailable"
+                                    @click="searchAvailableDocuments"
+                                />
+                                <Button
+                                    type="button"
+                                    label="Limpiar"
+                                    icon="pi pi-times"
+                                    severity="secondary"
+                                    outlined
+                                    :disabled="!availableQuery.trim() && selectedDocuments.length === 0"
+                                    @click="clearAvailableSearch"
+                                />
+                            </div>
+                        </div>
 
                         <div class="reserved-bulk-selection">
                             <label class="reserved-field-label" for="reserved-classification">
@@ -865,11 +910,12 @@ onBeforeUnmount(() => {
                             <span class="reserved-selection-summary">{{ selectionSummary }}</span>
                             <div v-if="!selectedClassification" class="reserved-selection-actions">
                                 <Button
+                                    v-if="!allVisibleSelected"
                                     type="button"
                                     severity="secondary"
                                     text
                                     size="small"
-                                    :label="allVisibleSelected ? 'Quitar visibles' : 'Seleccionar visibles'"
+                                    label="Seleccionar resultados"
                                     :disabled="availableResults.length === 0"
                                     @click="toggleAllVisible"
                                 />
@@ -890,7 +936,7 @@ onBeforeUnmount(() => {
                                 <i class="pi pi-spin pi-spinner"></i>
                                 Cargando documentos...
                             </div>
-                            <template v-else>
+                            <template v-else-if="selectedClassification || availableQuery.trim()">
                                 <button
                                     v-for="document in availableResults"
                                     :key="document.id"
@@ -914,12 +960,15 @@ onBeforeUnmount(() => {
                                     </div>
                                     <i v-if="selectedDocumentIds.has(document.id)" class="pi pi-check"></i>
                                 </button>
-                            </template>
                             <div
                                 v-if="!loadingAvailable && availableResults.length === 0"
                                 class="reserved-picker__state"
                             >
                                 No hay documentos disponibles con ese criterio.
+                            </div>
+                            </template>
+                            <div v-else class="reserved-picker__state">
+                                Realice una búsqueda o seleccione una subserie para consultar documentos.
                             </div>
                         </div>
                     </div>
@@ -1298,6 +1347,30 @@ onBeforeUnmount(() => {
 .reserved-search--wide {
     flex: none;
     width: 100%;
+}
+
+.reserved-search-group {
+    align-items: center;
+    display: flex;
+    gap: var(--ugda-space-xs);
+    width: 100%;
+}
+
+.reserved-search-group--wide {
+    flex: none;
+}
+
+.reserved-search-group .reserved-search--wide {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+}
+
+.reserved-search-actions {
+    align-items: center;
+    display: flex;
+    flex: 0 0 auto;
+    gap: var(--ugda-space-xs);
 }
 
 .reserved-bulk-selection {
@@ -1730,6 +1803,23 @@ onBeforeUnmount(() => {
 
     .reserved-search {
         min-width: 0;
+    }
+
+    .reserved-search-group {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .reserved-search-group .reserved-search--wide {
+        width: 100%;
+    }
+
+    .reserved-search-actions {
+        width: 100%;
+    }
+
+    .reserved-search-actions :deep(.p-button) {
+        flex: 1 1 0;
     }
 
     .reserved-option {
