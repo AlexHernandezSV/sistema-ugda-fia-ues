@@ -33,7 +33,11 @@ Route::post('/forgot-password', [AuthController::class, 'sendResetLinkEmail']);
 Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 Route::get('/reset-password/{token}/validate', [AuthController::class, 'validateResetToken']);
 Route::get('/logout', [AuthController::class, 'logout']);
-Route::get('/login', function () {
+Route::get('/login', function (Request $request) {
+    if ($request->user()) {
+        return redirect('/dashboard');
+    }
+
     return view('welcome');
 })->name('login');
 Route::get('/restablecer-contrasena/{token}', function () {
@@ -182,6 +186,8 @@ Route::middleware('auth')->group(function () {
     Route::put('/api/archive/documents/{id}', [ArchiveController::class, 'updateDocument']);
     Route::get('/api/archive/reserved-documents', [ArchiveController::class, 'reservedDocuments']);
     Route::post('/api/archive/reserved-documents', [ArchiveController::class, 'storeReservedDocument']);
+    Route::delete('/api/archive/reserved-documents', [ArchiveController::class, 'destroyReservedDocumentsByClassification']);
+    Route::delete('/api/archive/reserved-documents/selected', [ArchiveController::class, 'destroySelectedReservedDocuments']);
     Route::delete('/api/archive/reserved-documents/{id}', [ArchiveController::class, 'destroyReservedDocument']);
     Route::put('/api/archive/documents/{id}/box', [ArchiveController::class, 'updateDocumentBox']);
     Route::get('/api/physical-locations/options', [PhysicalLocationController::class, 'options']);

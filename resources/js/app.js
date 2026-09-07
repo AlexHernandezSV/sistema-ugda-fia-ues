@@ -97,4 +97,6 @@ app.component('DatePicker', DatePicker);
 
 installInputSanitizer();
 
-app.mount('#app');
+router.isReady().then(() => {
+    app.mount('#app');
+});

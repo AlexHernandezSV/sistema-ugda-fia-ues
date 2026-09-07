@@ -24,6 +24,7 @@ const isMobile = ref(false);
 const isMobileMenuOpen = ref(false);
 const isProfileMenuOpen = ref(false);
 const isNotificationMenuOpen = ref(false);
+const isLoggingOut = ref(false);
 const notificationPollingId = ref(null);
 const notifications = ref({
     unreadCount: 0,
@@ -351,13 +352,16 @@ const goToProfile = () => {
 };
 
 const handleLogout = async () => {
+    isLoggingOut.value = true;
+    clearCachedUser();
+
     try {
-        clearCachedUser();
         await axios.get('/logout');
         closeMobileMenu();
-        window.location.href = '/login';
+        window.location.replace('/login');
     } catch (error) {
         console.error(error);
+        isLoggingOut.value = false;
     }
 };
 
@@ -405,7 +409,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <div class="app-sidebar-shell flex-shrink-0" :style="{ width: sidebarShellWidth }">
+    <div v-if="isLoggingOut" class="logout-overlay" role="status" aria-live="polite">
+        <i class="pi pi-spin pi-spinner text-3xl"></i>
+        <span>Cerrando sesión...</span>
+    </div>
+
+    <div v-else class="app-sidebar-shell flex-shrink-0" :style="{ width: sidebarShellWidth }">
         <aside
             v-if="sidebarVisible"
             class="app-sidebar flex flex-column transition-all transition-duration-300 z-5 font-custom shadow-4 overflow-hidden"
@@ -628,6 +637,21 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.logout-overlay {
+    align-items: center;
+    background: var(--ugda-surface-page, #f8fafc);
+    color: var(--ugda-brand);
+    display: flex;
+    flex-direction: column;
+    font-size: 1rem;
+    font-weight: 600;
+    gap: 0.75rem;
+    inset: 0;
+    justify-content: center;
+    position: fixed;
+    z-index: 2000;
+}
+
 .sidebar-notifications-trigger {
     align-items: center;
     background-color: rgba(255, 255, 255, 0.05);

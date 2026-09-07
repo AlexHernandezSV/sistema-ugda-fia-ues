@@ -1315,6 +1315,17 @@ class ArchiveController extends Controller
 
         try {
             $term = trim((string) $request->query('q', ''));
+            $classificationId = trim((string) $request->query('classification_id', ''));
+            $classification = $classificationId !== ''
+                ? $this->resolveArchiveReservationClassification($classificationId)
+                : null;
+
+            if ($classificationId !== '' && $classification === null) {
+                return response()->json([
+                    'message' => 'La subserie documental seleccionada no es válida.',
+                ], 422);
+            }
+
             $query = TransferDocument::query()
                 ->with([
                     'reservedBy.person',
@@ -1325,6 +1336,10 @@ class ArchiveController extends Controller
                 ])
                 ->where('is_reserved', true)
                 ->whereHas('box.transfer', fn (Builder $transferQuery) => $transferQuery->whereNotNull('completed_at'));
+
+            if ($classification !== null) {
+                $this->applyArchiveReservationClassificationFilter($query, $classification);
+            }
 
             if ($term !== '') {
                 $query->where(function (Builder $searchQuery) use ($term) {
@@ -1355,16 +1370,30 @@ class ArchiveController extends Controller
                 });
             }
 
-            $documents = $query
+            $page = max(1, (int) $request->query('page', 1));
+            $perPage = (int) $request->query('per_page', 10);
+            $perPage = min(max($perPage, 5), 50);
+            $documentsPaginator = $query
                 ->orderByDesc('reserved_at')
                 ->orderBy('transfer_box_documents.name')
-                ->get()
+                ->paginate($perPage, ['*'], 'page', $page);
+            $documents = $documentsPaginator->getCollection()
                 ->map(fn (TransferDocument $document) => $this->mapDocument($document))
                 ->values();
+            $meta = [
+                'current_page' => $documentsPaginator->currentPage(),
+                'last_page' => $documentsPaginator->lastPage(),
+                'per_page' => $documentsPaginator->perPage(),
+                'total' => $documentsPaginator->total(),
+                'from' => $documentsPaginator->firstItem(),
+                'to' => $documentsPaginator->lastItem(),
+            ];
 
             return response()->json([
                 'documents' => $documents,
-                'count' => $documents->count(),
+                'data' => $documents,
+                'count' => $documentsPaginator->total(),
+                'meta' => $meta,
             ]);
         } catch (Throwable $exception) {
             report($exception);
@@ -1588,6 +1617,234 @@ class ArchiveController extends Controller
 
             return response()->json([
                 'message' => 'No se pudo remover el documento de reservados.',
+            ], 500);
+        }
+    }
+
+    public function destroyReservedDocumentsByClassification(
+        Request $request,
+        UserActivityLogger $activityLogger,
+    ): JsonResponse {
+        if (!$this->canManageArchive($request)) {
+            return response()->json([
+                'message' => 'Solo el personal UGDA puede quitar documentos reservados.',
+            ], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'classification_id' => ['required', 'string', 'regex:/^subseries:\d+$/'],
+            'current_password' => ['required', 'string'],
+        ], [
+            'classification_id.required' => 'Seleccione la subserie que desea quitar de reservados.',
+            'classification_id.regex' => 'La subserie documental seleccionada no es válida.',
+            'current_password.required' => 'Ingrese su contraseña para confirmar la eliminación.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Seleccione una subserie e ingrese su contraseña para continuar.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        if (!Hash::check((string) $request->input('current_password'), (string) $request->user()->password)) {
+            return response()->json([
+                'message' => 'La contraseña ingresada no es correcta.',
+            ], 422);
+        }
+
+        $classificationId = trim((string) $request->input('classification_id'));
+        $classification = $this->resolveArchiveReservationClassification($classificationId);
+
+        if ($classification === null) {
+            return response()->json([
+                'message' => 'La subserie documental seleccionada no es válida.',
+            ], 422);
+        }
+
+        try {
+            [$removedCount, $activityLog] = DB::transaction(function () use (
+                $activityLogger,
+                $classification,
+                $request,
+            ) {
+                $query = TransferDocument::query()
+                    ->where('is_reserved', true)
+                    ->whereHas(
+                        'box.transfer',
+                        fn (Builder $transferQuery) => $transferQuery->whereNotNull('completed_at'),
+                    );
+                $this->applyArchiveReservationClassificationFilter($query, $classification);
+                $documents = $query->lockForUpdate()->get();
+
+                if ($documents->isEmpty()) {
+                    throw new \RuntimeException(
+                        'La subserie seleccionada no tiene documentos reservados.',
+                        422,
+                    );
+                }
+
+                $documents->each(fn (TransferDocument $document) => $document->forceFill([
+                    'is_reserved' => false,
+                    'reserved_by_user_id' => null,
+                    'reserved_at' => null,
+                ])->save());
+
+                $removedCount = $documents->count();
+                $activityLog = $activityLogger->log(
+                    $request->user(),
+                    $request->user(),
+                    'reserved_subseries_documents_deleted',
+                    'Eliminacion de documentos reservados por subserie',
+                    'Serie/Subserie: ' . $classification['label']
+                        . '. Documentos retirados: ' . $removedCount . '.',
+                    $request,
+                );
+
+                return [$removedCount, $activityLog];
+            });
+
+            return response()->json([
+                'message' => 'Se quitaron ' . $removedCount . ' documentos de "'
+                    . $classification['label'] . '" de reservados.',
+                'removed_count' => $removedCount,
+                'event_id' => $activityLog->id,
+            ]);
+        } catch (\RuntimeException $exception) {
+            if ((int) $exception->getCode() === 422) {
+                return response()->json([
+                    'message' => $exception->getMessage(),
+                ], 422);
+            }
+
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudieron quitar los documentos de la subserie de reservados.',
+            ], 500);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudieron quitar los documentos de la subserie de reservados.',
+            ], 500);
+        }
+    }
+
+    public function destroySelectedReservedDocuments(
+        Request $request,
+        UserActivityLogger $activityLogger,
+    ): JsonResponse {
+        if (!$this->canManageArchive($request)) {
+            return response()->json([
+                'message' => 'Solo el personal UGDA puede quitar documentos reservados.',
+            ], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'document_ids' => ['required', 'array', 'min:1'],
+            'document_ids.*' => ['required', 'integer', 'distinct'],
+            'current_password' => ['required', 'string'],
+        ], [
+            'document_ids.required' => 'Seleccione al menos un documento reservado.',
+            'document_ids.array' => 'La selección de documentos no es válida.',
+            'document_ids.min' => 'Seleccione al menos un documento reservado.',
+            'document_ids.*.integer' => 'La selección contiene un documento no válido.',
+            'document_ids.*.distinct' => 'La selección contiene documentos duplicados.',
+            'current_password.required' => 'Ingrese su contraseña para confirmar la eliminación.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Seleccione los documentos e ingrese su contraseña para continuar.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        if (!Hash::check((string) $request->input('current_password'), (string) $request->user()->password)) {
+            return response()->json([
+                'message' => 'La contraseña ingresada no es correcta.',
+            ], 422);
+        }
+
+        $documentIds = collect($request->input('document_ids'))
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        try {
+            [$removedCount, $activityLog] = DB::transaction(function () use (
+                $activityLogger,
+                $documentIds,
+                $request,
+            ) {
+                $documents = TransferDocument::query()
+                    ->whereIn('transfer_box_documents.id', $documentIds->all())
+                    ->where('is_reserved', true)
+                    ->whereHas(
+                        'box.transfer',
+                        fn (Builder $transferQuery) => $transferQuery->whereNotNull('completed_at'),
+                    )
+                    ->lockForUpdate()
+                    ->get();
+
+                if ($documents->count() !== $documentIds->count()) {
+                    throw new \RuntimeException(
+                        'Uno o más documentos seleccionados ya no están disponibles en la lista de reservados.',
+                        422,
+                    );
+                }
+
+                $documents->each(fn (TransferDocument $document) => $document->forceFill([
+                    'is_reserved' => false,
+                    'reserved_by_user_id' => null,
+                    'reserved_at' => null,
+                ])->save());
+
+                $removedCount = $documents->count();
+                $documentCodes = $documents
+                    ->pluck('code')
+                    ->map(fn ($code) => trim((string) $code))
+                    ->filter()
+                    ->implode(', ');
+                $activityLog = $activityLogger->log(
+                    $request->user(),
+                    $request->user(),
+                    'selected_reserved_documents_deleted',
+                    'Eliminacion de documentos reservados seleccionados',
+                    'Documentos retirados: ' . $removedCount
+                        . ($documentCodes !== '' ? '. Codigos: ' . $documentCodes : '')
+                        . '.',
+                    $request,
+                );
+
+                return [$removedCount, $activityLog];
+            });
+
+            return response()->json([
+                'message' => $removedCount === 1
+                    ? 'El documento seleccionado fue removido de reservados.'
+                    : 'Se quitaron ' . $removedCount . ' documentos seleccionados de reservados.',
+                'removed_count' => $removedCount,
+                'event_id' => $activityLog->id,
+            ]);
+        } catch (\RuntimeException $exception) {
+            if ((int) $exception->getCode() === 422) {
+                return response()->json([
+                    'message' => $exception->getMessage(),
+                ], 422);
+            }
+
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudieron quitar los documentos seleccionados de reservados.',
+            ], 500);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'No se pudieron quitar los documentos seleccionados de reservados.',
             ], 500);
         }
     }

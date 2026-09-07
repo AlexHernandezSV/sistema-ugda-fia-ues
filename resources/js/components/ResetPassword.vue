@@ -18,6 +18,7 @@ const loading = ref(false);
 const resetCompleted = ref(false);
 const linkChecking = ref(false);
 const linkValid = ref(null);
+const showHelpModal = ref(false);
 
 const hasToken = computed(() => token.length > 0);
 const isUsableLink = computed(() => hasToken.value && linkValid.value === true);
@@ -128,6 +129,8 @@ onMounted(validateResetLink);
                         <span class="reset-header__subtitle">Universidad de El Salvador</span>
                     </div>
                 </div>
+
+                <button type="button" class="reset-help-button" @click="showHelpModal = true">Ayuda</button>
 
             </div>
         </header>
@@ -261,6 +264,36 @@ onMounted(validateResetLink);
                 </div>
             </section>
         </main>
+
+        <div v-if="showHelpModal" class="reset-help-overlay" @click.self="showHelpModal = false">
+            <div class="reset-help-modal" role="dialog" aria-modal="true" aria-labelledby="reset-help-title">
+                <header class="reset-help-modal__header">
+                    <h2 id="reset-help-title" class="reset-help-modal__title">Centro de Ayuda</h2>
+                    <button type="button" class="reset-help-modal__close" @click="showHelpModal = false"
+                        aria-label="Cerrar modal">
+                        <i class="pi pi-times"></i>
+                    </button>
+                </header>
+
+                <div class="reset-help-modal__body">
+                    <div class="reset-help-modal__section">
+                        <h3 class="reset-help-modal__subtitle">¿Necesitas ayuda con los procesos?</h3>
+                        <p class="reset-help-modal__text">Para mayor información o asistencia con los procedimientos institucionales, contáctanos al correo:</p>
+                        <a href="mailto:procesos-ugda@fia.ues.edu.sv" class="reset-help-modal__link">
+                            <i class="pi pi-envelope"></i> procesos-ugda@fia.ues.edu.sv
+                        </a>
+                    </div>
+
+                    <div class="reset-help-modal__section">
+                        <h3 class="reset-help-modal__subtitle">¿Problemas de acceso?</h3>
+                        <p class="reset-help-modal__text">Si necesitas recuperar tus credenciales o reportar problemas técnicos para ingresar, comunícate a:</p>
+                        <a href="mailto:admin-ugda@fia.ues.edu.sv" class="reset-help-modal__link reset-help-modal__link--secondary">
+                            <i class="pi pi-user-edit"></i> admin-ugda@fia.ues.edu.sv
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -564,7 +597,7 @@ onMounted(validateResetLink);
     padding: 0 24px;
     display: flex;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: space-between;
 }
 
 .reset-header__brand {
@@ -618,6 +651,23 @@ onMounted(validateResetLink);
 }
 
 .reset-header__back:hover {
+    border-color: rgba(255, 255, 255, 0.32);
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.reset-help-button {
+    padding: 8px 16px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.reset-help-button:hover {
     border-color: rgba(255, 255, 255, 0.32);
     background: rgba(255, 255, 255, 0.18);
 }
@@ -818,6 +868,108 @@ onMounted(validateResetLink);
     border-radius: 12px !important;
 }
 
+.reset-help-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(14, 32, 59, 0.45);
+    backdrop-filter: blur(4px);
+}
+
+.reset-help-modal {
+    width: 100%;
+    max-width: 460px;
+    overflow: hidden;
+    border-radius: 18px;
+    background: #ffffff;
+    box-shadow: 0 24px 50px rgba(18, 43, 80, 0.2);
+}
+
+.reset-help-modal__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    border-bottom: 1px solid rgba(204, 220, 239, 0.5);
+    background: rgba(245, 249, 255, 0.5);
+}
+
+.reset-help-modal__title {
+    margin: 0;
+    color: #296cba;
+    font-size: 18px;
+    font-weight: 800;
+}
+
+.reset-help-modal__close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #7a8fa9;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.reset-help-modal__close:hover {
+    background: #eaf3ff;
+    color: #296cba;
+}
+
+.reset-help-modal__body {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 24px;
+}
+
+.reset-help-modal__section {
+    padding: 20px;
+    border: 1px solid rgba(204, 220, 239, 0.4);
+    border-radius: 14px;
+    background: #f8fafc;
+}
+
+.reset-help-modal__subtitle {
+    margin: 0 0 8px;
+    color: #2f6fae;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.reset-help-modal__text {
+    margin: 0 0 12px;
+    color: #607a9c;
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.reset-help-modal__link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #2f6fad;
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.reset-help-modal__link:hover {
+    color: #1e4f88;
+    text-decoration: underline;
+}
+
+.reset-help-modal__link--secondary {
+    color: #d78b20;
+}
+
 .reset-primary-button {
     min-height: 48px;
     margin-top: 8px;
@@ -882,6 +1034,11 @@ onMounted(validateResetLink);
     .reset-header__back {
         padding: 8px 14px;
         font-size: 12px;
+    }
+
+    .reset-help-button {
+        padding: 8px 14px;
+        font-size: 13px;
     }
 
     .reset-main {

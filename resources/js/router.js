@@ -229,12 +229,17 @@ const router = createRouter({
 });
 
 router.beforeEach(async (to) => {
-    if (to.name === 'login' || to.name === 'password-reset') {
+    if (to.name === 'password-reset') {
         return true;
     }
 
     try {
         const user = await getCurrentUser({ force: true });
+
+        if (to.name === 'login') {
+            return { path: '/dashboard' };
+        }
+
         const permissions = user?.permissions ?? [];
         const profileName = user?.role ?? user?.profile?.name ?? '';
         const hasPermission = to.meta?.permission ? permissions.includes(to.meta.permission) : false;
@@ -253,6 +258,10 @@ router.beforeEach(async (to) => {
 
         return true;
     } catch (error) {
+        if (to.name === 'login') {
+            return true;
+        }
+
         return { path: '/login', query: { redirect: to.fullPath } };
     }
 });
