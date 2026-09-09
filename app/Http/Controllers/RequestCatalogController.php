@@ -530,7 +530,8 @@ class RequestCatalogController extends Controller
         $y += 12;
 
         $columns = ['Código', 'Documento', 'Serie / Subserie', 'Fechas extremas', 'Soporte', 'Páginas'];
-        $widths = [68, 148, 137, 68, 48, 58];
+        // Mantener el detalle alineado con los bloques que usan todo el ancho útil de la hoja.
+        $widths = [68, 148, 137, 68, 48, ($pageWidth - ($margin * 2)) - (68 + 148 + 137 + 68 + 48)];
 
         foreach (($summary['boxes'] ?? []) as $box) {
             $ensureSpace(82);

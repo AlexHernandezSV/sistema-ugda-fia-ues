@@ -29,6 +29,7 @@ const batchForm = ref({
 
 const boxesList = ref([]);
 const editObservations = ref([]);
+const isPhysicalCorrection = ref(false);
 const correctionNotes = ref('');
 const seriesOptions = ref([]);
 const seriesCatalog = ref([]);
@@ -73,6 +74,15 @@ const confirmSubtitle = computed(() => isEditMode.value
     ? 'Revise el resumen antes de reenviar la transferencia'
     : 'Revise el resumen antes de enviar la transferencia');
 const confirmButtonLabel = computed(() => isEditMode.value ? 'Confirmar y Reenviar' : 'Confirmar y Enviar');
+const confirmNotice = computed(() => {
+    if (!isEditMode.value) {
+        return 'Al confirmar, esta solicitud sera enviada al Director/Jefe de la unidad para su autorización.';
+    }
+
+    return isPhysicalCorrection.value
+        ? 'Al confirmar, esta solicitud corregida será reenviada a UGDA para su revisión.'
+        : 'Al confirmar, esta solicitud corregida será enviada al Director/Jefe de la unidad para su autorización.';
+});
 const selectedUnitLabel = computed(() => unitsList.value.find((unit) => unit.value === headerForm.value.unit_id)?.label ?? 'No indicada');
 const totalDocuments = computed(() => boxesList.value.reduce((total, box) => total + Number(box.documents_count || 0), 0));
 const totalSeries = computed(() => new Set(boxesList.value.flatMap((box) => getBoxSeriesLabels(box))).size);
@@ -314,6 +324,7 @@ onMounted(async () => {
             headerForm.value.unit_id = editTransfer.unit_id ?? headerForm.value.unit_id;
             headerForm.value.user_name = editTransfer.responsible || headerForm.value.user_name;
             headerForm.value.description = editTransfer.description ?? '';
+            isPhysicalCorrection.value = editTransfer.is_physical_correction === true;
             boxesList.value = Array.isArray(transferRes.data.boxes)
                 ? transferRes.data.boxes.map((box) => ({
                     ...box,
@@ -1002,7 +1013,9 @@ const submitTransfer = async () => {
             severity: 'success',
             summary: isEditMode.value ? 'Solicitud corregida exitosamente' : 'Solicitud creada exitosamente',
             detail: isEditMode.value
-                ? `La solicitud #${data.number} ha sido corregida y reenviada a UGDA para revisión.`
+                ? (isPhysicalCorrection.value
+                    ? `La solicitud #${data.number} ha sido corregida y reenviada a UGDA para revisión.`
+                    : `La solicitud #${data.number} ha sido corregida y enviada al Director/Jefe de la unidad para autorización.`)
                 : `La solicitud #${data.number} ha sido creada y enviada para autorización.`,
             life: 3200,
         });
@@ -1275,7 +1288,7 @@ const goBack = () => {
                 <section class="transfer-confirm__notice">
                     <i class="pi pi-info-circle"></i>
                     <span>
-                        {{ isEditMode ? 'Al confirmar, esta solicitud corregida será reenviada a UGDA para su revisión.' : 'Al confirmar, esta solicitud sera enviada al Director/Jefe de la unidad para su autorización.' }}
+                        {{ confirmNotice }}
                     </span>
                 </section>
 

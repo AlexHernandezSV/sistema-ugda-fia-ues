@@ -358,6 +358,7 @@ class TransferController extends Controller
                         $transfer->requester?->person?->second_last_name,
                     ])->filter()->implode(' ')),
                     'description' => $transfer->description,
+                    'is_physical_correction' => $transfer->workflowStatus?->code === 'transfer_status_physical_observed',
                 ],
                 'boxes' => $transfer->boxes->map(fn ($box) => [
                     'id_temp' => 'box-' . $box->id,

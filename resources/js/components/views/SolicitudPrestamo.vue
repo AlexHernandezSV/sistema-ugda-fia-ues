@@ -604,7 +604,8 @@ watch(showAdditionalForm, (isVisible) => {
                 <div class="prestamo-confirm__body">
                     <div class="prestamo-confirm__notice">
                         <i class="pi pi-info-circle"></i>
-                        <strong>Al confirmar, esta solicitud será enviada para autorización del Director/Jefe y luego sera revisada por el personal de UGDA</strong>
+                        <strong v-if="isEditMode">Al confirmar, esta solicitud será enviada directamente al personal de UGDA para revisar las correcciones</strong>
+                        <strong v-else>Al confirmar, esta solicitud será enviada para autorización del Director/Jefe y luego sera revisada por el personal de UGDA</strong>
                     </div>
 
                     <div class="prestamo-confirm__section">
