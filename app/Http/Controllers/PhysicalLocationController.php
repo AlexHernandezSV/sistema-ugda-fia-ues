@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\PhysicalLocationAisle;
 use App\Models\PhysicalLocationOffice;
 use App\Models\PhysicalLocationShelf;
+use App\Models\TransferBox;
+use App\Services\UserActivityLogger;
 use App\Support\XlsxRowsReader;
 use App\Support\XlsxWorkbookWriter;
 use Illuminate\Database\Eloquent\Builder;
@@ -218,24 +220,83 @@ class PhysicalLocationController extends Controller
         ]);
     }
 
-    public function destroyOffice(Request $request, int $id): JsonResponse
+    public function destroyOffice(Request $request, int $id, UserActivityLogger $activityLogger): JsonResponse
     {
         if (!$this->canManagePhysicalLocations($request)) {
             return $this->adminOnlyResponse();
         }
 
-        $office = PhysicalLocationOffice::query()->withCount('aisles')->findOrFail($id);
+        $office = PhysicalLocationOffice::query()
+            ->withCount('aisles')
+            ->findOrFail($id);
+        $blockMessage = $this->officeDeletionBlockMessage($office);
 
-        if ($office->aisles_count > 0) {
+        if ($blockMessage !== null) {
             return response()->json([
-                'message' => 'No se puede eliminar una oficina con pasillos registrados.',
+                'message' => $blockMessage,
             ], 422);
         }
 
-        $office->delete();
+        $deletionResult = DB::transaction(function () use ($activityLogger, $request, $id) {
+            $office = PhysicalLocationOffice::query()
+                ->withCount('aisles')
+                ->with('aisles.shelves')
+                ->lockForUpdate()
+                ->findOrFail($id);
+            $blockMessage = $this->officeDeletionBlockMessage($office);
+
+            if ($blockMessage !== null) {
+                return ['blocked' => $blockMessage];
+            }
+
+            $log = $activityLogger->log(
+                $request->user(),
+                $request->user(),
+                'physical_location_office_deleted',
+                'Eliminacion de oficina',
+                'Oficina: ' . $office->code . ' - ' . $office->name . '.',
+                $request,
+            );
+
+            $office->delete();
+
+            return ['log' => $log];
+        });
+
+        if (isset($deletionResult['blocked'])) {
+            return response()->json([
+                'message' => $deletionResult['blocked'],
+            ], 422);
+        }
+
+        $activityLog = $deletionResult['log'];
+
         $this->refreshCatalogCacheVersion();
 
-        return response()->json(['message' => 'Oficina eliminada correctamente.']);
+        return response()->json([
+            'message' => 'Oficina eliminada correctamente.',
+            'event_id' => $activityLog->id,
+        ]);
+    }
+
+    public function checkOfficeDeletion(Request $request, int $id): JsonResponse
+    {
+        if (!$this->canManagePhysicalLocations($request)) {
+            return $this->adminOnlyResponse();
+        }
+
+        $office = PhysicalLocationOffice::query()->findOrFail($id);
+        $blockMessage = $this->officeDeletionBlockMessage($office);
+
+        if ($blockMessage !== null) {
+            return response()->json([
+                'message' => $blockMessage,
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'La oficina puede eliminarse.',
+        ]);
     }
 
     public function storeAisle(Request $request): JsonResponse
@@ -320,24 +381,83 @@ class PhysicalLocationController extends Controller
         ]);
     }
 
-    public function destroyAisle(Request $request, int $id): JsonResponse
+    public function destroyAisle(Request $request, int $id, UserActivityLogger $activityLogger): JsonResponse
     {
         if (!$this->canManagePhysicalLocations($request)) {
             return $this->adminOnlyResponse();
         }
 
-        $aisle = PhysicalLocationAisle::query()->withCount('shelves')->findOrFail($id);
+        $aisle = PhysicalLocationAisle::query()
+            ->withCount('shelves')
+            ->findOrFail($id);
+        $blockMessage = $this->aisleDeletionBlockMessage($aisle);
 
-        if ($aisle->shelves_count > 0) {
+        if ($blockMessage !== null) {
             return response()->json([
-                'message' => 'No se puede eliminar un pasillo con estantes registrados.',
+                'message' => $blockMessage,
             ], 422);
         }
 
-        $aisle->delete();
+        $deletionResult = DB::transaction(function () use ($activityLogger, $request, $id) {
+            $aisle = PhysicalLocationAisle::query()
+                ->withCount('shelves')
+                ->with('shelves')
+                ->lockForUpdate()
+                ->findOrFail($id);
+            $blockMessage = $this->aisleDeletionBlockMessage($aisle);
+
+            if ($blockMessage !== null) {
+                return ['blocked' => $blockMessage];
+            }
+
+            $log = $activityLogger->log(
+                $request->user(),
+                $request->user(),
+                'physical_location_aisle_deleted',
+                'Eliminacion de pasillo',
+                'Pasillo: ' . $aisle->code . ' - ' . $aisle->name . '.',
+                $request,
+            );
+
+            $aisle->delete();
+
+            return ['log' => $log];
+        });
+
+        if (isset($deletionResult['blocked'])) {
+            return response()->json([
+                'message' => $deletionResult['blocked'],
+            ], 422);
+        }
+
+        $activityLog = $deletionResult['log'];
+
         $this->refreshCatalogCacheVersion();
 
-        return response()->json(['message' => 'Pasillo eliminado correctamente.']);
+        return response()->json([
+            'message' => 'Pasillo eliminado correctamente.',
+            'event_id' => $activityLog->id,
+        ]);
+    }
+
+    public function checkAisleDeletion(Request $request, int $id): JsonResponse
+    {
+        if (!$this->canManagePhysicalLocations($request)) {
+            return $this->adminOnlyResponse();
+        }
+
+        $aisle = PhysicalLocationAisle::query()->findOrFail($id);
+        $blockMessage = $this->aisleDeletionBlockMessage($aisle);
+
+        if ($blockMessage !== null) {
+            return response()->json([
+                'message' => $blockMessage,
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'El pasillo puede eliminarse.',
+        ]);
     }
 
     public function storeShelf(Request $request): JsonResponse
@@ -422,16 +542,84 @@ class PhysicalLocationController extends Controller
         ]);
     }
 
-    public function destroyShelf(Request $request, int $id): JsonResponse
+    public function destroyShelf(Request $request, int $id, UserActivityLogger $activityLogger): JsonResponse
     {
         if (!$this->canManagePhysicalLocations($request)) {
             return $this->adminOnlyResponse();
         }
 
-        PhysicalLocationShelf::query()->findOrFail($id)->delete();
+        $shelf = PhysicalLocationShelf::query()
+            ->with('aisle.office')
+            ->findOrFail($id);
+        $blockMessage = $this->shelfDeletionBlockMessage($shelf);
+
+        if ($blockMessage !== null) {
+            return response()->json([
+                'message' => $blockMessage,
+            ], 422);
+        }
+
+        $deletionResult = DB::transaction(function () use ($activityLogger, $request, $id) {
+            $shelf = PhysicalLocationShelf::query()
+                ->with('aisle.office')
+                ->lockForUpdate()
+                ->findOrFail($id);
+            $blockMessage = $this->shelfDeletionBlockMessage($shelf);
+
+            if ($blockMessage !== null) {
+                return ['blocked' => $blockMessage];
+            }
+
+            $log = $activityLogger->log(
+                $request->user(),
+                $request->user(),
+                'physical_location_shelf_deleted',
+                'Eliminacion de estante',
+                'Estante: ' . $shelf->code . ' - ' . $shelf->name . '.',
+                $request,
+            );
+
+            $shelf->delete();
+
+            return ['log' => $log];
+        });
+
+        if (isset($deletionResult['blocked'])) {
+            return response()->json([
+                'message' => $deletionResult['blocked'],
+            ], 422);
+        }
+
+        $activityLog = $deletionResult['log'];
+
         $this->refreshCatalogCacheVersion();
 
-        return response()->json(['message' => 'Estante eliminado correctamente.']);
+        return response()->json([
+            'message' => 'Estante eliminado correctamente.',
+            'event_id' => $activityLog->id,
+        ]);
+    }
+
+    public function checkShelfDeletion(Request $request, int $id): JsonResponse
+    {
+        if (!$this->canManagePhysicalLocations($request)) {
+            return $this->adminOnlyResponse();
+        }
+
+        $shelf = PhysicalLocationShelf::query()
+            ->with('aisle.office')
+            ->findOrFail($id);
+        $blockMessage = $this->shelfDeletionBlockMessage($shelf);
+
+        if ($blockMessage !== null) {
+            return response()->json([
+                'message' => $blockMessage,
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'El estante no tiene cajas asociadas.',
+        ]);
     }
 
     /**
@@ -909,6 +1097,7 @@ class PhysicalLocationController extends Controller
     private function paginatedCatalogPayload(Request $request): array
     {
         $offices = PhysicalLocationOffice::query()
+            ->withCount('aisles')
             ->when(
                 $this->searchValue($request, 'office'),
                 fn (Builder $query, string $search) => $query->where(function (Builder $query) use ($search) {
@@ -925,6 +1114,7 @@ class PhysicalLocationController extends Controller
 
         $aisles = PhysicalLocationAisle::query()
             ->with('office')
+            ->withCount('shelves')
             ->when(
                 $this->searchValue($request, 'aisle'),
                 fn (Builder $query, string $search) => $query->where(function (Builder $query) use ($search) {
@@ -1012,17 +1202,23 @@ class PhysicalLocationController extends Controller
 
     private function mapOffice(PhysicalLocationOffice $office): array
     {
-        return [
+        $mapped = [
             'id' => $office->id,
             'name' => $office->name,
             'code' => $office->code,
             'is_active' => (bool) $office->is_active,
         ];
+
+        if (array_key_exists('aisles_count', $office->getAttributes())) {
+            $mapped['aisles_count'] = (int) $office->aisles_count;
+        }
+
+        return $mapped;
     }
 
     private function mapAisle(PhysicalLocationAisle $aisle): array
     {
-        return [
+        $mapped = [
             'id' => $aisle->id,
             'office_id' => $aisle->physical_location_office_id,
             'office_name' => $aisle->office?->name,
@@ -1030,11 +1226,17 @@ class PhysicalLocationController extends Controller
             'code' => $aisle->code,
             'is_active' => (bool) $aisle->is_active,
         ];
+
+        if (array_key_exists('shelves_count', $aisle->getAttributes())) {
+            $mapped['shelves_count'] = (int) $aisle->shelves_count;
+        }
+
+        return $mapped;
     }
 
     private function mapShelf(PhysicalLocationShelf $shelf): array
     {
-        return [
+        $mapped = [
             'id' => $shelf->id,
             'aisle_id' => $shelf->physical_location_aisle_id,
             'aisle_name' => $shelf->aisle?->name,
@@ -1044,11 +1246,92 @@ class PhysicalLocationController extends Controller
             'code' => $shelf->code,
             'is_active' => (bool) $shelf->is_active,
         ];
+
+        return $mapped;
     }
 
     private function normalizeCode(string $code): string
     {
         return strtoupper(trim($code));
+    }
+
+    private function officeDeletionBlockMessage(PhysicalLocationOffice $office): ?string
+    {
+        if ((int) ($office->aisles_count ?? $office->aisles()->count()) > 0) {
+            return 'No se puede eliminar la oficina porque tiene pasillos registrados. Elimine primero los pasillos.';
+        }
+
+        $office->loadMissing('aisles.shelves');
+
+        if ($this->boxesAreAssignedToShelves($office->aisles->flatMap->shelves)) {
+            return 'No se puede eliminar la oficina porque tiene cajas asociadas a sus estantes. Retire primero las cajas de esas ubicaciones.';
+        }
+
+        return null;
+    }
+
+    private function aisleDeletionBlockMessage(PhysicalLocationAisle $aisle): ?string
+    {
+        if ((int) ($aisle->shelves_count ?? $aisle->shelves()->count()) > 0) {
+            return 'No se puede eliminar el pasillo porque tiene estantes registrados. Elimine primero los estantes.';
+        }
+
+        $aisle->loadMissing('office');
+
+        if ($this->boxesAreAssignedToShelves([$aisle->shelves()->first()])) {
+            return 'No se puede eliminar el pasillo porque tiene cajas asociadas a sus estantes. Retire primero las cajas de esas ubicaciones.';
+        }
+
+        return null;
+    }
+
+    private function shelfDeletionBlockMessage(PhysicalLocationShelf $shelf): ?string
+    {
+        if ($this->boxesAreAssignedToShelves([$shelf])) {
+            return 'No se puede eliminar el estante porque tiene cajas asociadas. Retire primero las cajas de esta ubicación.';
+        }
+
+        return null;
+    }
+
+    /**
+     * @param iterable<int, PhysicalLocationShelf|null> $shelves
+     */
+    private function boxesAreAssignedToShelves(iterable $shelves): bool
+    {
+        $locationCodes = collect($shelves)
+            ->filter()
+            ->map(function (PhysicalLocationShelf $shelf): string {
+                $shelf->loadMissing('aisle.office');
+
+                return $this->locationCodeForShelf($shelf);
+            })
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($locationCodes === []) {
+            return false;
+        }
+
+        return TransferBox::query()
+            ->whereRaw('UPPER(TRIM(location_code)) IN (' . implode(', ', array_fill(0, count($locationCodes), '?')) . ')', $locationCodes)
+            ->exists();
+    }
+
+    private function locationCodeForShelf(PhysicalLocationShelf $shelf): string
+    {
+        $shelf->loadMissing('aisle.office');
+
+        return collect([
+            $shelf->aisle?->office?->code,
+            $shelf->aisle?->code,
+            $shelf->code,
+        ])
+            ->map(fn ($code) => strtoupper(trim((string) $code)))
+            ->filter()
+            ->implode('-');
     }
 
     private function validationResponse($validator): JsonResponse

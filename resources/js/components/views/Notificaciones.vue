@@ -11,6 +11,7 @@ import {
 
 const router = useRouter();
 const toast = useToast();
+const defaultNotificationType = 'unit_authorization_pending';
 
 const loading = ref(true);
 const notifications = ref([]);
@@ -31,7 +32,7 @@ const meta = ref({
 const filters = ref({
     search: '',
     status: null,
-    type: null,
+    type: defaultNotificationType,
     dateRange: null,
 });
 
@@ -144,7 +145,7 @@ const clearFilters = () => {
     filters.value = {
         search: '',
         status: null,
-        type: null,
+        type: defaultNotificationType,
         dateRange: null,
     };
     fetchNotifications(1);

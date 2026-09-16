@@ -3,13 +3,16 @@
 namespace App\Http\Controllers;
 
 use App\Models\SystemNotification;
+use App\Services\SystemNotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class SystemNotificationController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    public function index(Request $request, SystemNotificationService $notificationService): JsonResponse
     {
+        $notificationService->synchronizeUnitDecisionNotificationsForUser($request->user()->id);
+
         $perPage = min(max((int) $request->integer('per_page', 8), 5), 30);
         $query = SystemNotification::query()
             ->where('user_id', $request->user()->id)
@@ -22,7 +25,16 @@ class SystemNotificationController extends Controller
         }
 
         if ($request->filled('type')) {
-            $query->where('type', $request->string('type')->toString());
+            $type = $request->string('type')->toString();
+
+            if ($type === 'unit_authorization_pending') {
+                $query->whereIn('type', [
+                    'transfer_pending_unit_authorization',
+                    'loan_pending_unit_authorization',
+                ]);
+            } else {
+                $query->where('type', $type);
+            }
         }
 
         if ($request->filled('date_from')) {
@@ -65,6 +77,15 @@ class SystemNotificationController extends Controller
                     ->distinct()
                     ->orderBy('type')
                     ->pluck('type')
+                    ->merge([
+                        'unit_authorization_pending',
+                        'transfer_authorized_by_unit',
+                        'loan_authorized_by_unit',
+                        'transfer_denied_by_unit',
+                        'loan_denied',
+                    ])
+                    ->unique()
+                    ->sort()
                     ->map(fn ($type) => [
                         'value' => $type,
                         'label' => $this->typeLabel($type),
@@ -74,10 +95,28 @@ class SystemNotificationController extends Controller
         ]);
     }
 
-    public function summary(Request $request): JsonResponse
+    public function summary(Request $request, SystemNotificationService $notificationService): JsonResponse
+    {
+        $notificationService->synchronizeUnitDecisionNotificationsForUser($request->user()->id);
+
+        return response()->json($this->summaryPayload($request->user()->id));
+    }
+
+    public function refreshDueDateNotifications(Request $request, SystemNotificationService $notificationService): JsonResponse
+    {
+        $created = $notificationService->refreshLoanDueDateNotificationsForUser($request->user());
+        $notificationService->synchronizeUnitDecisionNotificationsForUser($request->user()->id);
+
+        return response()->json(array_merge(
+            $this->summaryPayload($request->user()->id),
+            ['created_due_notifications' => $created],
+        ));
+    }
+
+    private function summaryPayload(int $userId): array
     {
         $query = SystemNotification::query()
-            ->where('user_id', $request->user()->id);
+            ->where('user_id', $userId);
 
         $latest = (clone $query)
             ->orderByRaw('read_at is null desc')
@@ -86,10 +125,10 @@ class SystemNotificationController extends Controller
             ->get()
             ->map(fn ($notification) => $this->serialize($notification));
 
-        return response()->json([
+        return [
             'unread_count' => (clone $query)->whereNull('read_at')->count(),
             'latest' => $latest,
-        ]);
+        ];
     }
 
     public function markAsRead(Request $request, int $id): JsonResponse
@@ -145,6 +184,7 @@ class SystemNotificationController extends Controller
     private function typeLabel(string $type): string
     {
         return match ($type) {
+            'unit_authorization_pending' => 'Pendientes de autorización',
             'transfer_pending_unit_authorization' => 'Transferencia por autorizar',
             'transfer_pending_ugda_review' => 'Transferencia para UGDA',
             'transfer_authorized_by_unit' => 'Transferencia autorizada',

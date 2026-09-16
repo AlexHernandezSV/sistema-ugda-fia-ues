@@ -110,6 +110,7 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/api/notifications', [SystemNotificationController::class, 'index']);
     Route::get('/api/notifications/summary', [SystemNotificationController::class, 'summary']);
+    Route::post('/api/notifications/refresh', [SystemNotificationController::class, 'refreshDueDateNotifications']);
     Route::post('/api/notifications/mark-all-read', [SystemNotificationController::class, 'markAllAsRead']);
     Route::post('/api/notifications/{id}/read', [SystemNotificationController::class, 'markAsRead']);
 
@@ -151,12 +152,20 @@ Route::middleware('auth')->group(function () {
         ->middleware('permission:endpoint.api.documentary-series.create');
     Route::put('/api/documentary-series/{id}', [DocumentarySeriesController::class, 'update'])
         ->middleware('permission:endpoint.api.documentary-series.update');
+    Route::post('/api/documentary-series/{id}/check-unit-removal', [DocumentarySeriesController::class, 'checkSeriesUnitRemoval'])
+        ->middleware('permission:endpoint.api.documentary-series.update');
+    Route::post('/api/documentary-series/{id}/check-deletion', [DocumentarySeriesController::class, 'checkSeriesDeletion'])
+        ->middleware('permission:endpoint.api.documentary-series.delete');
     Route::delete('/api/documentary-series/{id}', [DocumentarySeriesController::class, 'destroy'])
         ->middleware('permission:endpoint.api.documentary-series.delete');
     Route::post('/api/documentary-series/{seriesId}/subseries', [DocumentarySeriesController::class, 'storeSubseries'])
         ->middleware('permission:endpoint.api.documentary-series.create');
     Route::put('/api/documentary-subseries/{id}', [DocumentarySeriesController::class, 'updateSubseries'])
         ->middleware('permission:endpoint.api.documentary-series.update');
+    Route::post('/api/documentary-subseries/{id}/check-unit-removal', [DocumentarySeriesController::class, 'checkSubseriesUnitRemoval'])
+        ->middleware('permission:endpoint.api.documentary-series.update');
+    Route::post('/api/documentary-subseries/{id}/check-deletion', [DocumentarySeriesController::class, 'checkSubseriesDeletion'])
+        ->middleware('permission:endpoint.api.documentary-series.delete');
     Route::delete('/api/documentary-subseries/{id}', [DocumentarySeriesController::class, 'destroySubseries'])
         ->middleware('permission:endpoint.api.documentary-series.delete');
 
@@ -196,12 +205,15 @@ Route::middleware('auth')->group(function () {
     Route::post('/api/physical-locations/import', [PhysicalLocationController::class, 'import']);
     Route::post('/api/physical-location-offices', [PhysicalLocationController::class, 'storeOffice']);
     Route::put('/api/physical-location-offices/{id}', [PhysicalLocationController::class, 'updateOffice']);
+    Route::post('/api/physical-location-offices/{id}/check-deletion', [PhysicalLocationController::class, 'checkOfficeDeletion']);
     Route::delete('/api/physical-location-offices/{id}', [PhysicalLocationController::class, 'destroyOffice']);
     Route::post('/api/physical-location-aisles', [PhysicalLocationController::class, 'storeAisle']);
     Route::put('/api/physical-location-aisles/{id}', [PhysicalLocationController::class, 'updateAisle']);
+    Route::post('/api/physical-location-aisles/{id}/check-deletion', [PhysicalLocationController::class, 'checkAisleDeletion']);
     Route::delete('/api/physical-location-aisles/{id}', [PhysicalLocationController::class, 'destroyAisle']);
     Route::post('/api/physical-location-shelves', [PhysicalLocationController::class, 'storeShelf']);
     Route::put('/api/physical-location-shelves/{id}', [PhysicalLocationController::class, 'updateShelf']);
+    Route::post('/api/physical-location-shelves/{id}/check-deletion', [PhysicalLocationController::class, 'checkShelfDeletion']);
     Route::delete('/api/physical-location-shelves/{id}', [PhysicalLocationController::class, 'destroyShelf']);
     Route::get('/api/transfers/next-code', [TransferController::class, 'nextCode']);
     Route::get('/api/transfers/document-import-template', [TransferController::class, 'documentImportTemplate']);

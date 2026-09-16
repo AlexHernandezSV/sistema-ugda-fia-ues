@@ -121,6 +121,10 @@ const showError = (detail) => {
     toast.add({ severity: "error", summary: "Error", detail, life: 4200 });
 };
 
+const showWarning = (detail) => {
+    toast.add({ severity: "warn", summary: "No se puede eliminar", detail, life: 5000 });
+};
+
 const downloadTemplate = () => {
     window.location.href = "/api/physical-locations/import-template";
 };
@@ -335,9 +339,26 @@ const saveLocation = async () => {
     }
 };
 
-const deleteLocation = (type, item) => {
+const deleteLocation = async (type, item) => {
+    try {
+        await axios.post(
+            `${typeConfig[type].endpoint}/${item.id}/check-deletion`,
+        );
+    } catch (error) {
+        showWarning(
+            error.response?.data?.message ??
+                "No se pudo validar la eliminación de la ubicación física.",
+        );
+        return;
+    }
+
     pendingDelete.value = { type, item };
     deleteDialogVisible.value = true;
+};
+
+const resetDeleteDialog = () => {
+    deleteDialogVisible.value = false;
+    pendingDelete.value = null;
 };
 
 const closeDeleteDialog = () => {
@@ -345,8 +366,7 @@ const closeDeleteDialog = () => {
         return;
     }
 
-    deleteDialogVisible.value = false;
-    pendingDelete.value = null;
+    resetDeleteDialog();
 };
 
 const confirmDeleteLocation = async () => {
@@ -365,8 +385,7 @@ const confirmDeleteLocation = async () => {
             detail: "Registro eliminado correctamente.",
             life: 2600,
         });
-        deleteDialogVisible.value = false;
-        pendingDelete.value = null;
+        resetDeleteDialog();
         await Promise.all([fetchCatalog(), fetchLocationOptions()]);
     } catch (error) {
         showError(
@@ -791,6 +810,7 @@ const goBack = () => {
             :dismissableMask="!deleting"
             :style="{ width: '440px', maxWidth: '92vw' }"
             class="locations-delete-dialog"
+            @hide="resetDeleteDialog"
         >
             <template #header>
                 <div class="locations-delete-dialog__header">
@@ -818,9 +838,10 @@ const goBack = () => {
                     @click="closeDeleteDialog"
                 />
                 <Button
-                    label="Aceptar"
+                    label="Eliminar"
                     severity="danger"
                     :loading="deleting"
+                    :disabled="deleting"
                     @click="confirmDeleteLocation"
                 />
             </template>
@@ -1094,6 +1115,20 @@ const goBack = () => {
 .locations-delete-dialog__body strong {
     color: #111827;
     font-weight: 700;
+}
+
+.locations-delete-dialog__password {
+    display: grid;
+    gap: 0.4rem;
+    margin-top: 0.35rem;
+}
+
+.locations-delete-dialog__password span {
+    color: #334155;
+    font-family: var(--ugda-font-family);
+    font-size: var(--ugda-font-body);
+    font-weight: var(--ugda-weight-semibold);
+    line-height: 1.4;
 }
 
 :deep(.locations-status-toggle.is-active .p-toggleswitch-slider) {

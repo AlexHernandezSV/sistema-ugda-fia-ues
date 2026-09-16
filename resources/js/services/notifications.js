@@ -23,6 +23,13 @@ export const fetchNotificationSummary = async () => {
     return data;
 };
 
+export const refreshDueDateNotifications = async () => {
+    const { data } = await axios.post('/api/notifications/refresh');
+    setNotificationState(data);
+
+    return data;
+};
+
 export const markNotificationAsRead = async (id) => {
     const { data } = await axios.post(`/api/notifications/${id}/read`);
     await fetchNotificationSummary();

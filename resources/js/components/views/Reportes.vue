@@ -700,7 +700,7 @@ const accessDocumentChartTicks = computed(() => {
 });
 
 const accessResponseTimeSummary = computed(() => {
-    const times = visibleAccessResponseTimeRows.value.map((row) => row.minutes);
+    const times = visibleAccessResponseTimeRows.value.map((row) => Number(row.minutes) || 0);
 
     if (times.length === 0) {
         return {
@@ -717,9 +717,22 @@ const accessResponseTimeSummary = computed(() => {
     };
 });
 
+const accessResponseTimeAxis = computed(() => {
+    const maxMinutes = Math.max(
+        ...visibleAccessResponseTimeRows.value.map((row) => Number(row.minutes) || 0),
+        0
+    );
+    const maximum = Math.max(4, Math.ceil(maxMinutes / 4) * 4);
+
+    return {
+        maximum,
+        ticks: [0, 1, 2, 3, 4].map((index) => (maximum / 4) * index),
+    };
+});
+
 const accessResponseTimeChartPoints = computed(() => {
     const rows = visibleAccessResponseTimeRows.value.slice(0, 12);
-    const maxMinutes = Math.max(...rows.map((row) => row.minutes), 1);
+    const maxMinutes = accessResponseTimeAxis.value.maximum;
     const width = 1000;
     const height = 300;
     const top = 16;
@@ -749,15 +762,12 @@ const accessResponseTimeLinePath = computed(() => {
 });
 
 const accessResponseTimeTicks = computed(() => {
-    const maxMinutes = Math.max(...visibleAccessResponseTimeRows.value.map((row) => row.minutes), 1);
-    const roundedMax = Math.max(60, Math.ceil(maxMinutes / 15) * 15);
+    const maxMinutes = accessResponseTimeAxis.value.maximum;
 
-    return [0, 1, 2, 3, 4].map((index) => {
-        const value = Math.round((roundedMax / 4) * index);
-        const y = 260 - (value / roundedMax) * 244;
-
-        return { value, y };
-    });
+    return accessResponseTimeAxis.value.ticks.map((value) => ({
+        value,
+        y: 260 - (value / maxMinutes) * 244,
+    }));
 });
 
 const accessDetailRows = computed(() => {

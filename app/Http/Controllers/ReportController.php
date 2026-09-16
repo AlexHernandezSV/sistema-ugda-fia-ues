@@ -1094,7 +1094,7 @@ class ReportController extends Controller
             return collect();
         }
 
-        $minutes = max(0, (int) round($startedAt->diffInMinutes($completedAt)));
+        $minutes = max(0, (int) round($startedAt->diffInSeconds($completedAt) / 60));
 
         return $this->accessConsultationDocumentsForLoan($loan)
             ->map(fn (LoanDocument $document) => [

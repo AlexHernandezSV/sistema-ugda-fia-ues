@@ -11,6 +11,7 @@ const loading = ref(true);
 const isSavingSeries = ref(false);
 const isSavingSubseries = ref(false);
 const isImporting = ref(false);
+const isDeleting = ref(false);
 const importFileInput = ref(null);
 const displaySeriesModal = ref(false);
 const displayDeleteModal = ref(false);
@@ -19,6 +20,10 @@ const activeSubseriesSeriesId = ref(null);
 const activeEditSubseriesId = ref(null);
 const expandedSeriesIds = ref([]);
 const searchValue = ref("");
+const checkingUnitRemoval = ref(false);
+const unitRemovalRequestToken = ref(0);
+const lastConfirmedSeriesUnitIds = ref([]);
+const lastConfirmedSubseriesUnitIds = ref([]);
 
 const seriesList = ref([]);
 const unitOptions = ref([]);
@@ -59,11 +64,13 @@ const editSubseriesForm = ref({
 const seriesErrors = ref({
     code: "",
     name: "",
+    unit_ids: "",
 });
 
 const subseriesErrors = ref({
     code: "",
     name: "",
+    unit_ids: "",
 });
 
 const deleteDialogState = ref({
@@ -76,6 +83,97 @@ const deleteDialogState = ref({
 const searchTerm = computed(() => searchValue.value.trim().toLowerCase());
 
 const getCharacterCount = (value) => String(value ?? "").length;
+
+const normalizeUnitIds = (values) =>
+    [...new Set((Array.isArray(values) ? values : []).map((value) => Number(value)).filter(Boolean))];
+
+const showUnitRemovalError = (error, errorsRef) => {
+    const message =
+        error.response?.data?.message ||
+        "No se puede quitar la unidad productora.";
+
+    errorsRef.value.unit_ids = message;
+    toast.add({
+        severity: "warn",
+        summary: "No se puede quitar la unidad",
+        detail: message,
+        life: 5000,
+    });
+};
+
+const checkSeriesUnitSelection = async (event) => {
+    const nextUnitIds = normalizeUnitIds(event.value);
+    const previousUnitIds = lastConfirmedSeriesUnitIds.value;
+    const removedUnitIds = previousUnitIds.filter(
+        (unitId) => !nextUnitIds.includes(unitId),
+    );
+
+    seriesErrors.value.unit_ids = "";
+
+    if (removedUnitIds.length === 0) {
+        lastConfirmedSeriesUnitIds.value = nextUnitIds;
+        return;
+    }
+
+    const requestToken = ++unitRemovalRequestToken.value;
+    checkingUnitRemoval.value = true;
+
+    try {
+        await axios.post(
+            `/api/documentary-series/${editSeriesForm.value.id}/check-unit-removal`,
+            { unit_ids: removedUnitIds },
+        );
+        if (requestToken === unitRemovalRequestToken.value) {
+            lastConfirmedSeriesUnitIds.value = nextUnitIds;
+        }
+    } catch (error) {
+        if (requestToken === unitRemovalRequestToken.value) {
+            editSeriesForm.value.unit_ids = [...previousUnitIds];
+            showUnitRemovalError(error, seriesErrors);
+        }
+    } finally {
+        if (requestToken === unitRemovalRequestToken.value) {
+            checkingUnitRemoval.value = false;
+        }
+    }
+};
+
+const checkSubseriesUnitSelection = async (event) => {
+    const nextUnitIds = normalizeUnitIds(event.value);
+    const previousUnitIds = lastConfirmedSubseriesUnitIds.value;
+    const removedUnitIds = previousUnitIds.filter(
+        (unitId) => !nextUnitIds.includes(unitId),
+    );
+
+    subseriesErrors.value.unit_ids = "";
+
+    if (removedUnitIds.length === 0) {
+        lastConfirmedSubseriesUnitIds.value = nextUnitIds;
+        return;
+    }
+
+    const requestToken = ++unitRemovalRequestToken.value;
+    checkingUnitRemoval.value = true;
+
+    try {
+        await axios.post(
+            `/api/documentary-subseries/${editSubseriesForm.value.id}/check-unit-removal`,
+            { unit_ids: removedUnitIds },
+        );
+        if (requestToken === unitRemovalRequestToken.value) {
+            lastConfirmedSubseriesUnitIds.value = nextUnitIds;
+        }
+    } catch (error) {
+        if (requestToken === unitRemovalRequestToken.value) {
+            editSubseriesForm.value.unit_ids = [...previousUnitIds];
+            showUnitRemovalError(error, subseriesErrors);
+        }
+    } finally {
+        if (requestToken === unitRemovalRequestToken.value) {
+            checkingUnitRemoval.value = false;
+        }
+    }
+};
 
 const filteredSeries = computed(() => {
     if (!searchTerm.value) {
@@ -181,11 +279,11 @@ const importSeries = async (event) => {
 };
 
 const resetSeriesErrors = () => {
-    seriesErrors.value = { code: "", name: "" };
+    seriesErrors.value = { code: "", name: "", unit_ids: "" };
 };
 
 const resetSubseriesErrors = () => {
-    subseriesErrors.value = { code: "", name: "" };
+    subseriesErrors.value = { code: "", name: "", unit_ids: "" };
 };
 
 const normalizeSeriesCode = (target = createSeriesForm.value) => {
@@ -333,7 +431,7 @@ const saveSeries = async () => {
     isSavingSeries.value = true;
 
     try {
-        await axios.post("/api/documentary-series", {
+        const { data } = await axios.post("/api/documentary-series", {
             code: createSeriesForm.value.code,
             name: createSeriesForm.value.name.trim(),
             is_active: true,
@@ -342,8 +440,8 @@ const saveSeries = async () => {
 
         toast.add({
             severity: "success",
-            summary: "Creada",
-            detail: "Serie documental creada correctamente",
+            summary: "Guardada",
+            detail: data.message ?? "Serie documental guardada correctamente",
             life: 3000,
         });
 
@@ -358,6 +456,7 @@ const saveSeries = async () => {
 
 const openEditSeriesModal = (series) => {
     resetSeriesErrors();
+    lastConfirmedSeriesUnitIds.value = normalizeUnitIds(series.unit_ids);
     editSeriesForm.value = {
         id: series.id,
         code: series.code,
@@ -399,12 +498,26 @@ const updateSeries = async () => {
     }
 };
 
-const openDeleteSeriesModal = (series) => {
+const openDeleteSeriesModal = async (series) => {
+    try {
+        await axios.post(`/api/documentary-series/${series.id}/check-deletion`);
+    } catch (error) {
+        toast.add({
+            severity: "warn",
+            summary: "No se puede eliminar",
+            detail:
+                error.response?.data?.message ??
+                "No se pudo validar la eliminación de la serie documental.",
+            life: 5000,
+        });
+        return;
+    }
+
     deleteDialogState.value = {
         type: "series",
         series,
         subseries: null,
-        message: `Desea eliminar la serie ${series.code} - ${series.name} y todas sus subseries?`,
+        message: `¿Desea eliminar la serie ${series.code} - ${series.name}?`,
     };
     displayDeleteModal.value = true;
 };
@@ -435,7 +548,7 @@ const saveSubseries = async () => {
     isSavingSubseries.value = true;
 
     try {
-        await axios.post(
+        const { data } = await axios.post(
             `/api/documentary-series/${activeSubseriesSeriesId.value}/subseries`,
             {
                 code: createSubseriesForm.value.code,
@@ -447,8 +560,8 @@ const saveSubseries = async () => {
 
         toast.add({
             severity: "success",
-            summary: "Creada",
-            detail: "Subserie documental creada correctamente",
+            summary: "Guardada",
+            detail: data.message ?? "Subserie documental guardada correctamente",
             life: 3000,
         });
 
@@ -467,6 +580,7 @@ const openEditSubseriesModal = (series, subseries) => {
     activeSubseriesSeriesId.value = null;
     activeEditSubseriesId.value = subseries.id;
     resetSubseriesErrors();
+    lastConfirmedSubseriesUnitIds.value = normalizeUnitIds(subseries.unit_ids);
     editSubseriesForm.value = {
         id: subseries.id,
         documentary_series_id: series.id,
@@ -534,17 +648,39 @@ const updateSubseries = async () => {
     }
 };
 
-const openDeleteSubseriesModal = (series, subseries) => {
+const openDeleteSubseriesModal = async (series, subseries) => {
+    try {
+        await axios.post(
+            `/api/documentary-subseries/${subseries.id}/check-deletion`,
+        );
+    } catch (error) {
+        toast.add({
+            severity: "warn",
+            summary: "No se puede eliminar",
+            detail:
+                error.response?.data?.message ??
+                "No se pudo validar la eliminación de la subserie documental.",
+            life: 5000,
+        });
+        return;
+    }
+
     deleteDialogState.value = {
         type: "subseries",
         series,
         subseries,
-        message: `Desea eliminar la subserie ${subseries.code} - ${subseries.name}?`,
+        message: `¿Desea eliminar la subserie ${subseries.code} - ${subseries.name}?`,
     };
     displayDeleteModal.value = true;
 };
 
 const confirmDelete = async () => {
+    if (isDeleting.value) {
+        return;
+    }
+
+    isDeleting.value = true;
+
     try {
         if (
             deleteDialogState.value.type === "series" &&
@@ -577,7 +713,7 @@ const confirmDelete = async () => {
         }
 
         const expandedSeriesId = deleteDialogState.value.series?.id ?? null;
-        displayDeleteModal.value = false;
+        closeDeleteModal();
         await fetchSeries();
 
         if (expandedSeriesId) {
@@ -587,9 +723,13 @@ const confirmDelete = async () => {
         toast.add({
             severity: "error",
             summary: "Error",
-            detail: "No se pudo completar la eliminacion",
-            life: 3000,
+            detail:
+                error.response?.data?.message ||
+                "No se pudo completar la eliminacion",
+            life: 5000,
         });
+    } finally {
+        isDeleting.value = false;
     }
 };
 
@@ -609,7 +749,22 @@ const handleValidationErrors = (error, errorsRef) => {
         errorsRef.value = {
             code: errors.code?.[0] ?? "",
             name: errors.name?.[0] ?? "",
+            unit_ids:
+                errors.unit_ids?.[0] ??
+                (!errors.code?.[0] && !errors.name?.[0]
+                    ? error.response.data.message ?? ""
+                    : ""),
         };
+
+        if (!errors.code?.[0] && !errors.name?.[0] && error.response.data.message) {
+            toast.add({
+                severity: "warn",
+                summary: "No se puede actualizar",
+                detail: error.response.data.message,
+                life: 5000,
+            });
+        }
+
         return;
     }
 
@@ -1111,6 +1266,8 @@ const clearFilter = () => {
                                         display="chip"
                                         filter
                                         class="w-full"
+                                        :disabled="checkingUnitRemoval"
+                                        @change="checkSubseriesUnitSelection"
                                     />
                                 </div>
 
@@ -1155,6 +1312,7 @@ const clearFilter = () => {
                                         icon="pi pi-save"
                                         class="border-none"
                                         :loading="isSavingSubseries"
+                                        :disabled="isSavingSubseries || checkingUnitRemoval"
                                         @click="updateSubseries"
                                     />
                                 </div>
@@ -1296,6 +1454,8 @@ const clearFilter = () => {
                     display="chip"
                     filter
                     class="w-full"
+                    :disabled="checkingUnitRemoval"
+                    @change="checkSeriesUnitSelection"
                 />
                 <small class="series-field__hint"
                     >Solo estas unidades veran esta serie al crear solicitudes
@@ -1332,6 +1492,7 @@ const clearFilter = () => {
                     label="Guardar Cambios"
                     class="border-none"
                     :loading="isSavingSeries"
+                    :disabled="isSavingSeries || checkingUnitRemoval"
                     @click="updateSeries"
                 />
             </div>
@@ -1364,6 +1525,8 @@ const clearFilter = () => {
                     label="Eliminar"
                     class="border-none"
                     severity="danger"
+                    :loading="isDeleting"
+                    :disabled="isDeleting"
                     @click="confirmDelete"
                 />
             </div>

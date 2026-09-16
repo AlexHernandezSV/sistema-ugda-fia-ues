@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\DocumentarySeries;
 use App\Models\DocumentarySubseries;
+use App\Models\TransferDocument;
 use App\Models\Unit;
+use App\Services\UserActivityLogger;
 use App\Support\XlsxRowsReader;
 use App\Support\XlsxWorkbookWriter;
 use Illuminate\Http\JsonResponse;
@@ -153,7 +155,19 @@ class DocumentarySeriesController extends Controller
         $this->normalizeCatalogPayload($request);
 
         $validated = $request->validate([
-            'code' => ['required', 'string', 'max:20', 'regex:/^\d+$/', 'unique:documentary_series,code'],
+            'code' => [
+                'required',
+                'string',
+                'max:20',
+                'regex:/^\d+$/',
+                Rule::unique('documentary_series', 'code')
+                    ->where(fn ($query) => $query->whereNull('deleted_at')),
+                function ($attribute, $value, $fail) {
+                    if ($this->deletedSeriesCodeExists($value)) {
+                        $fail('El código de la serie pertenece a una serie eliminada y no puede reutilizarse.');
+                    }
+                },
+            ],
             'name' => [
                 'required',
                 'string',
@@ -182,6 +196,7 @@ class DocumentarySeriesController extends Controller
             'name' => trim($validated['name']),
             'is_active' => $validated['is_active'] ?? true,
         ]);
+
         $series->units()->sync($validated['unit_ids'] ?? []);
 
         return response()->json(['message' => 'Serie documental creada con exito']);
@@ -198,7 +213,14 @@ class DocumentarySeriesController extends Controller
                 'string',
                 'max:20',
                 'regex:/^\d+$/',
-                Rule::unique('documentary_series', 'code')->ignore($series->id),
+                Rule::unique('documentary_series', 'code')
+                    ->where(fn ($query) => $query->whereNull('deleted_at'))
+                    ->ignore($series->id),
+                function ($attribute, $value, $fail) use ($series) {
+                    if ($this->deletedSeriesCodeExists($value, $series->id)) {
+                        $fail('El código de la serie pertenece a una serie eliminada y no puede reutilizarse.');
+                    }
+                },
             ],
             'name' => [
                 'required',
@@ -223,12 +245,27 @@ class DocumentarySeriesController extends Controller
             'unit_ids.*.exists' => 'Una de las unidades productoras seleccionadas no existe.',
         ]);
 
+        $selectedUnitIds = $validated['unit_ids'] ?? [];
+        $removedUnitIds = $series->units()
+            ->pluck('units.id')
+            ->map(fn ($unitId) => (int) $unitId)
+            ->diff(collect($selectedUnitIds)->map(fn ($unitId) => (int) $unitId))
+            ->values();
+
+        if ($this->documentaryLabelsAreAssociatedWithAnyUnit(
+            $this->seriesDocumentaryLabels($series),
+            $removedUnitIds->all()
+        )) {
+            return response()->json([
+                'message' => 'No se puede quitar una unidad productora porque existen documentos de la serie o sus subseries asociados a esa unidad.',
+            ], 422);
+        }
+
         $series->update([
             'code' => trim($validated['code']),
             'name' => trim($validated['name']),
             'is_active' => $validated['is_active'],
         ]);
-        $selectedUnitIds = $validated['unit_ids'] ?? [];
         $series->units()->sync($selectedUnitIds);
         $series->subseries()
             ->with('units:id')
@@ -246,17 +283,142 @@ class DocumentarySeriesController extends Controller
         return response()->json(['message' => 'Serie documental actualizada']);
     }
 
-    public function destroy($id)
+    public function checkSeriesUnitRemoval(Request $request, $id): JsonResponse
     {
-        $series = DocumentarySeries::with('subseries')->findOrFail($id);
+        $series = DocumentarySeries::findOrFail($id);
+        $validated = $request->validate([
+            'unit_ids' => ['required', 'array', 'min:1'],
+            'unit_ids.*' => ['integer', 'exists:units,id'],
+        ], [
+            'unit_ids.required' => 'Seleccione las unidades que desea retirar.',
+            'unit_ids.min' => 'Seleccione al menos una unidad para validar.',
+            'unit_ids.*.exists' => 'Una de las unidades productoras seleccionadas no existe.',
+        ]);
 
-        foreach ($series->subseries as $subseries) {
-            $subseries->delete();
+        if ($this->documentaryLabelsAreAssociatedWithAnyUnit(
+            $this->seriesDocumentaryLabels($series),
+            array_map('intval', $validated['unit_ids'])
+        )) {
+            return response()->json([
+                'message' => 'No se puede quitar la unidad productora porque existen documentos de la serie o sus subseries asociados a esa unidad.',
+            ], 422);
         }
 
-        $series->delete();
+        return response()->json([
+            'message' => 'No existen documentos asociados a las unidades retiradas.',
+        ]);
+    }
 
-        return response()->json(['message' => 'Serie documental eliminada']);
+    public function checkSeriesDeletion(Request $request, $id): JsonResponse
+    {
+        $series = DocumentarySeries::findOrFail($id);
+
+        if ($series->subseries()->exists()) {
+            return response()->json([
+                'message' => 'No se puede eliminar la serie documental porque tiene subseries asociadas. Elimine primero sus subseries.',
+            ], 422);
+        }
+
+        if ($series->units()->exists()) {
+            return response()->json([
+                'message' => 'No se puede eliminar la serie documental porque tiene unidades productoras asociadas. Desvincule primero las unidades productoras.',
+            ], 422);
+        }
+
+        if ($this->documentaryLabelsAreAssociated($this->seriesDocumentaryLabels($series))) {
+            return response()->json([
+                'message' => 'No se puede eliminar la serie documental porque está asociada a documentos. Desclasifique o reasigne primero los documentos asociados.',
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'La serie documental puede eliminarse.',
+        ]);
+    }
+
+    public function destroy(Request $request, $id, UserActivityLogger $activityLogger)
+    {
+        $series = DocumentarySeries::findOrFail($id);
+
+        if ($series->subseries()->exists()) {
+            return response()->json([
+                'message' => 'No se puede eliminar la serie documental porque tiene subseries asociadas. Elimine primero sus subseries.',
+            ], 422);
+        }
+
+        if ($series->units()->exists()) {
+            return response()->json([
+                'message' => 'No se puede eliminar la serie documental porque tiene unidades productoras asociadas. Desvincule primero las unidades productoras.',
+            ], 422);
+        }
+
+        if ($this->documentaryLabelsAreAssociated([
+            $this->seriesDocumentaryLabel($series),
+            ...$series->subseries()->withTrashed()->get()->map(
+                fn (DocumentarySubseries $subseries) => $this->subseriesDocumentaryLabel($series, $subseries)
+            )->all(),
+        ])) {
+            return response()->json([
+                'message' => 'No se puede eliminar la serie documental porque está asociada a documentos. Desclasifique o reasigne primero los documentos asociados.',
+            ], 422);
+        }
+
+        $deletionResult = DB::transaction(function () use ($activityLogger, $request, $id) {
+            $series = DocumentarySeries::query()
+                ->lockForUpdate()
+                ->findOrFail($id);
+
+            if ($series->subseries()->exists()) {
+                return [
+                    'blocked' => 'No se puede eliminar la serie documental porque tiene subseries asociadas. Elimine primero sus subseries.',
+                ];
+            }
+
+            if ($series->units()->exists()) {
+                return [
+                    'blocked' => 'No se puede eliminar la serie documental porque tiene unidades productoras asociadas. Desvincule primero las unidades productoras.',
+                ];
+            }
+
+            $labels = [
+                $this->seriesDocumentaryLabel($series),
+                ...$series->subseries()->withTrashed()->get()->map(
+                    fn (DocumentarySubseries $subseries) => $this->subseriesDocumentaryLabel($series, $subseries)
+                )->all(),
+            ];
+
+            if ($this->documentaryLabelsAreAssociated($labels)) {
+                return [
+                    'blocked' => 'No se puede eliminar la serie documental porque está asociada a documentos. Desclasifique o reasigne primero los documentos asociados.',
+                ];
+            }
+
+            $log = $activityLogger->log(
+                $request->user(),
+                $request->user(),
+                'documentary_series_deleted',
+                'Eliminacion de serie documental',
+                'Serie: ' . $series->code . ' - ' . $series->name . '.',
+                $request,
+            );
+
+            $series->delete();
+
+            return ['log' => $log];
+        });
+
+        if (isset($deletionResult['blocked'])) {
+            return response()->json([
+                'message' => $deletionResult['blocked'],
+            ], 422);
+        }
+
+        $activityLog = $deletionResult['log'];
+
+        return response()->json([
+            'message' => 'Serie documental eliminada',
+            'event_id' => $activityLog->id,
+        ]);
     }
 
     public function storeSubseries(Request $request, $seriesId)
@@ -273,6 +435,11 @@ class DocumentarySeriesController extends Controller
                 'regex:/^\d+$/',
                 Rule::unique('documentary_subseries', 'code')
                     ->where(fn ($query) => $query->where('documentary_series_id', $series->id)->whereNull('deleted_at')),
+                function ($attribute, $value, $fail) use ($series) {
+                    if ($this->deletedSubseriesCodeExists($series->id, $value)) {
+                        $fail('El código de la subserie pertenece a una subserie eliminada y no puede reutilizarse.');
+                    }
+                },
             ],
             'name' => [
                 'required',
@@ -303,6 +470,7 @@ class DocumentarySeriesController extends Controller
             'name' => trim($validated['name']),
             'is_active' => $validated['is_active'] ?? true,
         ]);
+
         $subseries->units()->sync($validated['unit_ids'] ?? []);
 
         return response()->json(['message' => 'Subserie documental creada con exito']);
@@ -323,6 +491,15 @@ class DocumentarySeriesController extends Controller
                 Rule::unique('documentary_subseries', 'code')
                     ->where(fn ($query) => $query->where('documentary_series_id', $subseries->documentary_series_id)->whereNull('deleted_at'))
                     ->ignore($subseries->id),
+                function ($attribute, $value, $fail) use ($subseries) {
+                    if ($this->deletedSubseriesCodeExists(
+                        $subseries->documentary_series_id,
+                        $value,
+                        $subseries->id
+                    )) {
+                        $fail('El código de la subserie pertenece a una subserie eliminada y no puede reutilizarse.');
+                    }
+                },
             ],
             'name' => [
                 'required',
@@ -347,22 +524,142 @@ class DocumentarySeriesController extends Controller
             'unit_ids.*.in' => 'Las unidades de la subserie deben pertenecer a las unidades asignadas a la serie.',
         ]);
 
+        $selectedUnitIds = $validated['unit_ids'] ?? [];
+        $removedUnitIds = $subseries->units()
+            ->pluck('units.id')
+            ->map(fn ($unitId) => (int) $unitId)
+            ->diff(collect($selectedUnitIds)->map(fn ($unitId) => (int) $unitId))
+            ->values();
+
+        if ($this->documentaryLabelsAreAssociatedWithAnyUnit(
+            [$this->subseriesDocumentaryLabel($subseries->series, $subseries)],
+            $removedUnitIds->all()
+        )) {
+            return response()->json([
+                'message' => 'No se puede quitar una unidad productora porque existen documentos de la subserie asociados a esa unidad.',
+            ], 422);
+        }
+
         $subseries->update([
             'code' => trim($validated['code']),
             'name' => trim($validated['name']),
             'is_active' => $validated['is_active'],
         ]);
-        $subseries->units()->sync($validated['unit_ids'] ?? []);
+        $subseries->units()->sync($selectedUnitIds);
 
         return response()->json(['message' => 'Subserie documental actualizada']);
     }
 
-    public function destroySubseries($id)
+    public function checkSubseriesUnitRemoval(Request $request, $id): JsonResponse
     {
-        $subseries = DocumentarySubseries::findOrFail($id);
-        $subseries->delete();
+        $subseries = DocumentarySubseries::with('series')->findOrFail($id);
+        $validated = $request->validate([
+            'unit_ids' => ['required', 'array', 'min:1'],
+            'unit_ids.*' => ['integer', 'exists:units,id'],
+        ], [
+            'unit_ids.required' => 'Seleccione las unidades que desea retirar.',
+            'unit_ids.min' => 'Seleccione al menos una unidad para validar.',
+            'unit_ids.*.exists' => 'Una de las unidades productoras seleccionadas no existe.',
+        ]);
 
-        return response()->json(['message' => 'Subserie documental eliminada']);
+        if ($this->documentaryLabelsAreAssociatedWithAnyUnit(
+            [$this->subseriesDocumentaryLabel($subseries->series, $subseries)],
+            array_map('intval', $validated['unit_ids'])
+        )) {
+            return response()->json([
+                'message' => 'No se puede quitar la unidad productora porque existen documentos de la subserie asociados a esa unidad.',
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'No existen documentos asociados a las unidades retiradas.',
+        ]);
+    }
+
+    public function checkSubseriesDeletion(Request $request, $id): JsonResponse
+    {
+        $subseries = DocumentarySubseries::with('series')->findOrFail($id);
+
+        if ($subseries->units()->exists()) {
+            return response()->json([
+                'message' => 'No se puede eliminar la subserie documental porque tiene unidades productoras asociadas. Desvincule primero las unidades productoras.',
+            ], 422);
+        }
+
+        if ($this->documentaryLabelsAreAssociated([
+            $this->subseriesDocumentaryLabel($subseries->series, $subseries),
+        ])) {
+            return response()->json([
+                'message' => 'No se puede eliminar la subserie documental porque está asociada a documentos. Desclasifique o reasigne primero los documentos asociados.',
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'La subserie documental puede eliminarse.',
+        ]);
+    }
+
+    public function destroySubseries(Request $request, $id, UserActivityLogger $activityLogger)
+    {
+        $subseries = DocumentarySubseries::with('series')->findOrFail($id);
+
+        if ($subseries->units()->exists()) {
+            return response()->json([
+                'message' => 'No se puede eliminar la subserie documental porque tiene unidades productoras asociadas. Desvincule primero las unidades productoras.',
+            ], 422);
+        }
+
+        if ($this->documentaryLabelsAreAssociated([
+            $this->subseriesDocumentaryLabel($subseries->series, $subseries),
+        ])) {
+            return response()->json([
+                'message' => 'No se puede eliminar la subserie documental porque está asociada a documentos. Desclasifique o reasigne primero los documentos asociados.',
+            ], 422);
+        }
+
+        $deletionResult = DB::transaction(function () use ($activityLogger, $request, $id) {
+            $subseries = DocumentarySubseries::with('series')->lockForUpdate()->findOrFail($id);
+
+            if ($subseries->units()->exists()) {
+                return [
+                    'blocked' => 'No se puede eliminar la subserie documental porque tiene unidades productoras asociadas. Desvincule primero las unidades productoras.',
+                ];
+            }
+
+            if ($this->documentaryLabelsAreAssociated([
+                $this->subseriesDocumentaryLabel($subseries->series, $subseries),
+            ])) {
+                return [
+                    'blocked' => 'No se puede eliminar la subserie documental porque está asociada a documentos. Desclasifique o reasigne primero los documentos asociados.',
+                ];
+            }
+
+            $log = $activityLogger->log(
+                $request->user(),
+                $request->user(),
+                'documentary_subseries_deleted',
+                'Eliminacion de subserie documental',
+                'Subserie: ' . $subseries->code . ' - ' . $subseries->name . '.',
+                $request,
+            );
+
+            $subseries->delete();
+
+            return ['log' => $log];
+        });
+
+        if (isset($deletionResult['blocked'])) {
+            return response()->json([
+                'message' => $deletionResult['blocked'],
+            ], 422);
+        }
+
+        $activityLog = $deletionResult['log'];
+
+        return response()->json([
+            'message' => 'Subserie documental eliminada',
+            'event_id' => $activityLog->id,
+        ]);
     }
 
     private function normalizeCatalogPayload(Request $request): void
@@ -371,6 +668,101 @@ class DocumentarySeriesController extends Controller
             'code' => is_string($request->input('code')) ? trim($request->input('code')) : $request->input('code'),
             'name' => is_string($request->input('name')) ? trim($request->input('name')) : $request->input('name'),
         ]);
+    }
+
+    private function seriesDocumentaryLabel(DocumentarySeries $series): string
+    {
+        return trim($series->code . ' - ' . $series->name);
+    }
+
+    private function subseriesDocumentaryLabel(DocumentarySeries $series, DocumentarySubseries $subseries): string
+    {
+        return $this->seriesDocumentaryLabel($series) . ' / ' . trim($subseries->code . ' - ' . $subseries->name);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function seriesDocumentaryLabels(DocumentarySeries $series): array
+    {
+        return [
+            $this->seriesDocumentaryLabel($series),
+            ...$series->subseries()->withTrashed()->get()->map(
+                fn (DocumentarySubseries $subseries) => $this->subseriesDocumentaryLabel($series, $subseries)
+            )->all(),
+        ];
+    }
+
+    /**
+     * @param array<int, string> $labels
+     * @param array<int, int> $unitIds
+     */
+    private function documentaryLabelsAreAssociatedWithAnyUnit(array $labels, array $unitIds): bool
+    {
+        foreach ($unitIds as $unitId) {
+            if ($this->documentaryLabelsAreAssociatedWithUnit($labels, (int) $unitId)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<int, string> $labels
+     */
+    private function documentaryLabelsAreAssociatedWithUnit(array $labels, int $unitId): bool
+    {
+        return $this->documentaryLabelsQuery($labels)
+            ->whereHas('box.transfer', function ($query) use ($unitId) {
+                $query->where(function ($query) use ($unitId) {
+                    $query
+                        ->where('transfers.unit_id', $unitId)
+                        ->orWhereHas('units', fn ($unitQuery) => $unitQuery->where('units.id', $unitId));
+                });
+            })
+            ->exists();
+    }
+
+    /**
+     * La relacion del catalogo se almacena como etiquetas separadas por punto
+     * y coma en transfer_box_documents; la comparacion respeta sus limites.
+     *
+     * @param array<int, string> $labels
+     */
+    private function documentaryLabelsAreAssociated(array $labels): bool
+    {
+        return $this->documentaryLabelsQuery($labels)->exists();
+    }
+
+    /**
+     * @param array<int, string> $labels
+     */
+    private function documentaryLabelsQuery(array $labels)
+    {
+        $normalizedLabels = collect($labels)
+            ->map(fn (string $label) => mb_strtolower(preg_replace('/\s+/', '', trim($label)) ?? ''))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($normalizedLabels === []) {
+            return TransferDocument::query()->whereRaw('1 = 0');
+        }
+
+        $normalizedColumn = "REPLACE(REPLACE(LOWER(COALESCE(transfer_box_documents.series_label, '')), ' ', ''), ';', '|')";
+
+        return TransferDocument::query()
+            ->where(function ($query) use ($normalizedLabels, $normalizedColumn) {
+                foreach ($normalizedLabels as $index => $label) {
+                    $method = $index === 0 ? 'whereRaw' : 'orWhereRaw';
+                    $query->{$method}(
+                        "POSITION(? IN ('|' || {$normalizedColumn} || '|')) > 0",
+                        ["|{$label}|"]
+                    );
+                }
+            });
     }
 
     /**
@@ -988,6 +1380,23 @@ class DocumentarySeriesController extends Controller
             ->whereNull('deleted_at')
             ->when($ignoreId, fn ($query) => $query->whereKeyNot($ignoreId))
             ->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])
+            ->exists();
+    }
+
+    private function deletedSeriesCodeExists(string $code, ?int $ignoreId = null): bool
+    {
+        return DocumentarySeries::onlyTrashed()
+            ->where('code', trim($code))
+            ->when($ignoreId, fn ($query) => $query->whereKeyNot($ignoreId))
+            ->exists();
+    }
+
+    private function deletedSubseriesCodeExists(int $seriesId, string $code, ?int $ignoreId = null): bool
+    {
+        return DocumentarySubseries::onlyTrashed()
+            ->where('documentary_series_id', $seriesId)
+            ->where('code', trim($code))
+            ->when($ignoreId, fn ($query) => $query->whereKeyNot($ignoreId))
             ->exists();
     }
 

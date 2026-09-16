@@ -699,6 +699,7 @@ const goBack = () => {
         :header="modalHeader"
         :style="{ width: '700px' }"
         class="p-fluid blue-header-dialog"
+        contentClass="users-form-dialog-content"
     >
         <div class="grid formgrid p-2">
             <div class="col-12 md:col-6 field mb-3">
@@ -1042,6 +1043,14 @@ const goBack = () => {
     border-bottom-left-radius: var(--ugda-radius-lg) !important;
     border-bottom-right-radius: var(--ugda-radius-lg) !important;
 }
+
+.users-form-dialog-content {
+    -webkit-overflow-scrolling: touch;
+    max-height: calc(100vh - 12rem);
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+}
+
 </style>
 
 <style scoped>

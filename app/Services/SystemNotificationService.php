@@ -58,6 +58,15 @@ class SystemNotificationService
     {
         $transfer->loadMissing('unit');
 
+        $this->markUnitAuthorizationNotificationsAsAuthorized(
+            referenceType: 'transfer',
+            referenceId: $transfer->id,
+            authorizedType: 'transfer_authorized_by_unit',
+            title: 'Transferencia autorizada',
+            shortMessage: 'Transferencia #' . $transfer->code . ' fue autorizada por jefatura.',
+            body: 'La jefatura de la unidad autorizó la transferencia documental. UGDA continuará con la revisión y programación de la entrega física.',
+        );
+
         $this->notifyUsers($this->ugdaUsers(), $actor, [
             'type' => 'transfer_pending_ugda_review',
             'title' => 'Transferencia autorizada',
@@ -85,6 +94,16 @@ class SystemNotificationService
 
     public function transferDeniedByUnit(Transfer $transfer, User $actor, string $reason): void
     {
+        $this->markUnitDecisionNotifications(
+            referenceType: 'transfer',
+            referenceId: $transfer->id,
+            decisionType: 'transfer_denied_by_unit',
+            title: 'Transferencia denegada',
+            shortMessage: 'Transferencia #' . $transfer->code . ' fue denegada por jefatura.',
+            body: 'La jefatura de unidad denegó la transferencia. Motivo: ' . $reason,
+            tone: 'danger',
+        );
+
         $this->notifyUsers([$transfer->user_id], $actor, [
             'type' => 'transfer_denied_by_unit',
             'title' => 'Transferencia denegada',
@@ -182,6 +201,18 @@ class SystemNotificationService
 
     public function loanStatusChanged(Loan $loan, User $actor, string $workflowCode, string $description): void
     {
+        if ($workflowCode === 'loan_status_denied') {
+            $this->markUnitDecisionNotifications(
+                referenceType: 'loan',
+                referenceId: $loan->id,
+                decisionType: 'loan_denied',
+                title: 'Préstamo denegado',
+                shortMessage: 'Préstamo #' . $loan->number . ' fue denegado por jefatura.',
+                body: $description,
+                tone: 'danger',
+            );
+        }
+
         match ($workflowCode) {
             'loan_status_authorized' => $this->notifyUsers($this->ugdaUsers(), $actor, [
                 'type' => 'loan_pending_search',
@@ -240,6 +271,15 @@ class SystemNotificationService
     public function loanAuthorizedByUnit(Loan $loan, User $actor): void
     {
         $loan->loadMissing('unit');
+
+        $this->markUnitAuthorizationNotificationsAsAuthorized(
+            referenceType: 'loan',
+            referenceId: $loan->id,
+            authorizedType: 'loan_authorized_by_unit',
+            title: 'Préstamo autorizado',
+            shortMessage: 'Préstamo #' . $loan->number . ' fue autorizado por jefatura.',
+            body: 'La jefatura de la unidad autorizó la solicitud de préstamo. UGDA continuará con la búsqueda de los documentos solicitados.',
+        );
 
         $this->notifyUsers($this->ugdaUsers(), $actor, [
             'type' => 'loan_pending_search',
@@ -358,6 +398,31 @@ class SystemNotificationService
         ]);
     }
 
+    public function refreshLoanDueDateNotificationsForUser(User $user, ?Carbon $today = null): int
+    {
+        $today ??= Carbon::today();
+        $created = 0;
+
+        Loan::query()
+            ->with(['latestDispatch', 'documents'])
+            ->where('user_id', $user->id)
+            ->whereHas('workflowStatus', fn ($query) => $query->where('code', 'loan_status_loaned'))
+            ->whereHas('documents', fn ($query) => $query
+                ->where('selected_for_loan', true)
+                ->where('returned', false))
+            ->chunkById(100, function ($loans) use ($today, &$created) {
+                foreach ($loans as $loan) {
+                    $dispatch = $loan->latestDispatch;
+
+                    if ($dispatch !== null && $this->loanDueDateReminder($loan, $dispatch, $today)) {
+                        $created++;
+                    }
+                }
+            });
+
+        return $created;
+    }
+
     public function loanDueDateReminder(Loan $loan, LoanDispatch $dispatch, Carbon $today): bool
     {
         $dueDate = $dispatch->due_date?->copy()->startOfDay();
@@ -387,7 +452,7 @@ class SystemNotificationService
             $shortMessage = 'El préstamo #' . $loan->number . ' vence hoy.';
             $body = 'El plazo de devolución del préstamo #' . $loan->number . ' vence hoy, ' . $dueDate->format('d/m/Y') . '. Registre la devolución de los documentos con UGDA.';
             $tone = 'warning';
-        } elseif ($daysOverdue > 0 && $daysOverdue % 3 === 1) {
+        } elseif ($daysOverdue > 0) {
             $type = 'loan_overdue_reminder';
             $title = 'Devolución vencida';
             $dayLabel = $daysOverdue === 1 ? 'día' : 'días';
@@ -445,6 +510,153 @@ class SystemNotificationService
             'reference_type' => 'loan',
             'reference_id' => $loan->id,
             'reference_number' => $loan->number,
+        ]);
+    }
+
+    public function synchronizeUnitDecisionNotificationsForUser(int $userId): int
+    {
+        $notifications = SystemNotification::query()
+            ->where('user_id', $userId)
+            ->whereIn('type', [
+                'transfer_pending_unit_authorization',
+                'loan_pending_unit_authorization',
+            ])
+            ->get();
+
+        if ($notifications->isEmpty()) {
+            return 0;
+        }
+
+        $transferIds = $notifications
+            ->where('type', 'transfer_pending_unit_authorization')
+            ->pluck('reference_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->values();
+        $authorizedTransferIds = Transfer::query()
+            ->whereIn('id', $transferIds)
+            ->whereHas('authorizationStatus', fn ($query) => $query->where('code', 'transfer_auth_authorized'))
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->flip();
+        $deniedTransferIds = Transfer::query()
+            ->whereIn('id', $transferIds)
+            ->whereHas('authorizationStatus', fn ($query) => $query->where('code', 'transfer_auth_denied'))
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->flip();
+
+        $loanIds = $notifications
+            ->where('type', 'loan_pending_unit_authorization')
+            ->pluck('reference_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->values();
+        $authorizedLoanIds = Loan::query()
+            ->whereIn('id', $loanIds)
+            ->whereHas('authorizationStatus', fn ($query) => $query->where('code', 'loan_auth_authorized'))
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->flip();
+        $deniedLoanIds = Loan::query()
+            ->whereIn('id', $loanIds)
+            ->whereHas('authorizationStatus', fn ($query) => $query->where('code', 'loan_auth_denied'))
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->flip();
+
+        $updated = 0;
+
+        foreach ($notifications as $notification) {
+            $referenceId = (int) $notification->reference_id;
+
+            if ($notification->type === 'transfer_pending_unit_authorization' && $authorizedTransferIds->has($referenceId)) {
+                $this->markNotificationAsDecision($notification, 'transfer_authorized_by_unit', 'Transferencia autorizada', 'success');
+                $updated++;
+            }
+
+            if ($notification->type === 'transfer_pending_unit_authorization' && $deniedTransferIds->has($referenceId)) {
+                $this->markNotificationAsDecision($notification, 'transfer_denied_by_unit', 'Transferencia denegada', 'danger');
+                $updated++;
+            }
+
+            if ($notification->type === 'loan_pending_unit_authorization' && $authorizedLoanIds->has($referenceId)) {
+                $this->markNotificationAsDecision($notification, 'loan_authorized_by_unit', 'Préstamo autorizado', 'success');
+                $updated++;
+            }
+
+            if ($notification->type === 'loan_pending_unit_authorization' && $deniedLoanIds->has($referenceId)) {
+                $this->markNotificationAsDecision($notification, 'loan_denied', 'Préstamo denegado', 'danger');
+                $updated++;
+            }
+        }
+
+        return $updated;
+    }
+
+    private function markUnitAuthorizationNotificationsAsAuthorized(
+        string $referenceType,
+        int $referenceId,
+        string $authorizedType,
+        string $title,
+        string $shortMessage,
+        string $body,
+    ): void {
+        $pendingType = $referenceType . '_pending_unit_authorization';
+
+        SystemNotification::query()
+            ->where('reference_type', $referenceType)
+            ->where('reference_id', $referenceId)
+            ->where('type', $pendingType)
+            ->update([
+                'type' => $authorizedType,
+                'title' => $title,
+                'short_message' => $shortMessage,
+                'body' => $body,
+                'tone' => 'success',
+            ]);
+    }
+
+    private function markUnitDecisionNotifications(
+        string $referenceType,
+        int $referenceId,
+        string $decisionType,
+        string $title,
+        string $shortMessage,
+        string $body,
+        string $tone,
+    ): void {
+        SystemNotification::query()
+            ->where('reference_type', $referenceType)
+            ->where('reference_id', $referenceId)
+            ->where('type', $referenceType . '_pending_unit_authorization')
+            ->update([
+                'type' => $decisionType,
+                'title' => $title,
+                'short_message' => $shortMessage,
+                'body' => $body,
+                'tone' => $tone,
+            ]);
+    }
+
+    private function markNotificationAsDecision(SystemNotification $notification, string $decisionType, string $title, string $tone): void
+    {
+        $referenceLabel = $notification->reference_type === 'transfer' ? 'Transferencia' : 'Préstamo';
+        $referenceNumber = $notification->reference_number;
+        $isTransfer = $notification->reference_type === 'transfer';
+        $verb = $tone === 'danger'
+            ? ($isTransfer ? 'denegada' : 'denegado')
+            : ($isTransfer ? 'autorizada' : 'autorizado');
+        $body = $tone === 'danger'
+            ? 'La jefatura de unidad denegó la solicitud.'
+            : 'La jefatura de la unidad autorizó la solicitud. UGDA continuará con la siguiente etapa de gestión.';
+
+        $notification->update([
+            'type' => $decisionType,
+            'title' => $title,
+            'short_message' => $referenceLabel . ' #' . $referenceNumber . ' fue ' . $verb . ' por jefatura.',
+            'body' => $body,
+            'tone' => $tone,
         ]);
     }
 

@@ -238,6 +238,14 @@ const resetEditDocument = () => {
     }
 };
 
+const handleEditDocumentHide = () => {
+    if (reopenEditDocumentDialogAfterPreview.value) {
+        return;
+    }
+
+    resetEditDocument();
+};
+
 const openEditDocument = async (document) => {
     try {
         await loadArchiveSeries();
@@ -832,7 +840,7 @@ onMounted(fetchBoxes);
             :dismissableMask="!editingDocumentSaving"
             :header="editingDocument ? `Modificar documento ${editingDocument.code || ''}` : 'Modificar documento'"
             :style="{ width: 'min(760px, 94vw)' }"
-            @hide="resetEditDocument"
+            @hide="handleEditDocumentHide"
         >
             <p class="archive-documents-subtitle">
                 Actualice los datos del documento. Si cambia el soporte a Digital o Mixto, puede conservar el PDF actual o cargar uno nuevo.

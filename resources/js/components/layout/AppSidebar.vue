@@ -8,6 +8,7 @@ import {
     getNotificationState,
     markAllNotificationsAsRead,
     markNotificationAsRead,
+    refreshDueDateNotifications,
 } from '../../services/notifications';
 
 const MOBILE_BREAKPOINT = 991;
@@ -270,9 +271,11 @@ const syncNotificationState = (payload) => {
     };
 };
 
-const refreshNotifications = async () => {
+const refreshNotifications = async ({ syncDueDates = false } = {}) => {
     try {
-        const data = await fetchNotificationSummary();
+        const data = syncDueDates
+            ? await refreshDueDateNotifications()
+            : await fetchNotificationSummary();
         syncNotificationState(data);
     } catch (error) {
         console.error('Error al cargar notificaciones:', error);
@@ -345,6 +348,12 @@ const markAllPreviewAsRead = async () => {
     }
 };
 
+const refreshNotificationsOnVisibility = () => {
+    if (document.visibilityState === 'visible') {
+        refreshNotifications({ syncDueDates: true });
+    }
+};
+
 const goToProfile = () => {
     isProfileMenuOpen.value = false;
     closeMobileMenu();
@@ -368,7 +377,7 @@ const handleLogout = async () => {
 watch(() => route.path, () => {
     syncMenuWithRoute();
     closeMobileMenu();
-    refreshNotifications();
+    refreshNotifications({ syncDueDates: true });
 });
 
 watch(isExpanded, (newValue) => {
@@ -388,9 +397,14 @@ onMounted(() => {
     fetchUserProfile();
     syncMenuWithRoute();
     syncNotificationState(getNotificationState());
-    refreshNotifications();
-    notificationPollingId.value = window.setInterval(refreshNotifications, 20000);
+    refreshNotifications({ syncDueDates: true });
+    notificationPollingId.value = window.setInterval(
+        () => refreshNotifications({ syncDueDates: true }),
+        20000,
+    );
     window.addEventListener('resize', updateViewportState);
+    window.addEventListener('focus', refreshNotificationsOnVisibility);
+    document.addEventListener('visibilitychange', refreshNotificationsOnVisibility);
     window.addEventListener('ugda:toggle-sidebar', handleExternalSidebarToggle);
     window.addEventListener('ugda:notifications-updated', handleNotificationsUpdated);
     updateBodyScrollLock();
@@ -402,6 +416,8 @@ onBeforeUnmount(() => {
     }
 
     window.removeEventListener('resize', updateViewportState);
+    window.removeEventListener('focus', refreshNotificationsOnVisibility);
+    document.removeEventListener('visibilitychange', refreshNotificationsOnVisibility);
     window.removeEventListener('ugda:toggle-sidebar', handleExternalSidebarToggle);
     window.removeEventListener('ugda:notifications-updated', handleNotificationsUpdated);
     document.body.style.overflow = '';
