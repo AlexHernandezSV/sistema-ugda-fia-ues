@@ -36,8 +36,9 @@ const fetchPending = async () => {
     }
 };
 
-const openLoan = (loan) => {
-    router.push(`/solicitudes/prestamos/${loan.number}`);
+const openRequest = (request) => {
+    const basePath = request.type === 'transfer' ? 'transferencias' : 'prestamos';
+    router.push(`/solicitudes/${basePath}/${request.number}`);
 };
 
 onMounted(fetchPending);
@@ -49,7 +50,7 @@ onMounted(fetchPending);
         <header class="pending-header">
             <div>
                 <h1>Solicitudes Pendientes de Autorización</h1>
-                <p>Revise y autorice las solicitudes de prestamo documental de su unidad</p>
+                <p>Revise y autorice las solicitudes de transferencia / préstamo documental de su unidad</p>
             </div>
         </header>
 
@@ -92,25 +93,25 @@ onMounted(fetchPending);
 
             <div v-else-if="!hasItems" class="pending-empty">
                 <i class="pi pi-check-circle"></i>
-                <strong>No hay prestamos pendientes de autorización</strong>
+                <strong>No hay solicitudes pendientes de autorización</strong>
                 <span>Cuando una unidad solicitante envie una solicitud, aparecera en esta pantalla.</span>
             </div>
 
-            <article v-for="loan in items" v-else :key="loan.number" class="pending-card">
+            <article v-for="request in items" v-else :key="`${request.type}-${request.number}`" class="pending-card">
                 <div class="pending-card__icon">
-                    <i class="pi pi-file-check"></i>
+                    <i :class="request.type === 'transfer' ? 'pi pi-send' : 'pi pi-file-check'"></i>
                 </div>
 
                 <div class="pending-card__main">
                     <div class="pending-card__title">
-                        <h2>Préstamo #{{ loan.number }}</h2>
-                        <span>{{ loan.auth }}</span>
+                        <h2>{{ request.type_label }} #{{ request.number }}</h2>
+                        <span>{{ request.auth }}</span>
                     </div>
                     <div class="pending-card__grid">
-                        <p><small>Unidad solicitante:</small> <strong>{{ loan.unit }}</strong></p>
-                        <p><small>Responsable:</small> <strong>{{ loan.responsible }}</strong></p>
-                        <p><small>Fecha de solicitud:</small> <strong>{{ loan.requested_at }}</strong></p>
-                        <p><small>Estado:</small> <span class="pending-chip">{{ loan.status }}</span></p>
+                        <p><small>Unidad solicitante:</small> <strong>{{ request.unit }}</strong></p>
+                        <p><small>Responsable:</small> <strong>{{ request.responsible }}</strong></p>
+                        <p><small>Fecha de solicitud:</small> <strong>{{ request.requested_at }}</strong></p>
+                        <p><small>Estado:</small> <span class="pending-chip">{{ request.status }}</span></p>
                     </div>
                 </div>
 
@@ -118,7 +119,7 @@ onMounted(fetchPending);
                     label="Revisar y Autorizar"
                     icon="pi pi-file-check"
                     class="pending-card__action"
-                    @click="openLoan(loan)"
+                    @click="openRequest(request)"
                 />
             </article>
         </section>

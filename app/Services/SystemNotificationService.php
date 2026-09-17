@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Mail\PendingAuthorizationMail;
 use App\Models\Loan;
 use App\Models\LoanDispatch;
 use App\Models\SystemNotification;
@@ -9,6 +10,7 @@ use App\Models\Transfer;
 use Carbon\Carbon;
 use App\Models\User;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Mail;
 
 class SystemNotificationService
 {
@@ -41,7 +43,9 @@ class SystemNotificationService
     {
         $transfer->loadMissing('unit');
 
-        $this->notifyUsers($this->unitDirectors($transfer->unit_id), $actor, [
+        $directors = $this->unitDirectors($transfer->unit_id);
+
+        $this->notifyUsers($directors, $actor, [
             'type' => 'transfer_pending_unit_authorization',
             'title' => 'Transferencia pendiente de jefatura',
             'short_message' => 'Transferencia #' . $transfer->code . ' requiere autorización.',
@@ -52,6 +56,15 @@ class SystemNotificationService
             'reference_id' => $transfer->id,
             'reference_number' => $transfer->code,
         ]);
+
+        $this->sendPendingAuthorizationEmails(
+            directors: $directors,
+            actor: $actor,
+            requestType: 'transferencia documental',
+            requestNumber: $transfer->code,
+            unitName: $transfer->unit?->name ?? 'la unidad solicitante',
+            actionUrl: '/solicitudes/transferencias/' . $transfer->code,
+        );
     }
 
     public function transferAuthorizedByUnit(Transfer $transfer, User $actor): void
@@ -255,7 +268,9 @@ class SystemNotificationService
     {
         $loan->loadMissing('unit');
 
-        $this->notifyUsers($this->unitDirectors($loan->unit_id), $actor, [
+        $directors = $this->unitDirectors($loan->unit_id);
+
+        $this->notifyUsers($directors, $actor, [
             'type' => 'loan_pending_unit_authorization',
             'title' => 'Préstamo pendiente de jefatura',
             'short_message' => 'Préstamo #' . $loan->number . ' requiere autorización.',
@@ -266,6 +281,15 @@ class SystemNotificationService
             'reference_id' => $loan->id,
             'reference_number' => $loan->number,
         ]);
+
+        $this->sendPendingAuthorizationEmails(
+            directors: $directors,
+            actor: $actor,
+            requestType: 'préstamo documental',
+            requestNumber: $loan->number,
+            unitName: $loan->unit?->name ?? 'la unidad solicitante',
+            actionUrl: '/solicitudes/prestamos/' . $loan->number,
+        );
     }
 
     public function loanAuthorizedByUnit(Loan $loan, User $actor): void
@@ -662,7 +686,39 @@ class SystemNotificationService
 
     private function unitDirectors(int $unitId): Collection
     {
-        return $this->usersByProfiles(['Director/Jefe de Unidad'], $unitId);
+        return $this->usersByProfiles(['Director/Jefe de Unidad'], $unitId)->load('person');
+    }
+
+    private function sendPendingAuthorizationEmails(
+        iterable $directors,
+        User $actor,
+        string $requestType,
+        string $requestNumber,
+        string $unitName,
+        string $actionUrl,
+    ): void {
+        collect($directors)
+            ->filter(fn (User $director) => $director->id !== $actor->id && filled($director->email))
+            ->unique(fn (User $director) => mb_strtolower($director->email))
+            ->each(fn (User $director) => Mail::to($director->email)->send(new PendingAuthorizationMail(
+                recipientName: $this->userDisplayName($director),
+                requestType: $requestType,
+                requestNumber: $requestNumber,
+                unitName: $unitName,
+                actionUrl: $actionUrl,
+            )));
+    }
+
+    private function userDisplayName(User $user): string
+    {
+        $name = collect([
+            $user->person?->first_name,
+            $user->person?->second_name,
+            $user->person?->first_last_name,
+            $user->person?->second_last_name,
+        ])->filter()->implode(' ');
+
+        return $name !== '' ? $name : 'Director o jefe de unidad';
     }
 
     private function ugdaUsers(): Collection

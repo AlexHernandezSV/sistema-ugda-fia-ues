@@ -8,10 +8,11 @@ import {
     markAllNotificationsAsRead,
     markNotificationAsRead,
 } from '../../services/notifications';
+import { getCurrentUser } from '../../services/authSession';
 
 const router = useRouter();
 const toast = useToast();
-const defaultNotificationType = 'unit_authorization_pending';
+const defaultNotificationType = ref(null);
 
 const loading = ref(true);
 const notifications = ref([]);
@@ -32,7 +33,7 @@ const meta = ref({
 const filters = ref({
     search: '',
     status: null,
-    type: defaultNotificationType,
+    type: null,
     dateRange: null,
 });
 
@@ -145,7 +146,7 @@ const clearFilters = () => {
     filters.value = {
         search: '',
         status: null,
-        type: defaultNotificationType,
+        type: defaultNotificationType.value,
         dateRange: null,
     };
     fetchNotifications(1);
@@ -188,7 +189,21 @@ const goToPage = (page) => {
 
 const selectedRowsLabel = computed(() => String(Number(meta.value.per_page) || 8));
 
-onMounted(() => fetchNotifications());
+onMounted(async () => {
+    try {
+        const user = await getCurrentUser();
+        const profileName = user?.role ?? user?.profile?.name ?? '';
+
+        if (profileName === 'Director/Jefe de Unidad') {
+            defaultNotificationType.value = 'unit_authorization_pending';
+            filters.value.type = defaultNotificationType.value;
+        }
+    } catch (error) {
+        defaultNotificationType.value = null;
+    } finally {
+        fetchNotifications();
+    }
+});
 </script>
 
 <template>

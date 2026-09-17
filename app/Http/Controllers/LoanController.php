@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Loan;
 use App\Models\LoanDocument;
 use App\Models\RequestStatusCatalog;
+use App\Models\Transfer;
 use App\Models\TransferDocument;
 use App\Services\SystemNotificationService;
 use App\Support\RequestNumberGenerator;
@@ -596,23 +597,50 @@ class LoanController extends Controller
             ->orderByDesc('requested_at')
             ->get();
 
+        $transfers = Transfer::query()
+            ->with(['requester.person', 'unit', 'authorizationStatus', 'workflowStatus'])
+            ->whereIn('unit_id', $unitIds)
+            ->whereHas('authorizationStatus', fn ($query) => $query->where('code', 'transfer_auth_pending'))
+            ->whereHas('workflowStatus', fn ($query) => $query->where('code', 'transfer_status_pending'))
+            ->orderByDesc('requested_at')
+            ->get();
+
+        $pendingRequests = $loans
+            ->map(fn (Loan $loan) => ['type' => 'loan', 'record' => $loan])
+            ->concat($transfers->map(fn (Transfer $transfer) => ['type' => 'transfer', 'record' => $transfer]))
+            ->sortByDesc(fn (array $item) => $item['record']->requested_at)
+            ->values();
+
         $today = now()->toDateString();
 
         return response()->json([
             'summary' => [
-                'pending' => $loans->count(),
-                'today' => $loans->filter(fn (Loan $loan) => $loan->requested_at?->toDateString() === $today)->count(),
-                'units' => $loans->pluck('unit_id')->filter()->unique()->count(),
+                'pending' => $pendingRequests->count(),
+                'today' => $pendingRequests
+                    ->filter(fn (array $item) => $item['record']->requested_at?->toDateString() === $today)
+                    ->count(),
+                'units' => $pendingRequests
+                    ->pluck('record.unit_id')
+                    ->filter()
+                    ->unique()
+                    ->count(),
             ],
-            'items' => $loans->map(fn (Loan $loan) => [
-                'number' => $loan->number,
-                'unit' => $loan->unit?->name,
-                'responsible' => $this->userName($loan->requester) ?: 'Sin responsable',
-                'requested_at' => $loan->requested_at?->format('d/m/Y H:i'),
-                'auth' => $loan->authorizationStatus?->label ?? 'Pendiente',
-                'status' => $loan->workflowStatus?->label ?? 'Pendiente',
-                'documents_count' => $loan->documents->count(),
-            ])->values(),
+            'items' => $pendingRequests->map(function (array $item) {
+                $request = $item['record'];
+                $isTransfer = $item['type'] === 'transfer';
+
+                return [
+                    'type' => $item['type'],
+                    'type_label' => $isTransfer ? 'Transferencia' : 'Préstamo',
+                    'number' => $isTransfer ? $request->code : $request->number,
+                    'unit' => $request->unit?->name,
+                    'responsible' => $this->userName($request->requester) ?: 'Sin responsable',
+                    'requested_at' => $request->requested_at?->format('d/m/Y H:i'),
+                    'auth' => $request->authorizationStatus?->label ?? 'Pendiente',
+                    'status' => $request->workflowStatus?->label ?? 'Pendiente',
+                    'documents_count' => $isTransfer ? null : $request->documents->count(),
+                ];
+            })->values(),
         ]);
     }
 
