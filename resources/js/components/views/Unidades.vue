@@ -477,6 +477,7 @@ const clearFilter = () => {
         :header="modalHeader"
         :style="{ width: '500px' }"
         class="p-fluid blue-header-dialog"
+        contentClass="units-form-dialog-content"
     >
         <div class="field mt-3">
             <label for="name" class="form-label"
@@ -537,7 +538,10 @@ const clearFilter = () => {
         </div>
 
         <div class="field mt-2">
-            <div v-if="form.parents.length > 0" class="flex flex-column gap-2">
+            <div
+                v-if="form.parents.length > 0"
+                class="flex flex-column gap-2 unit-selected-dependencies-list"
+            >
                 <div
                     v-for="(parent, index) in form.parents"
                     :key="index"
@@ -605,6 +609,34 @@ const clearFilter = () => {
 .blue-header-dialog .p-dialog-content {
     border-bottom-left-radius: var(--ugda-radius-lg) !important;
     border-bottom-right-radius: var(--ugda-radius-lg) !important;
+}
+
+.units-form-dialog-content {
+    -webkit-overflow-scrolling: touch;
+    max-height: calc(100vh - 12rem);
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+}
+
+.unit-selected-dependencies-list {
+    max-height: 17rem;
+    overflow-y: auto;
+    padding-right: 0.25rem;
+    scrollbar-gutter: stable;
+}
+
+.unit-selected-dependencies-list::-webkit-scrollbar {
+    width: 0.45rem;
+}
+
+.unit-selected-dependencies-list::-webkit-scrollbar-thumb {
+    background: var(--ugda-border-strong);
+    border-radius: 999px;
+}
+
+.unit-selected-dependencies-list::-webkit-scrollbar-track {
+    background: var(--ugda-surface-soft);
+    border-radius: 999px;
 }
 </style>
 
