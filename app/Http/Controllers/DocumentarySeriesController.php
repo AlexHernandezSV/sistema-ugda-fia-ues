@@ -313,7 +313,7 @@ class DocumentarySeriesController extends Controller
     {
         $series = DocumentarySeries::findOrFail($id);
 
-        if ($series->subseries()->exists()) {
+        if ($this->seriesHasSubseries($series)) {
             return response()->json([
                 'message' => 'No se puede eliminar la serie documental porque tiene subseries asociadas. Elimine primero sus subseries.',
             ], 422);
@@ -340,7 +340,7 @@ class DocumentarySeriesController extends Controller
     {
         $series = DocumentarySeries::findOrFail($id);
 
-        if ($series->subseries()->exists()) {
+        if ($this->seriesHasSubseries($series)) {
             return response()->json([
                 'message' => 'No se puede eliminar la serie documental porque tiene subseries asociadas. Elimine primero sus subseries.',
             ], 422);
@@ -368,7 +368,7 @@ class DocumentarySeriesController extends Controller
                 ->lockForUpdate()
                 ->findOrFail($id);
 
-            if ($series->subseries()->exists()) {
+            if ($this->seriesHasSubseries($series)) {
                 return [
                     'blocked' => 'No se puede eliminar la serie documental porque tiene subseries asociadas. Elimine primero sus subseries.',
                 ];
@@ -402,7 +402,9 @@ class DocumentarySeriesController extends Controller
                 $request,
             );
 
-            $series->delete();
+            // Las dependencias ya fueron comprobadas antes y nuevamente dentro
+            // de la transacción; la acción de eliminar es un borrado físico.
+            $series->forceDelete();
 
             return ['log' => $log];
         });
@@ -643,7 +645,9 @@ class DocumentarySeriesController extends Controller
                 $request,
             );
 
-            $subseries->delete();
+            // Las dependencias ya fueron comprobadas antes y nuevamente dentro
+            // de la transacción; la acción de eliminar es un borrado físico.
+            $subseries->forceDelete();
 
             return ['log' => $log];
         });
@@ -673,6 +677,13 @@ class DocumentarySeriesController extends Controller
     private function seriesDocumentaryLabel(DocumentarySeries $series): string
     {
         return trim($series->code . ' - ' . $series->name);
+    }
+
+    private function seriesHasSubseries(DocumentarySeries $series): bool
+    {
+        return DocumentarySubseries::withTrashed()
+            ->where('documentary_series_id', $series->id)
+            ->exists();
     }
 
     private function subseriesDocumentaryLabel(DocumentarySeries $series, DocumentarySubseries $subseries): string
