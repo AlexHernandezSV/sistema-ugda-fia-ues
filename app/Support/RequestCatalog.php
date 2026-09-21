@@ -673,6 +673,16 @@ class RequestCatalog
                 ->values(),
         };
 
+        $alerts = $alerts
+            ->sortBy(function ($item) {
+                $rawDate = $item['receivedAt'] ?? $item['requestedAt'];
+
+                return $rawDate
+                    ? Carbon::createFromFormat('d/m/Y H:i', $rawDate)->timestamp
+                    : PHP_INT_MAX;
+            })
+            ->values();
+
         $stats = [
             [
                 'title' => 'Total de Solicitudes',

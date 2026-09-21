@@ -726,7 +726,7 @@ onMounted(async () => {
             :style="{ width: 'min(480px, 94vw)' }"
         >
             <p class="reassign-confirm-text">
-                Se movera la caja {{ displayBoxCode(selectedBox) }} de
+                Se moverá la caja {{ displayBoxCode(selectedBox) }} de
                 <strong>{{ selectedBox?.location ?? 'Pendiente' }}</strong>
                 a
                 <strong>{{ generatedLocationCode }}</strong>.
@@ -751,7 +751,7 @@ onMounted(async () => {
             :style="{ width: 'min(520px, 94vw)' }"
         >
             <p class="reassign-confirm-text">
-                Se movera el documento
+                Se moverá el documento
                 <strong>"{{ selectedDocument?.title }}"</strong>
                 de la caja {{ displayBoxCode(selectedDocument?.box) }}
                 a la caja {{ displayBoxCode(selectedDestinationBox) }}.

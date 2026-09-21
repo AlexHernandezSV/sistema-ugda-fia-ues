@@ -13,6 +13,7 @@ use App\Models\TransferDocument;
 use App\Models\Unit;
 use App\Models\User;
 use App\Services\UserActivityLogger;
+use App\Support\PdfUpload;
 use App\Support\RequestNumberGenerator;
 use App\Support\SignedPdfUrl;
 use Carbon\Carbon;
@@ -404,7 +405,7 @@ class ArchiveController extends Controller
                 ], 422);
             }
 
-            $support = trim((string) ($documentPayload['support'] ?? 'Fisico'));
+            $support = $this->normalizeArchiveSupport((string) ($documentPayload['support'] ?? 'Fisico'));
 
             if (!in_array($support, ['Fisico', 'Digital', 'Mixto'], true)) {
                 return response()->json([
@@ -419,13 +420,26 @@ class ArchiveController extends Controller
             $digitalFileBase64 = trim((string) ($documentPayload['digital_file_base64'] ?? ''));
 
             if (in_array($support, ['Digital', 'Mixto'], true)
-                && ($digitalFileBase64 === '' || $digitalFileName === '' || !preg_match('/\.pdf$/i', $digitalFileName))) {
+                && ($digitalFileBase64 === '' || $digitalFileName === '')) {
                 return response()->json([
                     'message' => 'Los datos de la caja no son validos.',
                     'errors' => [
                         'documents' => ['El documento "' . $documentName . '" requiere un archivo PDF para el soporte ' . $support . '.'],
                     ],
                 ], 422);
+            }
+
+            if ($digitalFileBase64 !== '') {
+                $pdfError = PdfUpload::validateBase64($digitalFileName, $digitalFileBase64);
+
+                if ($pdfError !== null) {
+                    return response()->json([
+                        'message' => 'Los datos de la caja no son validos.',
+                        'errors' => [
+                            'documents' => [$pdfError],
+                        ],
+                    ], 422);
+                }
             }
         }
 
@@ -520,7 +534,7 @@ class ArchiveController extends Controller
                         'code' => $documentPayload['code'] ?? 'DOC-' . $transfer->code . '-' . str_pad((string) $sortOrder, 3, '0', STR_PAD_LEFT),
                         'name' => $documentPayload['name'],
                         'series_label' => $resolvedSeries,
-                        'support_type' => $documentPayload['support'] ?? 'Fisico',
+                        'support_type' => $this->normalizeArchiveSupport((string) ($documentPayload['support'] ?? 'Fisico')),
                         'year_label' => $documentPayload['year'] ?? null,
                         'pages_label' => $documentPayload['pages'] ?? null,
                         'digital_file_name' => $digitalDocument['name'] ?? null,
@@ -774,11 +788,13 @@ class ArchiveController extends Controller
                 ], 422);
             }
 
-            if (!str_ends_with(mb_strtolower($fileName), '.pdf')) {
+            $pdfError = PdfUpload::validateBase64($fileName, (string) $request->input('digital_file_base64', ''));
+
+            if ($pdfError !== null) {
                 return response()->json([
                     'message' => 'Los datos del documento no son validos.',
                     'errors' => [
-                        'digital_file' => ['El archivo digital debe estar en formato PDF.'],
+                        'digital_file' => [$pdfError],
                     ],
                 ], 422);
             }
@@ -925,13 +941,17 @@ class ArchiveController extends Controller
         $hasDigitalPayload = trim((string) $request->input('digital_file_base64', '')) !== '';
         $fileName = trim((string) $request->input('digital_file_name', ''));
 
-        if ($hasDigitalPayload && ($fileName === '' || !str_ends_with(mb_strtolower($fileName), '.pdf'))) {
-            return response()->json([
-                'message' => 'Los datos del documento no son validos.',
-                'errors' => [
-                    'digital_file' => ['El archivo digital debe estar en formato PDF.'],
-                ],
-            ], 422);
+        if ($hasDigitalPayload) {
+            $pdfError = PdfUpload::validateBase64($fileName, (string) $request->input('digital_file_base64', ''));
+
+            if ($pdfError !== null) {
+                return response()->json([
+                    'message' => 'Los datos del documento no son validos.',
+                    'errors' => [
+                        'digital_file' => [$pdfError],
+                    ],
+                ], 422);
+            }
         }
 
         try {
@@ -1859,9 +1879,9 @@ class ArchiveController extends Controller
 
         $originalName = trim((string) ($documentPayload['digital_file_name'] ?? ''));
         $fileName = $originalName !== '' ? $this->sanitizeFileName($originalName) : $this->sanitizeFileName($fallbackName . '.pdf');
-        $decodedContent = base64_decode($base64Content, true);
+        $decodedContent = PdfUpload::decodeBase64($base64Content);
 
-        if ($decodedContent === false) {
+        if ($decodedContent === null) {
             return null;
         }
 
@@ -2141,6 +2161,13 @@ class ArchiveController extends Controller
                 ->values()
                 ->all(),
         ];
+    }
+
+    private function normalizeArchiveSupport(string $value): string
+    {
+        $support = trim($value);
+
+        return $support === 'Físico' ? 'Fisico' : $support;
     }
 
     private function canManageArchive(Request $request): bool

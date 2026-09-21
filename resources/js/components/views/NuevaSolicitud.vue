@@ -5,6 +5,12 @@ import { useToast } from 'primevue/usetoast';
 import axios from 'axios';
 import DocumentPreviewDialog from '../shared/DocumentPreviewDialog.vue';
 import { getCurrentUser } from '../../services/authSession';
+import {
+    isPdfFile,
+    PDF_UPLOAD_HINT,
+    PDF_TYPE_ERROR,
+    validatePdfFile,
+} from '../../services/pdfValidation';
 
 const router = useRouter();
 const route = useRoute();
@@ -230,14 +236,6 @@ const clearDocumentFileInput = () => {
     }
 };
 
-const isPdfFile = (file) => (
-    file
-    && (
-        file.type === 'application/pdf'
-        || String(file.name ?? '').toLowerCase().endsWith('.pdf')
-    )
-);
-
 const createPdfPreviewUrl = (file) => URL.createObjectURL(new Blob([file], { type: 'application/pdf' }));
 
 const waitForModalSwap = () => new Promise((resolve) => {
@@ -453,15 +451,17 @@ const openDocsModal = (index) => {
     isModalOpen.value = true;
 };
 
-const onFileSelect = (event) => {
+const onFileSelect = async (event) => {
     const file = event.target.files?.[0];
 
     if (!file) {
         return;
     }
 
-    if (!isPdfFile(file)) {
-        showError('Seleccione un archivo PDF.');
+    const validationError = await validatePdfFile(file);
+
+    if (validationError) {
+        showError(validationError);
         event.target.value = '';
         return;
     }
@@ -531,8 +531,45 @@ const restoreDocsModalAfterImport = () => {
 
 const needsDigitalFile = (support) => support === 'Digital' || support === 'Mixto';
 
+const validateRequiredDigitalFiles = (documents) => {
+    const documentWithoutPdf = documents.find((document) => {
+        if (!needsDigitalFile(document?.support)) {
+            return false;
+        }
+
+        return !isPdfFile(document?.file)
+            && !(document?.file_url && isPdfFileName(document?.file_name));
+    });
+
+    if (!documentWithoutPdf) {
+        return '';
+    }
+
+    const documentName = String(documentWithoutPdf.name ?? '').trim() || 'sin nombre';
+
+    return `El documento "${documentName}" con soporte ${documentWithoutPdf.support} requiere un archivo PDF. Cárguelo antes de guardar.`;
+};
+
 const downloadExcelTemplate = () => {
-    window.location.href = '/api/transfers/document-import-template';
+    const params = new URLSearchParams();
+    const seriesLabels = getBoxSeriesLabels(currentBoxData.value);
+    const yearStart = getYearString(currentBoxData.value.year_start);
+    const yearEnd = getYearString(currentBoxData.value.year_end);
+
+    if (seriesLabels.length > 0) {
+        params.set('series', seriesLabels.join('; '));
+    }
+
+    if (yearStart) {
+        params.set('year_start', yearStart);
+    }
+
+    if (yearEnd) {
+        params.set('year_end', yearEnd);
+    }
+
+    const query = params.toString();
+    window.location.href = `/api/transfers/document-import-template${query ? `?${query}` : ''}`;
 };
 
 const normalizeDocumentValue = (value) => String(value ?? '')
@@ -593,11 +630,11 @@ const validateDocumentForBox = (document, box) => {
     }
 
     if (document?.file && !isPdfFile(document.file)) {
-        return `El archivo digital del documento "${documentName}" debe estar en formato PDF.`;
+        return PDF_TYPE_ERROR;
     }
 
     if (document?.file_name && !isPdfFileName(document.file_name)) {
-        return `El archivo digital del documento "${documentName}" debe estar en formato PDF.`;
+        return PDF_TYPE_ERROR;
     }
 
     return '';
@@ -631,6 +668,12 @@ const validateAllBoxesDocuments = () => {
             if (message) {
                 return message;
             }
+        }
+
+        const digitalFileMessage = validateRequiredDigitalFiles(box.documents_list ?? []);
+
+        if (digitalFileMessage) {
+            return digitalFileMessage;
         }
 
         const duplicateCode = findDuplicateDocumentCode(box.documents_list ?? []);
@@ -813,15 +856,17 @@ const removeTempDoc = (index) => {
     tempDocuments.value.splice(index, 1);
 };
 
-const onTempDocFileSelect = (index, event) => {
+const onTempDocFileSelect = async (index, event) => {
     const file = event.target.files?.[0];
 
     if (!file) {
         return;
     }
 
-    if (!isPdfFile(file)) {
-        showError('Seleccione un archivo PDF.');
+    const validationError = await validatePdfFile(file);
+
+    if (validationError) {
+        showError(validationError);
         event.target.value = '';
         return;
     }
@@ -890,6 +935,13 @@ const saveBoxChanges = () => {
 
     if (validationMessage) {
         showError(validationMessage);
+        return;
+    }
+
+    const digitalFileMessage = validateRequiredDigitalFiles(tempDocuments.value);
+
+    if (digitalFileMessage) {
+        showError(digitalFileMessage);
         return;
     }
 
@@ -1027,7 +1079,8 @@ const submitTransfer = async () => {
             query: { tab: 'transferencias' },
         });
     } catch (error) {
-        showError(error.response?.data?.message || 'No se pudo registrar la solicitud de transferencia.');
+        const validationErrors = Object.values(error.response?.data?.errors ?? {}).flat();
+        showError(validationErrors[0] || error.response?.data?.message || 'No se pudo registrar la solicitud de transferencia.');
     } finally {
         isSubmitting.value = false;
     }
@@ -1466,7 +1519,7 @@ const goBack = () => {
                         >
                             {{ docForm.file.name }}
                         </a>
-                        <small>Formatos permitidos: PDF</small>
+                        <small>{{ PDF_UPLOAD_HINT }}</small>
                     </div>
 
                     <Button label="Agregar documento" icon="pi pi-plus" class="transfer-docs__add" @click="addDocumentToTemp" />
@@ -1540,7 +1593,7 @@ const goBack = () => {
                                     accept=".pdf"
                                     @change="onTempDocFileSelect(index, $event)"
                                 />
-                                <small v-if="!document.file_url">Formatos permitidos: PDF</small>
+                                <small v-if="!document.file_url">{{ PDF_UPLOAD_HINT }}</small>
                             </div>
                         </div>
                         <div class="transfer-docs__item-actions">
@@ -1568,6 +1621,7 @@ const goBack = () => {
             modal
             :draggable="false"
             class="transfer-import-dialog"
+            contentClass="transfer-import-dialog-content"
             :style="{ width: 'min(896px, 94vw)' }"
             @hide="restoreDocsModalAfterImport"
         >
@@ -1588,6 +1642,7 @@ const goBack = () => {
                             <li>No modifique las cabeceras de las columnas</li>
                             <li>Los valores del campo "Serie del documento" deben coincidir con las series disponibles en el sistema</li>
                             <li>Los valores del campo "Soporte" deben ser exactamente: Físico, Digital o Mixto</li>
+                            <li>Seleccione la serie, el soporte y el año desde las listas desplegables de la plantilla</li>
                             <li>Los archivos digitales no se cargan desde Excel; se agregan después desde el formulario del documento</li>
                         </ul>
                     </div>
@@ -2260,6 +2315,12 @@ const goBack = () => {
 :global(.transfer-docs-dialog .p-dialog-content) {
     max-height: calc(92vh - 11rem);
     overflow-y: auto;
+}
+
+:global(.transfer-import-dialog-content) {
+    max-height: calc(92vh - 11rem);
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
 }
 
 :global(.transfer-docs-dialog .p-dialog-footer),

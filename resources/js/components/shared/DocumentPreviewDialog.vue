@@ -16,6 +16,10 @@ const props = defineProps({
         type: Object,
         default: null,
     },
+    preserveUnderlyingDialogs: {
+        type: Boolean,
+        default: false,
+    },
 });
 
 const emit = defineEmits(['hide']);
@@ -308,6 +312,7 @@ watch(
         v-model:visible="visible"
         modal
         :draggable="false"
+        :pt="preserveUnderlyingDialogs ? { mask: { class: 'document-preview-dialog-mask--transparent' } } : undefined"
         class="transfer-pdf-preview-dialog"
         :style="{ width: 'min(960px, 94vw)' }"
         @hide="handleHide"
@@ -371,6 +376,10 @@ watch(
 :global(.transfer-pdf-preview-dialog.p-dialog) {
     border-radius: 8px;
     overflow: hidden;
+}
+
+:global(.document-preview-dialog-mask--transparent) {
+    background: transparent !important;
 }
 
 :global(.transfer-pdf-preview-dialog .p-dialog-header) {

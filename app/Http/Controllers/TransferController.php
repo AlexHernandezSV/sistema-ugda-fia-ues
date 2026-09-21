@@ -7,6 +7,7 @@ use App\Models\RequestStatusCatalog;
 use App\Models\PhysicalLocationShelf;
 use App\Models\Transfer;
 use App\Services\SystemNotificationService;
+use App\Support\PdfUpload;
 use App\Support\RequestNumberGenerator;
 use App\Support\SignedPdfUrl;
 use Carbon\Carbon;
@@ -36,7 +37,7 @@ class TransferController extends Controller
         }
     }
 
-    public function documentImportTemplate()
+    public function documentImportTemplate(Request $request)
     {
         $headers = [
             'Serie del documento',
@@ -47,7 +48,20 @@ class TransferController extends Controller
             'Cantidad de páginas',
         ];
 
-        $path = $this->createDocumentImportWorkbook([$headers]);
+        $seriesLabels = $this->splitSeriesPayloadLabels((string) $request->input('series', ''));
+        $yearStart = (int) $request->input('year_start', 0);
+        $yearEnd = (int) $request->input('year_end', 0);
+        $years = [];
+
+        if ($yearStart >= 1900 && $yearStart <= 2100 && $yearEnd >= $yearStart && $yearEnd <= 2100) {
+            $years = range($yearStart, $yearEnd);
+        }
+
+        $path = $this->createDocumentImportWorkbook([$headers], [
+            'series' => $seriesLabels,
+            'supports' => ['Físico', 'Digital', 'Mixto'],
+            'years' => $years,
+        ]);
 
         return response()
             ->download($path, 'plantilla-importacion-documentos.xlsx', [
@@ -432,6 +446,9 @@ class TransferController extends Controller
             'document_files' => ['nullable', 'array'],
             'document_files.*.*' => ['nullable', 'file', 'mimes:pdf', 'max:20480'],
             'correction_notes' => ['nullable', 'string', 'max:1000'],
+        ], [
+            'document_files.*.*.mimes' => 'El archivo seleccionado debe ser un PDF válido.',
+            'document_files.*.*.max' => 'El archivo PDF no puede superar los 20 MB.',
         ]);
 
         if ($validator->fails()) {
@@ -585,6 +602,9 @@ class TransferController extends Controller
             'boxes.*.documents_list.*.file_name' => ['nullable', 'string', 'max:255'],
             'document_files' => ['nullable', 'array'],
             'document_files.*.*' => ['nullable', 'file', 'mimes:pdf', 'max:20480'],
+        ], [
+            'document_files.*.*.mimes' => 'El archivo seleccionado debe ser un PDF válido.',
+            'document_files.*.*.max' => 'El archivo PDF no puede superar los 20 MB.',
         ]);
 
         if ($validator->fails()) {
@@ -925,7 +945,7 @@ class TransferController extends Controller
                 $fileName = trim((string) ($documentPayload['file_name'] ?? ''));
 
                 if ($fileName !== '' && !$this->isPdfFileName($fileName)) {
-                    return 'El archivo digital del documento "' . $documentName . '" debe estar en formato PDF.';
+                    return PdfUpload::TYPE_ERROR_MESSAGE;
                 }
             }
         }
@@ -990,11 +1010,39 @@ class TransferController extends Controller
         return preg_match('/\.pdf$/i', $fileName) === 1;
     }
 
-    private function createDocumentImportWorkbook(array $rows): string
+    private function createDocumentImportWorkbook(array $rows, array $lists = []): string
     {
         $path = tempnam(sys_get_temp_dir(), 'ugda-document-import-');
         $zip = new ZipArchive();
         $zip->open($path, ZipArchive::OVERWRITE);
+
+        $seriesValues = array_values(array_unique(array_filter(
+            array_map(fn ($value) => trim((string) $value), $lists['series'] ?? []),
+            fn ($value) => $value !== '',
+        )));
+        $supportValues = array_values(array_unique(array_filter(
+            array_map(fn ($value) => trim((string) $value), $lists['supports'] ?? []),
+            fn ($value) => $value !== '',
+        )));
+        $yearValues = array_values(array_unique(array_filter(
+            array_map(fn ($value) => trim((string) $value), $lists['years'] ?? []),
+            fn ($value) => $value !== '',
+        )));
+
+        $validationLists = [
+            'SeriesDisponibles' => $seriesValues ?: [''],
+            'SoportesDisponibles' => $supportValues ?: [''],
+            'AniosDisponibles' => $yearValues ?: [''],
+        ];
+        $listColumns = [
+            'Serie del documento' => $validationLists['SeriesDisponibles'],
+            'Soporte' => $validationLists['SoportesDisponibles'],
+            'Año' => $validationLists['AniosDisponibles'],
+        ];
+        $listColumnNames = array_keys($listColumns);
+        $listColumnValues = array_values($listColumns);
+        $listRowCount = max(array_map('count', $listColumnValues)) + 1;
+        $templateMaxRow = 501;
 
         $zip->addFromString('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -1002,20 +1050,35 @@ class TransferController extends Controller
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
   <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
 </Types>');
         $zip->addFromString('_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
 </Relationships>');
+        $definedNames = '';
+        foreach ($validationLists as $name => $values) {
+            $column = match ($name) {
+                'SeriesDisponibles' => 'A',
+                'SoportesDisponibles' => 'B',
+                'AniosDisponibles' => 'C',
+            };
+            $lastRow = count($values) + 1;
+            $definedNames .= '<definedName name="' . $name . '">' . "'Listas'!$" . $column . '$2:$' . $column . '$' . $lastRow . '</definedName>';
+        }
+
         $zip->addFromString('xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <sheets>
     <sheet name="Documentos" sheetId="1" r:id="rId1"/>
+    <sheet name="Listas" sheetId="2" state="hidden" r:id="rId2"/>
   </sheets>
+  <definedNames>' . $definedNames . '</definedNames>
 </workbook>');
         $zip->addFromString('xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
 </Relationships>');
 
         $sheetRows = '';
@@ -1029,14 +1092,43 @@ class TransferController extends Controller
             $sheetRows .= '<row r="' . ($rowIndex + 1) . '">' . $cells . '</row>';
         }
 
+        $dataValidations = '<dataValidations count="3">
+  <dataValidation type="list" errorStyle="stop" allowBlank="1" showInputMessage="1" showErrorMessage="1" errorTitle="Valor no válido" error="Seleccione una opción de la lista." promptTitle="Serie del documento" prompt="Seleccione una serie de la caja." sqref="A2:A' . $templateMaxRow . '"><formula1>SeriesDisponibles</formula1></dataValidation>
+  <dataValidation type="list" errorStyle="stop" allowBlank="1" showInputMessage="1" showErrorMessage="1" errorTitle="Valor no válido" error="Seleccione una opción de la lista." promptTitle="Soporte" prompt="Seleccione Físico, Digital o Mixto." sqref="D2:D' . $templateMaxRow . '"><formula1>SoportesDisponibles</formula1></dataValidation>
+  <dataValidation type="list" errorStyle="stop" allowBlank="1" showInputMessage="1" showErrorMessage="1" errorTitle="Valor no válido" error="Seleccione un año de la lista." promptTitle="Año" prompt="Seleccione un año dentro del rango de la caja." sqref="E2:E' . $templateMaxRow . '"><formula1>AniosDisponibles</formula1></dataValidation>
+</dataValidations>';
+
         $zip->addFromString('xl/worksheets/sheet1.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="A1:F' . $templateMaxRow . '"/>
   <cols>
     <col min="1" max="2" width="32" customWidth="1"/>
     <col min="3" max="4" width="18" customWidth="1"/>
     <col min="5" max="6" width="20" customWidth="1"/>
   </cols>
   <sheetData>' . $sheetRows . '</sheetData>
+  ' . $dataValidations . '
+</worksheet>');
+
+        $listRows = '';
+        for ($rowIndex = 0; $rowIndex < $listRowCount; $rowIndex++) {
+            $cells = '';
+
+            foreach ($listColumnValues as $columnIndex => $values) {
+                $value = $rowIndex === 0
+                    ? $listColumnNames[$columnIndex]
+                    : ($values[$rowIndex - 1] ?? '');
+                $cellRef = $this->columnName($columnIndex + 1) . ($rowIndex + 1);
+                $escaped = htmlspecialchars((string) $value, ENT_XML1 | ENT_COMPAT, 'UTF-8');
+                $cells .= '<c r="' . $cellRef . '" t="inlineStr"><is><t>' . $escaped . '</t></is></c>';
+            }
+
+            $listRows .= '<row r="' . ($rowIndex + 1) . '">' . $cells . '</row>';
+        }
+
+        $zip->addFromString('xl/worksheets/sheet2.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>' . $listRows . '</sheetData>
 </worksheet>');
         $zip->close();
 

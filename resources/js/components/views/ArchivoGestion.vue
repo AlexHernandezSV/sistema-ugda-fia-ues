@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import axios from 'axios';
@@ -7,6 +7,10 @@ import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
 import DocumentPreviewDialog from '../shared/DocumentPreviewDialog.vue';
+import {
+    PDF_UPLOAD_HINT,
+    validatePdfFile,
+} from '../../services/pdfValidation';
 
 const router = useRouter();
 const toast = useToast();
@@ -16,6 +20,7 @@ const query = ref('');
 const loading = ref(false);
 const selectedBox = ref(null);
 const documentsDialogVisible = ref(false);
+const restoreDocumentsDialogAfterEdit = ref(false);
 const editDocumentDialogVisible = ref(false);
 const editingDocument = ref(null);
 const editingDocumentSaving = ref(false);
@@ -41,8 +46,6 @@ const minimumYearDate = new Date(1900, 0, 1);
 const documentPreviewVisible = ref(false);
 const documentPreviewTitle = ref('Documento PDF');
 const documentPreviewSource = ref(null);
-const reopenDocumentsDialogAfterPreview = ref(false);
-const reopenEditDocumentDialogAfterPreview = ref(false);
 const deleteDialogVisible = ref(false);
 const deletingBox = ref(false);
 const boxPendingDelete = ref(null);
@@ -202,6 +205,16 @@ const normalizeArchiveLabel = (value) => String(value ?? '')
     .trim()
     .toLowerCase();
 
+const normalizeSupportOptionValue = (value) => {
+    const normalized = normalizeArchiveLabel(value);
+
+    return {
+        fisico: 'Fisico',
+        digital: 'Digital',
+        mixto: 'Mixto',
+    }[normalized] ?? value;
+};
+
 const showError = (detail) => {
     toast.add({
         severity: 'error',
@@ -239,11 +252,12 @@ const resetEditDocument = () => {
 };
 
 const handleEditDocumentHide = () => {
-    if (reopenEditDocumentDialogAfterPreview.value) {
-        return;
-    }
-
     resetEditDocument();
+
+    if (restoreDocumentsDialogAfterEdit.value) {
+        restoreDocumentsDialogAfterEdit.value = false;
+        documentsDialogVisible.value = true;
+    }
 };
 
 const openEditDocument = async (document) => {
@@ -258,11 +272,12 @@ const openEditDocument = async (document) => {
             code: document.code ?? '',
             name: document.name ?? '',
             year: String(document.year ?? ''),
-            support: document.support ?? 'Fisico',
+            support: normalizeSupportOptionValue(document.support ?? 'Fisico'),
             pages: normalizeDocumentPages(document.pages),
         };
         editDocumentFile.value = null;
         editDocumentFileName.value = '';
+        restoreDocumentsDialogAfterEdit.value = documentsDialogVisible.value;
         editDocumentDialogVisible.value = true;
     } catch (error) {
         showError(error.response?.data?.message ?? 'No se pudo cargar el formulario del documento.');
@@ -284,15 +299,17 @@ const readFileAsBase64 = (file) => new Promise((resolve, reject) => {
     reader.readAsDataURL(file);
 });
 
-const onEditDocumentFileSelect = (event) => {
+const onEditDocumentFileSelect = async (event) => {
     const file = event.target.files?.[0] ?? null;
 
     if (!file) {
         return;
     }
 
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
-        showError('Seleccione un archivo PDF para el documento digital.');
+    const validationError = await validatePdfFile(file);
+
+    if (validationError) {
+        showError(validationError);
         event.target.value = '';
         return;
     }
@@ -387,9 +404,6 @@ const openDocumentPreview = (document) => {
 
     documentPreviewTitle.value = document.digital_file || document.name || 'Documento PDF';
     documentPreviewSource.value = { url: document.digital_url };
-    reopenEditDocumentDialogAfterPreview.value = false;
-    reopenDocumentsDialogAfterPreview.value = documentsDialogVisible.value;
-    documentsDialogVisible.value = false;
     documentPreviewVisible.value = true;
 };
 
@@ -401,29 +415,14 @@ const openEditDocumentPreview = (document) => {
 
     documentPreviewTitle.value = document.digital_file || document.name || 'Documento PDF';
     documentPreviewSource.value = { url: document.digital_url };
-    reopenDocumentsDialogAfterPreview.value = false;
-    reopenEditDocumentDialogAfterPreview.value = true;
-    editDocumentDialogVisible.value = false;
-    documentsDialogVisible.value = false;
     documentPreviewVisible.value = true;
 };
 
 const clearDocumentPreview = () => {
     documentPreviewSource.value = null;
 
-    if (reopenEditDocumentDialogAfterPreview.value) {
-        reopenEditDocumentDialogAfterPreview.value = false;
-        nextTick(() => {
-            editDocumentDialogVisible.value = true;
-        });
-        return;
-    }
-
-    if (reopenDocumentsDialogAfterPreview.value) {
-        reopenDocumentsDialogAfterPreview.value = false;
-        nextTick(() => {
-            documentsDialogVisible.value = true;
-        });
+    if (restoreDocumentsDialogAfterEdit.value) {
+        documentsDialogVisible.value = true;
     }
 };
 
@@ -840,6 +839,7 @@ onMounted(fetchBoxes);
             :dismissableMask="!editingDocumentSaving"
             :header="editingDocument ? `Modificar documento ${editingDocument.code || ''}` : 'Modificar documento'"
             :style="{ width: 'min(760px, 94vw)' }"
+            contentClass="archive-edit-document-dialog-content"
             @hide="handleEditDocumentHide"
         >
             <p class="archive-documents-subtitle">
@@ -941,7 +941,7 @@ onMounted(fetchBoxes);
                             @click="clearEditDocumentFile"
                         />
                     </div>
-                    <small>Los archivos digitales deben estar en formato PDF.</small>
+                    <small>{{ PDF_UPLOAD_HINT }}</small>
                 </div>
             </section>
 
@@ -1020,6 +1020,7 @@ onMounted(fetchBoxes);
             v-model:visible="documentPreviewVisible"
             :title="documentPreviewTitle"
             :source="documentPreviewSource"
+            :preserveUnderlyingDialogs="true"
             @hide="clearDocumentPreview"
         />
     </div>
@@ -1353,6 +1354,13 @@ onMounted(fetchBoxes);
 .archive-documents-subtitle {
     color: #526477;
     margin: 0.5rem 0 1.25rem; /* o 0.75rem arriba */
+}
+
+:global(.archive-edit-document-dialog-content) {
+    -webkit-overflow-scrolling: touch;
+    max-height: calc(100vh - 12rem);
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
 }
 
 .archive-delete-dialog__header {

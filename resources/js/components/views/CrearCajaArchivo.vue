@@ -7,6 +7,12 @@ import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
 import DocumentPreviewDialog from '../shared/DocumentPreviewDialog.vue';
+import {
+    isPdfFile,
+    PDF_UPLOAD_HINT,
+    PDF_TYPE_ERROR,
+    validatePdfFile,
+} from '../../services/pdfValidation';
 
 const router = useRouter();
 const toast = useToast();
@@ -259,14 +265,6 @@ const normalizeDocumentValue = (value) => String(value ?? '')
 
 const getDocumentCodeKey = (document) => normalizeDocumentValue(document?.code);
 
-const isPdfFile = (file) => (
-    file
-    && (
-        file.type === 'application/pdf'
-        || String(file.name ?? '').toLowerCase().endsWith('.pdf')
-    )
-);
-
 const isPdfFileName = (fileName) => String(fileName ?? '').toLowerCase().endsWith('.pdf');
 
 const createPdfPreviewUrl = (file) => URL.createObjectURL(new Blob([file], { type: 'application/pdf' }));
@@ -391,8 +389,10 @@ const onDocumentDigitalFileSelect = async (event) => {
         return;
     }
 
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
-        showError('Seleccione un archivo PDF para el documento digital.');
+    const validationError = await validatePdfFile(file);
+
+    if (validationError) {
+        showError(validationError);
         if (event.target) {
             event.target.value = '';
         }
@@ -412,8 +412,10 @@ const onNewDocumentFileSelect = async (documentEntry, event) => {
         return;
     }
 
-    if (!isPdfFile(file)) {
-        showError('Seleccione un archivo PDF.');
+    const validationError = await validatePdfFile(file);
+
+    if (validationError) {
+        showError(validationError);
         event.target.value = '';
         return;
     }
@@ -513,7 +515,7 @@ const validateDocumentForBox = (document, requireDigitalFile = true) => {
 
     if (requireDigitalFile && ['Digital', 'Mixto'].includes(document?.support)
         && (!document?.digital_file_base64 || !isPdfFileName(document?.digital_file_name))) {
-        return `El documento "${documentName}" requiere un archivo PDF para el soporte ${document.support === 'Fisico' ? 'físico' : document.support}.`;
+        return document?.digital_file_base64 ? PDF_TYPE_ERROR : `El documento "${documentName}" requiere un archivo PDF para el soporte ${document.support === 'Fisico' ? 'físico' : document.support}.`;
     }
 
     return '';
@@ -646,7 +648,24 @@ const resetExcelInput = () => {
 };
 
 const downloadTemplate = () => {
-    window.location.href = '/api/transfers/document-import-template';
+    const params = new URLSearchParams();
+    const yearStart = getYearString(form.value.start_year);
+    const yearEnd = getYearString(form.value.end_year);
+
+    if (selectedSeriesName.value) {
+        params.set('series', selectedSeriesName.value);
+    }
+
+    if (yearStart) {
+        params.set('year_start', yearStart);
+    }
+
+    if (yearEnd) {
+        params.set('year_end', yearEnd);
+    }
+
+    const query = params.toString();
+    window.location.href = `/api/transfers/document-import-template${query ? `?${query}` : ''}`;
 };
 
 const importDocuments = async () => {
@@ -1032,7 +1051,8 @@ const submitBox = async () => {
         });
         router.push('/archivo-general/gestion');
     } catch (error) {
-        showError(error.response?.data?.message ?? 'No se pudo crear la caja.');
+        const validationErrors = Object.values(error.response?.data?.errors ?? {}).flat();
+        showError(validationErrors[0] ?? error.response?.data?.message ?? 'No se pudo crear la caja.');
     } finally {
         isSaving.value = false;
     }
@@ -1372,6 +1392,7 @@ onMounted(fetchCatalog);
                         <i class="pi pi-eye"></i>
                         <span>Ver PDF</span>
                     </button>
+                    <small>{{ PDF_UPLOAD_HINT }}</small>
                 </div>
 
                 <div class="archive-doc-form__actions">
@@ -1839,6 +1860,21 @@ onMounted(fetchCatalog);
     flex-wrap: wrap;
     gap: 0.75rem;
     justify-content: flex-end;
+}
+
+.create-box-doc-actions {
+    align-items: center;
+    display: inline-flex;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+    justify-content: center;
+    white-space: nowrap;
+    width: max-content;
+}
+
+.create-box-doc-actions .create-box-outline,
+.create-box-doc-actions .create-box-remove {
+    flex: 0 0 auto;
 }
 
 .create-box-info {

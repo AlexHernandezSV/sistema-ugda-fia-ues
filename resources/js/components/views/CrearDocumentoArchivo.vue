@@ -4,6 +4,10 @@ import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import axios from 'axios';
 import DocumentPreviewDialog from '../shared/DocumentPreviewDialog.vue';
+import {
+    PDF_UPLOAD_HINT,
+    validatePdfFile,
+} from '../../services/pdfValidation';
 
 const router = useRouter();
 const toast = useToast();
@@ -170,7 +174,7 @@ const searchBoxes = async () => {
     }
 };
 
-const onDocumentDigitalFileSelect = (event) => {
+const onDocumentDigitalFileSelect = async (event) => {
     const file = event.target.files?.[0] ?? null;
 
     if (!file) {
@@ -179,8 +183,10 @@ const onDocumentDigitalFileSelect = (event) => {
         return;
     }
 
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
-        showError('Seleccione un archivo PDF para el documento digital.');
+    const validationError = await validatePdfFile(file);
+
+    if (validationError) {
+        showError(validationError);
         event.target.value = '';
         documentDigitalFile.value = null;
         documentDigitalFileName.value = '';
@@ -279,7 +285,8 @@ const submitDocument = async () => {
         });
         router.push('/archivo-general/gestion');
     } catch (error) {
-        showError(error.response?.data?.message ?? 'No se pudo crear el documento.');
+        const validationErrors = Object.values(error.response?.data?.errors ?? {}).flat();
+        showError(validationErrors[0] ?? error.response?.data?.message ?? 'No se pudo crear el documento.');
     } finally {
         isSaving.value = false;
     }
@@ -385,6 +392,7 @@ onMounted(async () => {
                         <i class="pi pi-eye"></i>
                         <span>Ver PDF</span>
                     </button>
+                    <small>{{ PDF_UPLOAD_HINT }}</small>
                 </div>
             </section>
 
