@@ -766,10 +766,14 @@ onBeforeUnmount(() => {
                         <template #body="{ data }">
                             <div class="reserved-table__code">
                                 <strong>{{ data.code }}</strong>
-                                <span class="reserved-support-badge" :class="supportTone(data.support)">
-                                    {{ data.support === 'Fisico' ? 'Físico' : (data.support ?? 'Sin soporte') }}
-                                </span>
                             </div>
+                        </template>
+                    </Column>
+                    <Column header="Soporte" style="min-width: 8rem">
+                        <template #body="{ data }">
+                            <span class="reserved-support-badge" :class="supportTone(data.support)">
+                                {{ data.support === 'Fisico' ? 'Físico' : (data.support ?? 'Sin soporte') }}
+                            </span>
                         </template>
                     </Column>
                     <Column header="Documento" style="min-width: 15rem">

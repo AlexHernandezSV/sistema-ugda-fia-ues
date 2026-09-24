@@ -16,6 +16,7 @@ use App\Services\UserActivityLogger;
 use App\Support\PdfUpload;
 use App\Support\RequestNumberGenerator;
 use App\Support\SignedPdfUrl;
+use App\Support\TextSearch;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -1923,11 +1924,11 @@ class ArchiveController extends Controller
 
     private function addSearchClauses(Builder $query, array $columns, string $term): void
     {
-        $like = '%' . mb_strtolower($term) . '%';
+        $like = TextSearch::containsPattern($term);
 
         foreach ($columns as $index => $column) {
             $method = $index === 0 ? 'whereRaw' : 'orWhereRaw';
-            $query->{$method}("LOWER(CAST({$column} AS TEXT)) LIKE ?", [$like]);
+            $query->{$method}(TextSearch::postgresTextExpression($column) . ' LIKE ?', [$like]);
         }
     }
 
@@ -1954,16 +1955,17 @@ class ArchiveController extends Controller
     private function applyArchiveReservationClassificationFilter(Builder $query, array $classification): void
     {
         $names = collect($classification['names'] ?? [])
-            ->map(fn ($name) => mb_strtolower(trim((string) $name)))
+            ->map(fn ($name) => TextSearch::normalize((string) $name))
             ->filter()
             ->unique()
             ->values();
+        $normalizedColumn = 'TRIM(' . TextSearch::postgresTextExpression('transfer_box_documents.series_label') . ')';
 
-        $query->where(function (Builder $classificationQuery) use ($names) {
+        $query->where(function (Builder $classificationQuery) use ($names, $normalizedColumn) {
             foreach ($names as $index => $name) {
                 $method = $index === 0 ? 'whereRaw' : 'orWhereRaw';
                 $classificationQuery->{$method}(
-                    'LOWER(TRIM(CAST(transfer_box_documents.series_label AS TEXT))) = ?',
+                    "{$normalizedColumn} = ?",
                     [$name],
                 );
             }
@@ -2213,9 +2215,9 @@ class ArchiveController extends Controller
 
     private function whereArchiveClassificationLabelMatches(Builder $query, string $label): void
     {
-        $normalizedLabel = $this->normalizeArchiveClassificationLabel($label);
+        $normalizedLabel = TextSearch::normalize($label);
         $normalizedLabel = preg_replace('/\s+/', '', $normalizedLabel) ?? '';
-        $normalizedColumn = "REPLACE(REPLACE(LOWER(COALESCE(transfer_boxes.series_name, '')), ' ', ''), ';', '|')";
+        $normalizedColumn = TextSearch::postgresDelimitedExpression('transfer_boxes.series_name');
 
         $query->whereRaw(
             "POSITION(? IN ('|' || {$normalizedColumn} || '|')) > 0",

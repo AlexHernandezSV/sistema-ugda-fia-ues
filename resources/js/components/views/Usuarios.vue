@@ -3,6 +3,7 @@ import { computed, ref, onMounted } from "vue";
 import axios from "axios";
 import { useRouter } from "vue-router";
 import { useToast } from "primevue/usetoast";
+import { normalizeSearchText } from "../../services/textSearch";
 
 // --- VARIABLES ---
 const router = useRouter();
@@ -67,7 +68,30 @@ const fetchData = async () => {
             axios.get("/api/units"),
             axios.get("/api/profiles"),
         ]);
-        users.value = usersRes.data;
+        users.value = usersRes.data.map((user) => ({
+            ...user,
+            _search: `${normalizeSearchText([
+                user.first_name,
+                user.second_name,
+                user.first_last_name,
+                user.second_last_name,
+                user.email,
+                user.carnet,
+                user.role,
+                ...(user.units ?? []).flatMap((unit) => [unit.name, unit.code]),
+                ...(user.profiles ?? []).map((profile) => profile.name),
+            ].filter(Boolean).join(' '))} ${[
+                user.first_name,
+                user.second_name,
+                user.first_last_name,
+                user.second_last_name,
+                user.email,
+                user.carnet,
+                user.role,
+                ...(user.units ?? []).flatMap((unit) => [unit.name, unit.code]),
+                ...(user.profiles ?? []).map((profile) => profile.name),
+            ].filter(Boolean).join(' ').toLowerCase()}`,
+        }));
         unitsList.value = unitsRes.data.map((u) => ({
             label: u.name,
             value: u.id,
@@ -573,6 +597,7 @@ const goBack = () => {
                 'first_last_name',
                 'email',
                 'carnet',
+                '_search',
             ]"
             tableStyle="min-width: 60rem"
             rowHover

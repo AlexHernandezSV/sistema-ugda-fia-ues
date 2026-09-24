@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import axios from "axios";
+import { normalizeSearchText } from "../../services/textSearch";
 
 const router = useRouter();
 
@@ -446,7 +447,7 @@ const activeSupportOptions = computed(() =>
 );
 
 const visibleDocuments = computed(() => {
-    const searchTerm = filters.search.trim().toLowerCase();
+    const searchTerm = normalizeSearchText(filters.search);
 
     return documents.value.filter((document) => {
         const matchesUnit = !filters.unit || document.unit_id === filters.unit;
@@ -465,7 +466,7 @@ const visibleDocuments = computed(() => {
             document.box_number,
             document.entered_by,
         ]
-            .some((value) => String(value ?? "").toLowerCase().includes(searchTerm));
+            .some((value) => normalizeSearchText(value).includes(searchTerm));
 
         return matchesUnit && matchesSeries && matchesSupport && matchesSearch && matchesPeriod;
     });

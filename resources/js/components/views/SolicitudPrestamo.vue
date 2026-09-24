@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 import { useToast } from 'primevue/usetoast';
+import { normalizeSearchText } from '../../services/textSearch';
 
 const router = useRouter();
 const route = useRoute();
@@ -48,7 +49,7 @@ const pageSubtitle = computed(() => isEditMode.value
     : 'Solicita documentos que ya se encuentran en custodia de la UGDA');
 
 const filteredDocuments = computed(() => {
-    const term = search.value.trim().toLowerCase();
+    const term = normalizeSearchText(search.value);
 
     if (!term) {
         return availableDocuments.value;
@@ -61,7 +62,7 @@ const filteredDocuments = computed(() => {
         document.box,
         document.year,
         document.transferNumber,
-    ].some((value) => String(value ?? '').toLowerCase().includes(term)));
+    ].some((value) => normalizeSearchText(value).includes(term)));
 });
 
 const pendingDocuments = computed(() =>

@@ -11,4 +11,4 @@ Artisan::command('inspire', function () {
 Schedule::command('loans:notify-due-dates')
     ->dailyAt('08:00')
     ->timezone(config('app.timezone'))
-    ->withoutOverlapping();
+    ->withoutOverlapping(10);

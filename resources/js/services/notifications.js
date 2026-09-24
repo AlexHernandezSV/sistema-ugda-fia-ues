@@ -16,23 +16,27 @@ const setNotificationState = (payload) => {
 
 export const getNotificationState = () => notificationState;
 
-export const fetchNotificationSummary = async () => {
-    const { data } = await axios.get('/api/notifications/summary');
+export const fetchNotificationSummary = async (status = 'unread') => {
+    const { data } = await axios.get('/api/notifications/summary', {
+        params: { status },
+    });
     setNotificationState(data);
 
     return data;
 };
 
-export const refreshDueDateNotifications = async () => {
-    const { data } = await axios.post('/api/notifications/refresh');
+export const refreshDueDateNotifications = async (status = 'unread') => {
+    const { data } = await axios.post('/api/notifications/refresh', null, {
+        params: { status },
+    });
     setNotificationState(data);
 
     return data;
 };
 
-export const markNotificationAsRead = async (id) => {
+export const markNotificationAsRead = async (id, status = 'unread') => {
     const { data } = await axios.post(`/api/notifications/${id}/read`);
-    await fetchNotificationSummary();
+    await fetchNotificationSummary(status);
 
     return data.notification;
 };

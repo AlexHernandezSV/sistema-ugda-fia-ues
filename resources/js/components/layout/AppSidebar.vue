@@ -6,7 +6,6 @@ import { clearCachedUser, getCachedUser, getCurrentUser } from '../../services/a
 import {
     fetchNotificationSummary,
     getNotificationState,
-    markAllNotificationsAsRead,
     markNotificationAsRead,
     refreshDueDateNotifications,
 } from '../../services/notifications';
@@ -31,6 +30,7 @@ const notifications = ref({
     unreadCount: 0,
     latest: [],
 });
+const notificationView = ref('unread');
 const expandedMenus = ref({});
 
 const userData = ref({
@@ -274,12 +274,17 @@ const syncNotificationState = (payload) => {
 const refreshNotifications = async ({ syncDueDates = false } = {}) => {
     try {
         const data = syncDueDates
-            ? await refreshDueDateNotifications()
-            : await fetchNotificationSummary();
+            ? await refreshDueDateNotifications(notificationView.value)
+            : await fetchNotificationSummary(notificationView.value);
         syncNotificationState(data);
     } catch (error) {
         console.error('Error al cargar notificaciones:', error);
     }
+};
+
+const toggleNotificationView = () => {
+    notificationView.value = notificationView.value === 'unread' ? 'read' : 'unread';
+    refreshNotifications({ syncDueDates: true });
 };
 
 const handleNotificationsUpdated = (event) => {
@@ -309,7 +314,7 @@ const openNotificationsPage = () => {
 const openNotification = async (notification) => {
     try {
         if (!notification.is_read) {
-            await markNotificationAsRead(notification.id);
+            await markNotificationAsRead(notification.id, notificationView.value);
         }
 
         isNotificationMenuOpen.value = false;
@@ -337,14 +342,6 @@ const openNotification = async (notification) => {
         }
     } catch (error) {
         console.error('Error al abrir notificacion:', error);
-    }
-};
-
-const markAllPreviewAsRead = async () => {
-    try {
-        await markAllNotificationsAsRead();
-    } catch (error) {
-        console.error('Error al marcar notificaciones:', error);
     }
 };
 
@@ -530,15 +527,14 @@ onBeforeUnmount(() => {
                     <div class="sidebar-notifications-panel__header">
                         <div>
                             <strong>Notificaciones</strong>
-                            <span>{{ notifications.unreadCount }} no leídas</span>
+                            <span>{{ notificationView === 'unread' ? `${notifications.unreadCount} no leídas` : 'Últimas leídas' }}</span>
                         </div>
                         <button
                             type="button"
                             class="sidebar-notifications-panel__mark"
-                            :disabled="!hasUnreadNotifications"
-                            @click="markAllPreviewAsRead"
+                            @click="toggleNotificationView"
                         >
-                            Leidas
+                            {{ notificationView === 'unread' ? 'Ver leídas' : 'Ver no leídas' }}
                         </button>
                     </div>
 

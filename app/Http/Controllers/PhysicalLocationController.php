@@ -9,6 +9,7 @@ use App\Models\TransferBox;
 use App\Services\UserActivityLogger;
 use App\Support\XlsxRowsReader;
 use App\Support\XlsxWorkbookWriter;
+use App\Support\TextSearch;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -1192,11 +1193,11 @@ class PhysicalLocationController extends Controller
 
     private function whereTextMatches(Builder $query, array $columns, string $search): void
     {
-        $pattern = '%' . mb_strtolower($search) . '%';
+        $pattern = TextSearch::containsPattern($search);
 
         foreach ($columns as $index => $column) {
             $method = $index === 0 ? 'whereRaw' : 'orWhereRaw';
-            $query->{$method}("LOWER({$column}) LIKE ?", [$pattern]);
+            $query->{$method}(TextSearch::postgresTextExpression($column) . ' LIKE ?', [$pattern]);
         }
     }
 

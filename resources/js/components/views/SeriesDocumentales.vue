@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import axios from "axios";
 import { useToast } from "primevue/usetoast";
+import { normalizeSearchText } from "../../services/textSearch";
 
 const router = useRouter();
 const toast = useToast();
@@ -80,7 +81,7 @@ const deleteDialogState = ref({
     message: "",
 });
 
-const searchTerm = computed(() => searchValue.value.trim().toLowerCase());
+const searchTerm = computed(() => normalizeSearchText(searchValue.value));
 
 const getCharacterCount = (value) => String(value ?? "").length;
 
@@ -331,9 +332,9 @@ const validateSubseriesForm = (target = createSubseriesForm.value) => {
 };
 
 const matchesSeries = (series, term) =>
-    `${series.code} ${series.name}`.toLowerCase().includes(term);
+    normalizeSearchText(`${series.code} ${series.name}`).includes(term);
 const matchesSubseries = (subseries, term) =>
-    `${subseries.code} ${subseries.name}`.toLowerCase().includes(term);
+    normalizeSearchText(`${subseries.code} ${subseries.name}`).includes(term);
 const getSeriesUnitsSummary = (series) => {
     const units = Array.isArray(series.units) ? series.units : [];
 

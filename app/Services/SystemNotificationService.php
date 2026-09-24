@@ -455,7 +455,7 @@ class SystemNotificationService
             return false;
         }
 
-        $daysUntilDue = $today->copy()->startOfDay()->diffInDays($dueDate, false);
+        $daysUntilDue = (int) $today->copy()->startOfDay()->diffInDays($dueDate, false);
         $daysOverdue = $daysUntilDue < 0 ? abs($daysUntilDue) : 0;
 
         if ($daysUntilDue === 3) {
@@ -469,6 +469,12 @@ class SystemNotificationService
             $title = 'Devolución próxima';
             $shortMessage = 'El préstamo #' . $loan->number . ' vence en 2 días.';
             $body = 'La devolución programada del préstamo #' . $loan->number . ' es el ' . $dueDate->format('d/m/Y') . '. Recuerde devolver los documentos dentro del plazo establecido.';
+            $tone = 'warning';
+        } elseif ($daysUntilDue === 1) {
+            $type = 'loan_due_in_1_day';
+            $title = 'Devolución próxima';
+            $shortMessage = 'El préstamo #' . $loan->number . ' vence mañana.';
+            $body = 'La devolución programada del préstamo #' . $loan->number . ' es mañana, ' . $dueDate->format('d/m/Y') . '. Recuerde devolver los documentos dentro del plazo establecido.';
             $tone = 'warning';
         } elseif ($daysUntilDue === 0) {
             $type = 'loan_due_today';

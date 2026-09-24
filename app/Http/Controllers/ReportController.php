@@ -11,6 +11,7 @@ use App\Models\TransferBox;
 use App\Models\TransferDocument;
 use App\Models\Unit;
 use App\Models\User;
+use App\Support\TextSearch;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -660,11 +661,11 @@ class ReportController extends Controller
 
     private function addReportSearchClauses(Builder $query, array $columns, string $term): void
     {
-        $like = '%' . mb_strtolower($term) . '%';
+        $like = TextSearch::containsPattern($term);
 
         foreach ($columns as $index => $column) {
             $method = $index === 0 ? 'whereRaw' : 'orWhereRaw';
-            $query->{$method}("LOWER(CAST({$column} AS TEXT)) LIKE ?", [$like]);
+            $query->{$method}(TextSearch::postgresTextExpression($column) . ' LIKE ?', [$like]);
         }
     }
 
@@ -816,9 +817,10 @@ class ReportController extends Controller
             return;
         }
 
-        $normalizedLabel = mb_strtolower(preg_replace('/\\s+/', '', trim($label)) ?? '');
+        $normalizedLabel = TextSearch::normalize($label);
+        $normalizedLabel = preg_replace('/\s+/', '', $normalizedLabel) ?? '';
         $escapedLabel = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $normalizedLabel);
-        $normalizedColumn = "REPLACE(REPLACE(LOWER(COALESCE({$column}, '')), ' ', ''), ';', '|')";
+        $normalizedColumn = TextSearch::postgresDelimitedExpression($column);
 
         $query->whereRaw(
             "('|' || {$normalizedColumn} || '|') LIKE ? ESCAPE '\\'",
@@ -996,8 +998,8 @@ class ReportController extends Controller
                         ?: $loan->requested_at?->format('Y-m-d')
                         ?: 'Sin fecha',
                     'status' => $returnedDocumentIds->contains($document->id) || $document->returned
-                        ? 'Devuelta'
-                        : 'Prestada',
+                        ? 'Devuelto'
+                        : 'Prestado',
                 ])
                 ->values(),
         ];

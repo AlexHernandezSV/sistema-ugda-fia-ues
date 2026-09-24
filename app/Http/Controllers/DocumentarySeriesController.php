@@ -7,6 +7,7 @@ use App\Models\DocumentarySubseries;
 use App\Models\TransferDocument;
 use App\Models\Unit;
 use App\Services\UserActivityLogger;
+use App\Support\TextSearch;
 use App\Support\XlsxRowsReader;
 use App\Support\XlsxWorkbookWriter;
 use Illuminate\Http\JsonResponse;
@@ -752,7 +753,7 @@ class DocumentarySeriesController extends Controller
     private function documentaryLabelsQuery(array $labels)
     {
         $normalizedLabels = collect($labels)
-            ->map(fn (string $label) => mb_strtolower(preg_replace('/\s+/', '', trim($label)) ?? ''))
+            ->map(fn (string $label) => preg_replace('/\s+/', '', TextSearch::normalize($label)) ?? '')
             ->filter()
             ->unique()
             ->values()
@@ -762,7 +763,7 @@ class DocumentarySeriesController extends Controller
             return TransferDocument::query()->whereRaw('1 = 0');
         }
 
-        $normalizedColumn = "REPLACE(REPLACE(LOWER(COALESCE(transfer_box_documents.series_label, '')), ' ', ''), ';', '|')";
+        $normalizedColumn = TextSearch::postgresDelimitedExpression('transfer_box_documents.series_label');
 
         return TransferDocument::query()
             ->where(function ($query) use ($normalizedLabels, $normalizedColumn) {

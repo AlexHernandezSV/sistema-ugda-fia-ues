@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\SystemNotification;
 use App\Services\SystemNotificationService;
+use App\Support\TextSearch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -11,6 +12,7 @@ class SystemNotificationController extends Controller
 {
     public function index(Request $request, SystemNotificationService $notificationService): JsonResponse
     {
+        $notificationService->refreshLoanDueDateNotificationsForUser($request->user());
         $notificationService->synchronizeUnitDecisionNotificationsForUser($request->user()->id);
 
         $perPage = min(max((int) $request->integer('per_page', 8), 5), 30);
@@ -46,12 +48,12 @@ class SystemNotificationController extends Controller
         }
 
         if ($request->filled('search')) {
-            $search = '%' . trim($request->string('search')->toString()) . '%';
+            $search = TextSearch::containsPattern($request->string('search')->toString());
             $query->where(function ($searchQuery) use ($search) {
-                $searchQuery->where('title', 'like', $search)
-                    ->orWhere('short_message', 'like', $search)
-                    ->orWhere('body', 'like', $search)
-                    ->orWhere('reference_number', 'like', $search);
+                $searchQuery->whereRaw(TextSearch::postgresTextExpression('title') . ' LIKE ?', [$search])
+                    ->orWhereRaw(TextSearch::postgresTextExpression('short_message') . ' LIKE ?', [$search])
+                    ->orWhereRaw(TextSearch::postgresTextExpression('body') . ' LIKE ?', [$search])
+                    ->orWhereRaw(TextSearch::postgresTextExpression('reference_number') . ' LIKE ?', [$search]);
             });
         }
 
@@ -97,9 +99,13 @@ class SystemNotificationController extends Controller
 
     public function summary(Request $request, SystemNotificationService $notificationService): JsonResponse
     {
+        $notificationService->refreshLoanDueDateNotificationsForUser($request->user());
         $notificationService->synchronizeUnitDecisionNotificationsForUser($request->user()->id);
 
-        return response()->json($this->summaryPayload($request->user()->id));
+        return response()->json($this->summaryPayload(
+            $request->user()->id,
+            $request->input('status') === 'read' ? 'read' : 'unread',
+        ));
     }
 
     public function refreshDueDateNotifications(Request $request, SystemNotificationService $notificationService): JsonResponse
@@ -108,18 +114,27 @@ class SystemNotificationController extends Controller
         $notificationService->synchronizeUnitDecisionNotificationsForUser($request->user()->id);
 
         return response()->json(array_merge(
-            $this->summaryPayload($request->user()->id),
+            $this->summaryPayload(
+                $request->user()->id,
+                $request->input('status') === 'read' ? 'read' : 'unread',
+            ),
             ['created_due_notifications' => $created],
         ));
     }
 
-    private function summaryPayload(int $userId): array
+    private function summaryPayload(int $userId, string $status = 'unread'): array
     {
         $query = SystemNotification::query()
             ->where('user_id', $userId);
 
-        $latest = (clone $query)
-            ->orderByRaw('read_at is null desc')
+        $visibleQuery = clone $query;
+        if ($status === 'read') {
+            $visibleQuery->whereNotNull('read_at');
+        } else {
+            $visibleQuery->whereNull('read_at');
+        }
+
+        $latest = $visibleQuery
             ->latest()
             ->limit(6)
             ->get()
@@ -203,6 +218,7 @@ class SystemNotificationController extends Controller
             'loan_registered' => 'Préstamo registrado',
             'loan_due_in_3_days' => 'Devolución en 3 días',
             'loan_due_in_2_days' => 'Devolución en 2 días',
+            'loan_due_in_1_day' => 'Devolución mañana',
             'loan_due_today' => 'Devolución vence hoy',
             'loan_overdue_reminder' => 'Devolución vencida',
             'loan_returned' => 'Devolución registrada',

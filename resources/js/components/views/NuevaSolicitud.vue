@@ -5,6 +5,7 @@ import { useToast } from 'primevue/usetoast';
 import axios from 'axios';
 import DocumentPreviewDialog from '../shared/DocumentPreviewDialog.vue';
 import { getCurrentUser } from '../../services/authSession';
+import { normalizeSearchText } from '../../services/textSearch';
 import {
     isPdfFile,
     PDF_UPLOAD_HINT,
@@ -177,10 +178,7 @@ const getBoxSeriesLabels = (box) => (
         : splitSeriesLabel(box.series)
 );
 
-const normalizeSeriesLabel = (value) => String(value ?? '')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .toLowerCase();
+const normalizeSeriesLabel = (value) => normalizeSearchText(value);
 
 const isAssignedToUnit = (item, unitId) => (
     Array.isArray(item?.unit_ids)

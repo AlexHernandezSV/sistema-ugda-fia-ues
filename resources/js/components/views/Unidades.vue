@@ -3,6 +3,7 @@ import { ref, onMounted } from "vue";
 import axios from "axios";
 import { useRouter } from "vue-router";
 import { useToast } from "primevue/usetoast";
+import { normalizeSearchText } from "../../services/textSearch";
 
 // --- VARIABLES DE ESTADO ---
 const router = useRouter();
@@ -43,7 +44,10 @@ const fetchUnits = async () => {
     loading.value = true;
     try {
         const response = await axios.get("/api/units");
-        units.value = response.data;
+        units.value = response.data.map((unit) => ({
+            ...unit,
+            _search: `${normalizeSearchText(unit.name)} ${String(unit.name ?? '').toLowerCase()}`,
+        }));
     } catch (error) {
         if ([401, 419].includes(error.response?.status)) {
             return;
@@ -378,7 +382,7 @@ const clearFilter = () => {
             :rowsPerPageOptions="rowsPerPageOptions"
             :loading="loading"
             v-model:filters="filters"
-            :globalFilterFields="['name']"
+            :globalFilterFields="['name', '_search']"
             tableStyle="min-width: 50rem"
             rowHover
             stripedRows

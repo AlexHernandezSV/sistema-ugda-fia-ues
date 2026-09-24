@@ -941,7 +941,17 @@ class LoanController extends Controller
                 ]);
             });
 
-            app(SystemNotificationService::class)->loanRegistered($loan->fresh(), $request->user());
+            $freshLoan = $loan->fresh(['workflowStatus', 'latestDispatch', 'documents']);
+            $notificationService = app(SystemNotificationService::class);
+            $notificationService->loanRegistered($freshLoan, $request->user());
+
+            if ($freshLoan->latestDispatch !== null) {
+                $notificationService->loanDueDateReminder(
+                    $freshLoan,
+                    $freshLoan->latestDispatch,
+                    Carbon::today(),
+                );
+            }
 
             return response()->json([
                 'message' => 'El prestamo #' . $number . ' fue registrado por UGDA y entregado a la Unidad solicitante. Fecha de devolución: ' . $request->string('due_date')->toString() . '.',
@@ -1059,6 +1069,15 @@ class LoanController extends Controller
                     'occurred_at' => now(),
                 ]);
             });
+
+            $freshLoan = $loan->fresh(['workflowStatus', 'latestDispatch', 'documents']);
+            if ($freshLoan?->latestDispatch !== null) {
+                app(SystemNotificationService::class)->loanDueDateReminder(
+                    $freshLoan,
+                    $freshLoan->latestDispatch,
+                    Carbon::today(),
+                );
+            }
 
             return response()->json([
                 'message' => 'El registro del préstamo #' . $number . ' fue modificado correctamente.',
