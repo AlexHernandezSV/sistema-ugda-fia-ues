@@ -15,6 +15,7 @@ const toast = useToast();
 const defaultNotificationType = ref(null);
 
 const loading = ref(true);
+const refreshing = ref(false);
 const notifications = ref([]);
 const typeOptions = ref([]);
 const summary = ref({
@@ -24,7 +25,7 @@ const summary = ref({
 const meta = ref({
     current_page: 1,
     last_page: 1,
-    per_page: 8,
+    per_page: 5,
     total: 0,
     from: null,
     to: null,
@@ -43,7 +44,6 @@ const statusOptions = [
 ];
 const rowsPerPageOptions = [
     { label: '5', value: 5 },
-    { label: '8', value: 8 },
     { label: '10', value: 10 },
     { label: '25', value: 25 },
     { label: '50', value: 50 },
@@ -109,10 +109,12 @@ const toneIcon = (tone) => {
 };
 
 const fetchNotifications = async (page = 1) => {
-    loading.value = true;
+    const hasCurrentResults = notifications.value.length > 0 || meta.value.total > 0;
+    loading.value = !hasCurrentResults;
+    refreshing.value = hasCurrentResults;
 
     try {
-        const perPage = Number(meta.value.per_page) || 8;
+        const perPage = Number(meta.value.per_page) || 5;
         const dateRange = filters.value.dateRange;
         const params = {
             page,
@@ -139,6 +141,7 @@ const fetchNotifications = async (page = 1) => {
         });
     } finally {
         loading.value = false;
+        refreshing.value = false;
     }
 };
 
@@ -187,7 +190,7 @@ const goToPage = (page) => {
     }
 };
 
-const selectedRowsLabel = computed(() => String(Number(meta.value.per_page) || 8));
+const selectedRowsLabel = computed(() => String(Number(meta.value.per_page) || 5));
 
 onMounted(async () => {
     try {
@@ -266,63 +269,71 @@ onMounted(async () => {
                 <span>Página {{ meta.current_page }} de {{ meta.last_page }}</span>
             </div>
 
-            <div v-if="loading" class="p-4 text-center text-gray-500">Cargando notificaciones...</div>
+            <div class="notificaciones-list-container">
+                <div v-if="loading" class="p-4 text-center text-gray-500">Cargando notificaciones...</div>
 
-            <div v-else-if="notifications.length === 0" class="notificaciones-empty">
-                <i class="pi pi-bell"></i>
-                <strong>No hay notificaciones</strong>
-                <span>No se encontraron avisos con los filtros seleccionados.</span>
-            </div>
+                <div v-else-if="notifications.length === 0" class="notificaciones-empty">
+                    <i class="pi pi-bell"></i>
+                    <strong>No hay notificaciones</strong>
+                    <span>No se encontraron avisos con los filtros seleccionados.</span>
+                </div>
 
-            <div v-else class="notificaciones-list">
-                <article
-                    v-for="notification in notifications"
-                    :key="notification.id"
-                    class="notificaciones-item"
-                    :class="{ 'notificaciones-item--unread': !notification.is_read }"
-                >
-                    <div class="notificaciones-item__summary">
-                        <div class="notificaciones-item__main">
-                            <div class="notificaciones-item__icon" :class="`notificaciones-item__icon--${notification.tone}`">
-                                <i :class="toneIcon(notification.tone)"></i>
+                <div v-else class="notificaciones-list">
+                    <article
+                        v-for="notification in notifications"
+                        :key="notification.id"
+                        class="notificaciones-item"
+                        :class="{ 'notificaciones-item--unread': !notification.is_read }"
+                    >
+                        <div class="notificaciones-item__summary">
+                            <div class="notificaciones-item__main">
+                                <div class="notificaciones-item__icon" :class="`notificaciones-item__icon--${notification.tone}`">
+                                    <i :class="toneIcon(notification.tone)"></i>
+                                </div>
+                                <div class="min-w-0">
+                                    <div class="notificaciones-item__title-row">
+                                        <h2>{{ notification.title }}</h2>
+                                        <span v-if="!notification.is_read" class="notificaciones-unread-dot"></span>
+                                    </div>
+                                    <p>{{ notification.short_message }}</p>
+                                    <div class="notificaciones-item__meta">
+                                        <span :class="toneClass(notification.tone)">{{ notification.type_label }}</span>
+                                        <span>{{ notification.created_at_label }}</span>
+                                        <span v-if="notification.reference_number">#{{ notification.reference_number }}</span>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="min-w-0">
-                                <div class="notificaciones-item__title-row">
-                                    <h2>{{ notification.title }}</h2>
-                                    <span v-if="!notification.is_read" class="notificaciones-unread-dot"></span>
+
+                            <div class="notificaciones-item__side">
+                                <div class="notificaciones-detail-meta">
+                                    <strong
+                                        class="notificaciones-read-state"
+                                        :class="notification.is_read ? 'notificaciones-read-state--read' : 'notificaciones-read-state--unread'"
+                                    >
+                                        <span></span>
+                                        {{ notification.is_read ? 'Leida' : 'No leida' }}
+                                    </strong>
+                                    <span>Creada: {{ notification.created_at_label }}</span>
+                                    <span>Vista: {{ notification.read_at_label || 'Pendiente' }}</span>
                                 </div>
-                                <p>{{ notification.short_message }}</p>
-                                <div class="notificaciones-item__meta">
-                                    <span :class="toneClass(notification.tone)">{{ notification.type_label }}</span>
-                                    <span>{{ notification.created_at_label }}</span>
-                                    <span v-if="notification.reference_number">#{{ notification.reference_number }}</span>
-                                </div>
+
+                                <button v-if="notification.action_url" type="button" class="notificaciones-open-action" @click="openAction(notification)">
+                                    <i class="pi pi-external-link"></i>
+                                    <span>Abrir</span>
+                                </button>
                             </div>
                         </div>
+                    </article>
+                </div>
 
-                        <div class="notificaciones-item__side">
-                            <div class="notificaciones-detail-meta">
-                                <strong
-                                    class="notificaciones-read-state"
-                                    :class="notification.is_read ? 'notificaciones-read-state--read' : 'notificaciones-read-state--unread'"
-                                >
-                                    <span></span>
-                                    {{ notification.is_read ? 'Leida' : 'No leida' }}
-                                </strong>
-                                <span>Creada: {{ notification.created_at_label }}</span>
-                                <span>Vista: {{ notification.read_at_label || 'Pendiente' }}</span>
-                            </div>
-
-                            <button v-if="notification.action_url" type="button" class="notificaciones-open-action" @click="openAction(notification)">
-                                <i class="pi pi-external-link"></i>
-                                <span>Abrir</span>
-                            </button>
-                        </div>
-                    </div>
-                </article>
+                <div v-if="refreshing" class="notificaciones-refreshing" aria-live="polite">
+                    <i class="pi pi-spin pi-spinner"></i>
+                    <span>Actualizando...</span>
+                </div>
             </div>
 
             <div class="notificaciones-pagination">
+                <div class="notificaciones-pagination__controls">
                 <div class="notificaciones-pagination__pages">
                     <button
                         type="button"
@@ -386,6 +397,7 @@ onMounted(async () => {
                         <span>{{ selectedRowsLabel }}</span>
                     </template>
                 </Dropdown>
+                </div>
             </div>
         </div>
     </div>
@@ -462,8 +474,6 @@ onMounted(async () => {
 
 :deep(.notificaciones-page-size) {
     min-width: 5.2rem;
-    position: absolute;
-    right: 1.25rem;
 }
 
 :deep(.notificaciones-page-size .p-dropdown-label) {
@@ -476,6 +486,25 @@ onMounted(async () => {
 .notificaciones-list {
     display: flex;
     flex-direction: column;
+}
+
+.notificaciones-list-container {
+    min-height: 4rem;
+    position: relative;
+}
+
+.notificaciones-refreshing {
+    align-items: center;
+    background: rgba(255, 255, 255, 0.72);
+    color: #64748b;
+    display: flex;
+    font-size: 0.9rem;
+    font-weight: 600;
+    gap: 0.55rem;
+    inset: 0;
+    justify-content: center;
+    position: absolute;
+    z-index: 1;
 }
 
 .notificaciones-item {
@@ -692,6 +721,12 @@ onMounted(async () => {
     position: relative;
 }
 
+.notificaciones-pagination__controls {
+    align-items: center;
+    display: flex;
+    gap: 0.75rem;
+}
+
 .notificaciones-pagination__pages {
     align-items: center;
     display: flex;
@@ -767,8 +802,13 @@ onMounted(async () => {
         justify-content: center;
     }
 
+    .notificaciones-pagination__controls {
+        align-items: stretch;
+        flex-direction: column;
+        width: 100%;
+    }
+
     :deep(.notificaciones-page-size) {
-        position: static;
         width: 100%;
     }
 }

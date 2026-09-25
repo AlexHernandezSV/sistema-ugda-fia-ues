@@ -15,7 +15,7 @@ class SystemNotificationController extends Controller
         $notificationService->refreshLoanDueDateNotificationsForUser($request->user());
         $notificationService->synchronizeUnitDecisionNotificationsForUser($request->user()->id);
 
-        $perPage = min(max((int) $request->integer('per_page', 8), 5), 30);
+        $perPage = min(max((int) $request->integer('per_page', 5), 5), 50);
         $query = SystemNotification::query()
             ->where('user_id', $request->user()->id)
             ->latest();
