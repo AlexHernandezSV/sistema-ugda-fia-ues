@@ -163,7 +163,7 @@ class PhysicalLocationController extends Controller
             'name' => ['required', 'string', 'max:100'],
             'code' => ['required', 'string', 'max:100', 'unique:physical_location_offices,code'],
             'is_active' => ['boolean'],
-        ], $this->messages());
+        ], $this->messages('oficina'));
 
         if ($validator->fails()) {
             return $this->validationResponse($validator);
@@ -201,7 +201,7 @@ class PhysicalLocationController extends Controller
             'name' => ['required', 'string', 'max:100'],
             'code' => ['required', 'string', 'max:100', Rule::unique('physical_location_offices', 'code')->ignore($office->id)],
             'is_active' => ['boolean'],
-        ], $this->messages());
+        ], $this->messages('oficina'));
 
         if ($validator->fails()) {
             return $this->validationResponse($validator);
@@ -319,7 +319,7 @@ class PhysicalLocationController extends Controller
                     ->where(fn ($query) => $query->where('physical_location_office_id', (int) $request->input('office_id'))),
             ],
             'is_active' => ['boolean'],
-        ], $this->messages());
+        ], $this->messages('pasillo'));
 
         if ($validator->fails()) {
             return $this->validationResponse($validator);
@@ -361,7 +361,7 @@ class PhysicalLocationController extends Controller
                     ->where(fn ($query) => $query->where('physical_location_office_id', $officeId)),
             ],
             'is_active' => ['boolean'],
-        ], $this->messages());
+        ], $this->messages('pasillo'));
 
         if ($validator->fails()) {
             return $this->validationResponse($validator);
@@ -480,7 +480,7 @@ class PhysicalLocationController extends Controller
                     ->where(fn ($query) => $query->where('physical_location_aisle_id', (int) $request->input('aisle_id'))),
             ],
             'is_active' => ['boolean'],
-        ], $this->messages());
+        ], $this->messages('estante'));
 
         if ($validator->fails()) {
             return $this->validationResponse($validator);
@@ -522,7 +522,7 @@ class PhysicalLocationController extends Controller
                     ->where(fn ($query) => $query->where('physical_location_aisle_id', $aisleId)),
             ],
             'is_active' => ['boolean'],
-        ], $this->messages());
+        ], $this->messages('estante'));
 
         if ($validator->fails()) {
             return $this->validationResponse($validator);
@@ -1337,9 +1337,12 @@ class PhysicalLocationController extends Controller
 
     private function validationResponse($validator): JsonResponse
     {
+        $errors = $validator->errors()->toArray();
+        $message = collect($errors)->flatten()->first();
+
         return response()->json([
-            'message' => 'Los datos de la ubicación física no son válidos.',
-            'errors' => $validator->errors(),
+            'message' => $message ?? 'Los datos de la ubicación física no son válidos.',
+            'errors' => $errors,
         ], 422);
     }
 
@@ -1355,14 +1358,21 @@ class PhysicalLocationController extends Controller
         return $request->user()?->activeProfile()?->name === 'Administrador';
     }
 
-    private function messages(): array
+    private function messages(string $resource): array
     {
+        $codeUniqueMessage = match ($resource) {
+            'oficina' => 'Ya existe una oficina con este código.',
+            'pasillo' => 'Ya existe un pasillo con este código en la oficina seleccionada.',
+            'estante' => 'Ya existe un estante con este código en el pasillo seleccionado.',
+            default => 'Ya existe un registro con este código.',
+        };
+
         return [
             'name.required' => 'El nombre es obligatorio.',
             'name.max' => 'El nombre no puede superar los 100 caracteres.',
             'code.max' => 'El código no puede superar los 100 caracteres.',
             'code.required' => 'El código es obligatorio.',
-            'code.unique' => 'Ya existe un registro con este código en el mismo nivel.',
+            'code.unique' => $codeUniqueMessage,
             'office_id.required' => 'Debe seleccionar la oficina.',
             'office_id.exists' => 'La oficina seleccionada no existe.',
             'aisle_id.required' => 'Debe seleccionar el pasillo.',

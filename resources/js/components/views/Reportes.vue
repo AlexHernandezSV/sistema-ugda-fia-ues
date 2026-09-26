@@ -1554,6 +1554,276 @@ const escapeHtml = (value) =>
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#039;");
 
+const xlsxXmlEscape = (value) =>
+    String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&apos;");
+
+const xlsxColumnName = (columnIndex) => {
+    let index = columnIndex + 1;
+    let name = "";
+
+    while (index > 0) {
+        const remainder = (index - 1) % 26;
+        name = String.fromCharCode(65 + remainder) + name;
+        index = Math.floor((index - 1) / 26);
+    }
+
+    return name;
+};
+
+const xlsxCrc32 = (bytes) => {
+    let crc = 0xffffffff;
+
+    for (const byte of bytes) {
+        crc ^= byte;
+
+        for (let bit = 0; bit < 8; bit += 1) {
+            crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+        }
+    }
+
+    return (crc ^ 0xffffffff) >>> 0;
+};
+
+const xlsxZipEntry = (name, content, offset) => {
+    const encoder = new TextEncoder();
+    const nameBytes = encoder.encode(name);
+    const dataBytes = encoder.encode(content);
+    const crc = xlsxCrc32(dataBytes);
+    const localHeader = new Uint8Array(30 + nameBytes.length);
+    const localView = new DataView(localHeader.buffer);
+
+    localView.setUint32(0, 0x04034b50, true);
+    localView.setUint16(4, 20, true);
+    localView.setUint16(6, 0, true);
+    localView.setUint16(8, 0, true);
+    localView.setUint16(10, 0, true);
+    localView.setUint16(12, 0, true);
+    localView.setUint32(14, crc, true);
+    localView.setUint32(18, dataBytes.length, true);
+    localView.setUint32(22, dataBytes.length, true);
+    localView.setUint16(26, nameBytes.length, true);
+    localView.setUint16(28, 0, true);
+    localHeader.set(nameBytes, 30);
+
+    const centralHeader = new Uint8Array(46 + nameBytes.length);
+    const centralView = new DataView(centralHeader.buffer);
+
+    centralView.setUint32(0, 0x02014b50, true);
+    centralView.setUint16(4, 20, true);
+    centralView.setUint16(6, 20, true);
+    centralView.setUint16(8, 0, true);
+    centralView.setUint16(10, 0, true);
+    centralView.setUint16(12, 0, true);
+    centralView.setUint16(14, 0, true);
+    centralView.setUint32(16, crc, true);
+    centralView.setUint32(20, dataBytes.length, true);
+    centralView.setUint32(24, dataBytes.length, true);
+    centralView.setUint16(28, nameBytes.length, true);
+    centralView.setUint16(30, 0, true);
+    centralView.setUint16(32, 0, true);
+    centralView.setUint16(34, 0, true);
+    centralView.setUint16(36, 0, true);
+    centralView.setUint32(38, 0, true);
+    centralView.setUint32(42, offset, true);
+    centralHeader.set(nameBytes, 46);
+
+    return { dataBytes, localHeader, centralHeader };
+};
+
+const xlsxBuildZip = (entries) => {
+    const localParts = [];
+    const centralParts = [];
+    let offset = 0;
+
+    entries.forEach(([name, content]) => {
+        const entry = xlsxZipEntry(name, content, offset);
+        localParts.push(entry.localHeader, entry.dataBytes);
+        centralParts.push(entry.centralHeader);
+        offset += entry.localHeader.length + entry.dataBytes.length;
+    });
+
+    const centralDirectorySize = centralParts.reduce((total, part) => total + part.length, 0);
+    const endOfDirectory = new Uint8Array(22);
+    const endView = new DataView(endOfDirectory.buffer);
+
+    endView.setUint32(0, 0x06054b50, true);
+    endView.setUint16(4, 0, true);
+    endView.setUint16(6, 0, true);
+    endView.setUint16(8, entries.length, true);
+    endView.setUint16(10, entries.length, true);
+    endView.setUint32(12, centralDirectorySize, true);
+    endView.setUint32(16, offset, true);
+    endView.setUint16(20, 0, true);
+
+    const totalSize =
+        localParts.reduce((total, part) => total + part.length, 0) +
+        centralDirectorySize +
+        endOfDirectory.length;
+    const zip = new Uint8Array(totalSize);
+    let cursor = 0;
+
+    [...localParts, ...centralParts, endOfDirectory].forEach((part) => {
+        zip.set(part, cursor);
+        cursor += part.length;
+    });
+
+    return zip;
+};
+
+const xlsxInlineStringCell = (reference, value, style) =>
+    `<c r="${reference}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${xlsxXmlEscape(value)}</t></is></c>`;
+
+const xlsxWorksheetXml = (title, tables) => {
+    const rows = [
+        [{ value: title, style: 1 }],
+    ];
+    let maxColumns = 1;
+
+    tables.forEach((table, tableIndex) => {
+        if (tableIndex > 0 || rows.length > 1) {
+            rows.push([]);
+        }
+
+        table.forEach((row) => {
+            const cells = row.map((cell) => ({
+                value: cell.value,
+                style: cell.kind === "th"
+                    ? tableIndex === 0 && row.length === 2
+                        ? 3
+                        : 2
+                    : 5,
+            }));
+
+            rows.push(cells);
+            maxColumns = Math.max(maxColumns, cells.length);
+        });
+    });
+
+    const worksheetRows = rows
+        .map(
+            (row, rowIndex) =>
+                `<row r="${rowIndex + 1}">${row
+                    .map((cell, columnIndex) =>
+                        xlsxInlineStringCell(
+                            `${xlsxColumnName(columnIndex)}${rowIndex + 1}`,
+                            cell.value,
+                            cell.style
+                        )
+                    )
+                    .join("")}</row>`
+        )
+        .join("");
+    const widths = Array.from({ length: maxColumns }, (_, columnIndex) => {
+        const width = Math.min(
+            42,
+            Math.max(
+                12,
+                ...rows.map((row) => String(row[columnIndex]?.value ?? "").length + 2)
+            )
+        );
+
+        return `<col min="${columnIndex + 1}" max="${columnIndex + 1}" width="${width}" bestFit="1" customWidth="1"/>`;
+    }).join("");
+    const lastColumn = xlsxColumnName(maxColumns - 1);
+
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+    <sheetViews><sheetView workbookViewId="0"/></sheetViews>
+    <sheetFormatPr defaultRowHeight="18"/>
+    <cols>${widths}</cols>
+    <sheetData>${worksheetRows}</sheetData>
+    <mergeCells count="1"><mergeCell ref="A1:${lastColumn}1"/></mergeCells>
+    <pageMargins left="0.3" right="0.3" top="0.5" bottom="0.5" header="0.2" footer="0.2"/>
+</worksheet>`;
+};
+
+const xlsxStylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+    <fonts count="4">
+        <font><sz val="11"/><name val="Calibri"/></font>
+        <font><b/><sz val="16"/><color rgb="FF10213D"/><name val="Calibri"/></font>
+        <font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
+        <font><b/><sz val="11"/><color rgb="FF10213D"/><name val="Calibri"/></font>
+    </fonts>
+    <fills count="4">
+        <fill><patternFill patternType="none"/></fill>
+        <fill><patternFill patternType="gray125"/></fill>
+        <fill><patternFill patternType="solid"><fgColor rgb="FF0B4F9C"/><bgColor indexed="64"/></patternFill></fill>
+        <fill><patternFill patternType="solid"><fgColor rgb="FFEEF5FF"/><bgColor indexed="64"/></patternFill></fill>
+    </fills>
+    <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+    <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+    <cellXfs count="6">
+        <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
+        <xf numFmtId="0" fontId="1" fillId="0" borderId="0"/>
+        <xf numFmtId="0" fontId="2" fillId="2" borderId="0"/>
+        <xf numFmtId="0" fontId="3" fillId="3" borderId="0"/>
+        <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
+        <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
+    </cellXfs>
+    <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`;
+
+const downloadXlsxFromHtml = (html, fileName) => {
+    const parsedDocument = new DOMParser().parseFromString(html, "text/html");
+    const title = parsedDocument.querySelector("h1")?.textContent?.trim() || "Reporte";
+    const tables = Array.from(parsedDocument.querySelectorAll("table")).map((table) =>
+        Array.from(table.rows).map((row) =>
+            Array.from(row.cells).map((cell) => ({
+                value: cell.textContent?.trim() ?? "",
+                kind: cell.tagName.toLowerCase(),
+            }))
+        )
+    );
+    const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+    <bookViews><workbookView/></bookViews>
+    <sheets><sheet name="Reporte" sheetId="1" r:id="rId1"/></sheets>
+</workbook>`;
+    const workbookRelationships = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+    <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`;
+    const packageRelationships = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`;
+    const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+    <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+    <Default Extension="xml" ContentType="application/xml"/>
+    <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+    <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+    <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>`;
+    const zip = xlsxBuildZip([
+        ["[Content_Types].xml", contentTypes],
+        ["_rels/.rels", packageRelationships],
+        ["xl/workbook.xml", workbookXml],
+        ["xl/_rels/workbook.xml.rels", workbookRelationships],
+        ["xl/styles.xml", xlsxStylesXml],
+        ["xl/worksheets/sheet1.xml", xlsxWorksheetXml(title, tables)],
+    ]);
+    const blob = new Blob([zip], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+};
+
 const isCurrentExportDisabled = computed(() =>
     loadingRegistry.value ||
     (isUnclassifiedDocumentsReport.value
@@ -1611,18 +1881,7 @@ const exportCurrentTable = () => {
             </html>
         `;
 
-        const blob = new Blob([workbook], {
-            type: "application/vnd.ms-excel;charset=utf-8;",
-        });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-
-        link.href = url;
-        link.download = "documentos-sin-clasificacion.xls";
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
+        downloadXlsxFromHtml(workbook, "documentos-sin-clasificacion.xlsx");
         return;
     }
 
@@ -1669,18 +1928,7 @@ const exportCurrentTable = () => {
             </html>
         `;
 
-        const blob = new Blob([workbook], {
-            type: "application/vnd.ms-excel;charset=utf-8;",
-        });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-
-        link.href = url;
-        link.download = "series-y-subseries-documentales.xls";
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
+        downloadXlsxFromHtml(workbook, "series-y-subseries-documentales.xlsx");
         return;
     }
 
@@ -1727,18 +1975,7 @@ const exportCurrentTable = () => {
             </html>
         `;
 
-        const blob = new Blob([workbook], {
-            type: "application/vnd.ms-excel;charset=utf-8;",
-        });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-
-        link.href = url;
-        link.download = "tiempos-promedio-de-respuesta.xls";
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
+        downloadXlsxFromHtml(workbook, "tiempos-promedio-de-respuesta.xlsx");
         return;
     }
 
@@ -1783,18 +2020,7 @@ const exportCurrentTable = () => {
             </html>
         `;
 
-        const blob = new Blob([workbook], {
-            type: "application/vnd.ms-excel;charset=utf-8;",
-        });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-
-        link.href = url;
-        link.download = "documentos-mas-y-menos-consultados.xls";
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
+        downloadXlsxFromHtml(workbook, "documentos-mas-y-menos-consultados.xlsx");
         return;
     }
 
@@ -1847,18 +2073,7 @@ const exportCurrentTable = () => {
             </html>
         `;
 
-        const blob = new Blob([workbook], {
-            type: "application/vnd.ms-excel;charset=utf-8;",
-        });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-
-        link.href = url;
-        link.download = "historial-de-consultas-por-usuario.xls";
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
+        downloadXlsxFromHtml(workbook, "historial-de-consultas-por-usuario.xlsx");
         return;
     }
 
@@ -1930,19 +2145,9 @@ const exportCurrentTable = () => {
         </html>
     `;
 
-    const blob = new Blob([workbook], {
-        type: "application/vnd.ms-excel;charset=utf-8;",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
     const safeTitle = chartTitle.value.toLowerCase().replaceAll(" ", "-");
 
-    link.href = url;
-    link.download = `${safeTitle}.xls`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadXlsxFromHtml(workbook, `${safeTitle}.xlsx`);
 };
 
 watch(
