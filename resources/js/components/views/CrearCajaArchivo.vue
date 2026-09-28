@@ -651,17 +651,23 @@ const downloadTemplate = () => {
     const params = new URLSearchParams();
     const yearStart = getYearString(form.value.start_year);
     const yearEnd = getYearString(form.value.end_year);
+    const templateSeries = selectedSeriesName.value || seriesOptions.value
+        .map((item) => item.label)
+        .filter(Boolean)
+        .join('; ');
+    const templateYearStart = yearStart || String(minimumYearDate.getFullYear());
+    const templateYearEnd = yearEnd || String(currentDate.getFullYear());
 
-    if (selectedSeriesName.value) {
-        params.set('series', selectedSeriesName.value);
+    if (templateSeries) {
+        params.set('series', templateSeries);
     }
 
-    if (yearStart) {
-        params.set('year_start', yearStart);
+    if (templateYearStart) {
+        params.set('year_start', templateYearStart);
     }
 
-    if (yearEnd) {
-        params.set('year_end', yearEnd);
+    if (templateYearEnd) {
+        params.set('year_end', templateYearEnd);
     }
 
     const query = params.toString();
@@ -1530,7 +1536,14 @@ onMounted(fetchCatalog);
             @hide="restoreAddDocumentDialog"
         />
 
-        <Dialog v-model:visible="searchDialogVisible" modal :draggable="false" header="Buscar documentos existentes" :style="{ width: 'min(900px, 94vw)' }">
+        <Dialog
+            v-model:visible="searchDialogVisible"
+            modal
+            :draggable="false"
+            header="Buscar documentos existentes"
+            contentClass="archive-existing-documents-dialog-content"
+            :style="{ width: 'min(900px, 94vw)' }"
+        >
             <form class="archive-existing-search" @submit.prevent="searchExistingDocuments">
                 <InputText v-model="documentSearch" placeholder="Buscar por código, nombre, serie, caja o ubicación..." class="w-full" />
                 <button type="submit" class="create-box-primary" :disabled="isSearchingDocuments">
@@ -2133,6 +2146,13 @@ onMounted(fetchCatalog);
     gap: 0.75rem;
     grid-template-columns: minmax(0, 1fr) auto;
     margin-bottom: 1rem;
+}
+
+:global(.archive-existing-documents-dialog-content) {
+    -webkit-overflow-scrolling: touch;
+    max-height: calc(100vh - 12rem);
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
 }
 
 .detalle-labels-modal {
