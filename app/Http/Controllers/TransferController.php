@@ -48,9 +48,18 @@ class TransferController extends Controller
             'Cantidad de páginas',
         ];
 
-        $seriesLabels = $this->splitSeriesPayloadLabels((string) $request->input('series', ''));
-        $yearStart = (int) $request->input('year_start', 0);
-        $yearEnd = (int) $request->input('year_end', 0);
+        $seriesInput = $request->input('series', '');
+        $seriesLabels = is_array($seriesInput)
+            ? collect($seriesInput)
+                ->map(fn ($label) => trim((string) $label))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all()
+            : $this->splitSeriesPayloadLabels((string) $seriesInput);
+        $seriesLabels = $seriesLabels ?: $this->availableDocumentarySeriesLabels();
+        $yearStart = (int) $request->input('year_start', 1900);
+        $yearEnd = (int) $request->input('year_end', now()->year);
         $years = [];
 
         if ($yearStart >= 1900 && $yearStart <= 2100 && $yearEnd >= $yearStart && $yearEnd <= 2100) {
@@ -989,6 +998,26 @@ class TransferController extends Controller
             });
 
         return $labels;
+    }
+
+    private function availableDocumentarySeriesLabels(): array
+    {
+        return DocumentarySeries::query()
+            ->where('is_active', true)
+            ->with(['subseries' => fn ($query) => $query
+                ->where('is_active', true)
+                ->orderBy('code')])
+            ->orderBy('code')
+            ->get(['id', 'code', 'name'])
+            ->flatMap(function (DocumentarySeries $series) {
+                $seriesLabel = $series->code . ' - ' . $series->name;
+
+                return $series->subseries->map(
+                    fn ($subseries) => $seriesLabel . ' / ' . $subseries->code . ' - ' . $subseries->name,
+                );
+            })
+            ->values()
+            ->all();
     }
 
     private function splitSeriesPayloadLabels(string $value): array

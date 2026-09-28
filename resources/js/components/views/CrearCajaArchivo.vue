@@ -7,6 +7,7 @@ import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
 import DocumentPreviewDialog from '../shared/DocumentPreviewDialog.vue';
+import { downloadDocumentImportTemplate } from '../../services/documentImportTemplate';
 import {
     isPdfFile,
     PDF_UPLOAD_HINT,
@@ -647,31 +648,22 @@ const resetExcelInput = () => {
     }
 };
 
-const downloadTemplate = () => {
-    const params = new URLSearchParams();
+const downloadTemplate = async () => {
     const yearStart = getYearString(form.value.start_year);
     const yearEnd = getYearString(form.value.end_year);
-    const templateSeries = selectedSeriesName.value || seriesOptions.value
-        .map((item) => item.label)
-        .filter(Boolean)
-        .join('; ');
     const templateYearStart = yearStart || String(minimumYearDate.getFullYear());
     const templateYearEnd = yearEnd || String(currentDate.getFullYear());
 
-    if (templateSeries) {
-        params.set('series', templateSeries);
+    try {
+        await downloadDocumentImportTemplate({
+            series: selectedSeriesOptions.value.map((item) => item.label),
+            yearStart: templateYearStart,
+            yearEnd: templateYearEnd,
+        });
+    } catch (error) {
+        console.error('Error descargando plantilla de documentos:', error);
+        showError('No se pudo descargar la plantilla de documentos.');
     }
-
-    if (templateYearStart) {
-        params.set('year_start', templateYearStart);
-    }
-
-    if (templateYearEnd) {
-        params.set('year_end', templateYearEnd);
-    }
-
-    const query = params.toString();
-    window.location.href = `/api/transfers/document-import-template${query ? `?${query}` : ''}`;
 };
 
 const importDocuments = async () => {

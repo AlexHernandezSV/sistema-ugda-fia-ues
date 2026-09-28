@@ -5,6 +5,7 @@ import { useToast } from 'primevue/usetoast';
 import axios from 'axios';
 import DocumentPreviewDialog from '../shared/DocumentPreviewDialog.vue';
 import { getCurrentUser } from '../../services/authSession';
+import { downloadDocumentImportTemplate } from '../../services/documentImportTemplate';
 import { normalizeSearchText } from '../../services/textSearch';
 import {
     isPdfFile,
@@ -548,26 +549,21 @@ const validateRequiredDigitalFiles = (documents) => {
     return `El documento "${documentName}" con soporte ${documentWithoutPdf.support} requiere un archivo PDF. Cárguelo antes de guardar.`;
 };
 
-const downloadExcelTemplate = () => {
-    const params = new URLSearchParams();
+const downloadExcelTemplate = async () => {
     const seriesLabels = getBoxSeriesLabels(currentBoxData.value);
     const yearStart = getYearString(currentBoxData.value.year_start);
     const yearEnd = getYearString(currentBoxData.value.year_end);
 
-    if (seriesLabels.length > 0) {
-        params.set('series', seriesLabels.join('; '));
+    try {
+        await downloadDocumentImportTemplate({
+            series: seriesLabels,
+            yearStart,
+            yearEnd,
+        });
+    } catch (error) {
+        console.error('Error descargando plantilla de documentos:', error);
+        showError('No se pudo descargar la plantilla de documentos.');
     }
-
-    if (yearStart) {
-        params.set('year_start', yearStart);
-    }
-
-    if (yearEnd) {
-        params.set('year_end', yearEnd);
-    }
-
-    const query = params.toString();
-    window.location.href = `/api/transfers/document-import-template${query ? `?${query}` : ''}`;
 };
 
 const normalizeDocumentValue = (value) => String(value ?? '')

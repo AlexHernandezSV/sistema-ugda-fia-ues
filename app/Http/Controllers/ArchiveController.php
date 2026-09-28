@@ -1302,19 +1302,32 @@ class ArchiveController extends Controller
             }
 
             $resultsCount = (clone $resultsQuery)->count();
+            $page = max(1, (int) $request->query('page', 1));
+            $perPage = (int) $request->query('per_page', 100);
+            $perPage = min(max($perPage, 5), 100);
             $loanedDocuments = $this->loanedDocumentMap();
-            $results = $resultsQuery
+            $resultsPaginator = $resultsQuery
                 ->orderBy('transfer_box_documents.name')
-                ->limit(100)
-                ->get()
+                ->orderBy('transfer_box_documents.id')
+                ->paginate($perPage, ['*'], 'page', $page);
+            $results = $resultsPaginator->getCollection()
                 ->map(fn (TransferDocument $document) => $this->mapDocument($document, $loanedDocuments))
                 ->values();
+            $meta = [
+                'current_page' => $resultsPaginator->currentPage(),
+                'last_page' => $resultsPaginator->lastPage(),
+                'per_page' => $resultsPaginator->perPage(),
+                'total' => $resultsPaginator->total(),
+                'from' => $resultsPaginator->firstItem(),
+                'to' => $resultsPaginator->lastItem(),
+            ];
 
             return response()->json([
                 'totals' => $totals,
                 'query' => $term,
                 'results_count' => $resultsCount,
-                'results_limit' => 100,
+                'results_limit' => $perPage,
+                'meta' => $meta,
                 'results' => $results,
             ]);
         } catch (Throwable $exception) {

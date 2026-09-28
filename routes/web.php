@@ -217,6 +217,7 @@ Route::middleware('auth')->group(function () {
     Route::delete('/api/physical-location-shelves/{id}', [PhysicalLocationController::class, 'destroyShelf']);
     Route::get('/api/transfers/next-code', [TransferController::class, 'nextCode']);
     Route::get('/api/transfers/document-import-template', [TransferController::class, 'documentImportTemplate']);
+    Route::post('/api/transfers/document-import-template', [TransferController::class, 'documentImportTemplate']);
     Route::post('/api/transfers/import-documents', [TransferController::class, 'importDocuments']);
     Route::post('/api/transfers', [TransferController::class, 'store']);
     Route::get('/api/transfers/{number}', [RequestCatalogController::class, 'showTransfer']);

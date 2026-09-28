@@ -15,7 +15,15 @@ const totals = ref({
 });
 const results = ref([]);
 const resultsCount = ref(0);
-const resultsLimit = ref(100);
+const rowsPerPageOptions = [5, 10, 25, 50];
+const pagination = ref({
+    current_page: 1,
+    last_page: 1,
+    per_page: 10,
+    total: 0,
+    from: null,
+    to: null,
+});
 const hasSearched = ref(false);
 const selectedDocument = ref(null);
 const documentDialogVisible = ref(false);
@@ -36,9 +44,23 @@ const resultCountLabel = computed(() => {
 });
 const limitNotice = computed(() => (
     resultsCount.value > results.value.length
-        ? `Mostrando ${results.value.length} de ${resultsCount.value} coincidencias. Refine la búsqueda para ver resultados más precisos.`
+        ? `Mostrando ${pagination.value.from ?? 0}-${pagination.value.to ?? 0} de ${resultsCount.value} coincidencias.`
         : ''
 ));
+const visiblePages = computed(() => {
+    const totalPages = pagination.value.last_page || 1;
+    const currentPage = pagination.value.current_page || 1;
+    const start = Math.max(1, currentPage - 1);
+    const end = Math.min(totalPages, start + 2);
+    const normalizedStart = Math.max(1, end - 2);
+    const pages = [];
+
+    for (let page = normalizedStart; page <= end; page += 1) {
+        pages.push(page);
+    }
+
+    return pages;
+});
 
 const summaryCards = computed(() => ([
     {
@@ -104,19 +126,27 @@ const clearDocumentPreview = () => {
     documentPreviewSource.value = null;
 };
 
-const fetchArchive = async (searchTerm = '') => {
+const fetchArchive = async (
+    searchTerm = '',
+    page = pagination.value.current_page,
+    perPage = pagination.value.per_page,
+) => {
     loading.value = true;
     errorMessage.value = '';
 
     try {
         const { data } = await axios.get('/api/archive/documents', {
-            params: searchTerm ? { q: searchTerm } : {},
+            params: {
+                ...(searchTerm ? { q: searchTerm } : {}),
+                page,
+                per_page: perPage,
+            },
         });
 
         totals.value = data.totals ?? totals.value;
         results.value = data.results ?? [];
         resultsCount.value = data.results_count ?? 0;
-        resultsLimit.value = data.results_limit ?? 100;
+        pagination.value = data.meta ?? pagination.value;
         searchedQuery.value = data.query ?? searchTerm;
     } catch (error) {
         console.error('Error al consultar archivo general:', error);
@@ -139,7 +169,25 @@ const searchDocuments = async () => {
         return;
     }
 
-    await fetchArchive(trimmedQuery.value);
+    await fetchArchive(trimmedQuery.value, 1, pagination.value.per_page);
+};
+
+const goToPage = (page) => {
+    if (page >= 1 && page <= pagination.value.last_page && page !== pagination.value.current_page) {
+        fetchArchive(searchedQuery.value, page, pagination.value.per_page);
+    }
+};
+
+const previousPage = () => {
+    goToPage(pagination.value.current_page - 1);
+};
+
+const nextPage = () => {
+    goToPage(pagination.value.current_page + 1);
+};
+
+const changePageSize = () => {
+    fetchArchive(searchedQuery.value, 1, pagination.value.per_page);
 };
 
 const clearSearch = () => {
@@ -148,6 +196,14 @@ const clearSearch = () => {
     searchedQuery.value = '';
     results.value = [];
     resultsCount.value = 0;
+    pagination.value = {
+        ...pagination.value,
+        current_page: 1,
+        last_page: 1,
+        total: 0,
+        from: null,
+        to: null,
+    };
     errorMessage.value = '';
     selectedDocument.value = null;
     documentDialogVisible.value = false;
@@ -319,6 +375,71 @@ onMounted(() => fetchArchive());
                             </div>
                         </div>
                     </button>
+
+                    <div v-if="pagination.last_page > 1" class="archive-pagination">
+                        <div class="archive-pagination__controls">
+                            <div class="archive-pagination__pages">
+                                <button
+                                    type="button"
+                                    class="archive-pagination__icon"
+                                    :disabled="pagination.current_page <= 1 || loading"
+                                    aria-label="Primera página"
+                                    @click="goToPage(1)"
+                                >
+                                    <i class="pi pi-angle-double-left"></i>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="archive-pagination__icon"
+                                    :disabled="pagination.current_page <= 1 || loading"
+                                    aria-label="Página anterior"
+                                    @click="previousPage"
+                                >
+                                    <i class="pi pi-angle-left"></i>
+                                </button>
+
+                                <button
+                                    v-for="page in visiblePages"
+                                    :key="page"
+                                    type="button"
+                                    class="archive-pagination__number"
+                                    :class="{ 'archive-pagination__number--active': page === pagination.current_page }"
+                                    :disabled="loading"
+                                    @click="goToPage(page)"
+                                >
+                                    {{ page }}
+                                </button>
+
+                                <button
+                                    type="button"
+                                    class="archive-pagination__icon"
+                                    :disabled="pagination.current_page >= pagination.last_page || loading"
+                                    aria-label="Página siguiente"
+                                    @click="nextPage"
+                                >
+                                    <i class="pi pi-angle-right"></i>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="archive-pagination__icon"
+                                    :disabled="pagination.current_page >= pagination.last_page || loading"
+                                    aria-label="Última página"
+                                    @click="goToPage(pagination.last_page)"
+                                >
+                                    <i class="pi pi-angle-double-right"></i>
+                                </button>
+                            </div>
+
+                            <Dropdown
+                                v-model="pagination.per_page"
+                                :options="rowsPerPageOptions"
+                                class="archive-pagination__size"
+                                :disabled="loading"
+                                aria-label="Resultados por página"
+                                @change="changePageSize"
+                            />
+                        </div>
+                    </div>
                 </div>
 
                 <div v-else class="archive-state">
@@ -770,6 +891,76 @@ onMounted(() => fetchArchive());
     font-size: 0.9rem;
     margin: 0;
     padding: 0.85rem 1rem;
+}
+
+.archive-pagination {
+    align-items: center;
+    background: #f8fafc;
+    border-top: 1px solid #e5edf6;
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin: 0 -1.5rem -1.5rem;
+    padding: 1rem 1.25rem;
+}
+
+.archive-pagination__controls,
+.archive-pagination__pages {
+    align-items: center;
+    display: flex;
+}
+
+.archive-pagination__controls {
+    gap: 0.75rem;
+}
+
+.archive-pagination__pages {
+    gap: 0.5rem;
+}
+
+.archive-pagination button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: 999px;
+    color: #334155;
+    cursor: pointer;
+    display: inline-flex;
+    font: inherit;
+    font-weight: 700;
+    justify-content: center;
+    min-height: 2.4rem;
+    min-width: 2.4rem;
+    padding: 0 0.55rem;
+}
+
+.archive-pagination button:hover:not(:disabled) {
+    background: #eaf2f9;
+}
+
+.archive-pagination__icon {
+    color: #64748b !important;
+}
+
+.archive-pagination__number--active {
+    background: #eaf2f9 !important;
+    color: #2f6f9f !important;
+}
+
+.archive-pagination button:disabled {
+    cursor: not-allowed;
+    color: #cbd5e1;
+}
+
+:deep(.archive-pagination__size) {
+    min-width: 5.2rem;
+}
+
+:deep(.archive-pagination__size .p-dropdown-label) {
+    font-size: 0.86rem;
+    font-weight: 700;
+    padding-bottom: 0.55rem;
+    padding-top: 0.55rem;
 }
 
 .archive-document {
@@ -1285,6 +1476,27 @@ onMounted(() => fetchArchive());
 
     .archive-search__button,
     .archive-search__clear {
+        width: 100%;
+    }
+
+    .archive-pagination {
+        align-items: stretch;
+        flex-direction: column;
+        margin-left: -1rem;
+        margin-right: -1rem;
+    }
+
+    .archive-pagination__pages {
+        justify-content: center;
+    }
+
+    .archive-pagination__controls {
+        align-items: stretch;
+        flex-direction: column;
+        width: 100%;
+    }
+
+    :deep(.archive-pagination__size) {
         width: 100%;
     }
 }
