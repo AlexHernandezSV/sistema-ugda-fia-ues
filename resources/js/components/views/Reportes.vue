@@ -830,9 +830,13 @@ const periodSeries = computed(() => {
     return Array.from(grouped.values()).sort((a, b) => a.date.localeCompare(b.date));
 });
 
+const periodChartMax = computed(() =>
+    Math.max(...periodSeries.value.map((item) => item.total), 1)
+);
+
 const periodChartPoints = computed(() => {
     const series = periodSeries.value;
-    const maxTotal = Math.max(...series.map((item) => item.total), 1);
+    const maxTotal = periodChartMax.value;
     const width = 1000;
     const height = 300;
     const top = 18;
@@ -876,13 +880,11 @@ const periodAreaPath = computed(() => {
 });
 
 const yAxisTicks = computed(() => {
-    const totals = periodSeries.value.map((item) => item.total);
-    const maxTotal = Math.max(...totals, 1);
-    const roundedMax = Math.max(5, Math.ceil(maxTotal / 5) * 5);
+    const maxTotal = periodChartMax.value;
 
     return [0, 1, 2, 3, 4].map((index) => {
-        const value = Math.round((roundedMax / 4) * index);
-        const y = 262 - (value / roundedMax) * 244;
+        const value = index === 4 ? maxTotal : Math.round((maxTotal / 4) * index);
+        const y = 262 - (value / maxTotal) * 244;
 
         return { value, y };
     });
@@ -1772,23 +1774,59 @@ const xlsxStylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 const downloadXlsxFromHtml = (html, fileName) => {
     const parsedDocument = new DOMParser().parseFromString(html, "text/html");
     const title = parsedDocument.querySelector("h1")?.textContent?.trim() || "Reporte";
-    const tables = Array.from(parsedDocument.querySelectorAll("table")).map((table) =>
-        Array.from(table.rows).map((row) =>
+    const tables = Array.from(parsedDocument.querySelectorAll("table")).map((table) => ({
+        sheetName: table.dataset.sheet?.trim() || "Reporte",
+        rows: Array.from(table.rows).map((row) =>
             Array.from(row.cells).map((cell) => ({
                 value: cell.textContent?.trim() ?? "",
                 kind: cell.tagName.toLowerCase(),
             }))
+        ),
+    }));
+    const sheets = tables.reduce((groups, table) => {
+        const sheet = groups.find((group) => group.name === table.sheetName);
+
+        if (sheet) {
+            sheet.tables.push(table.rows);
+        } else {
+            groups.push({ name: table.sheetName, tables: [table.rows] });
+        }
+
+        return groups;
+    }, []);
+
+    if (sheets.length === 0) {
+        sheets.push({ name: "Reporte", tables: [] });
+    }
+
+    const worksheetSheets = sheets
+        .map(
+            (sheet, index) =>
+                `<sheet name="${xlsxXmlEscape(sheet.name)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`
         )
-    );
+        .join("");
+    const worksheetRelationships = sheets
+        .map(
+            (_, index) =>
+                `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`
+        )
+        .join("");
+    const worksheetContentTypes = sheets
+        .map(
+            (_, index) =>
+                `<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`
+        )
+        .join("");
+    const stylesRelationshipId = sheets.length + 1;
     const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
     <bookViews><workbookView/></bookViews>
-    <sheets><sheet name="Reporte" sheetId="1" r:id="rId1"/></sheets>
+    <sheets>${worksheetSheets}</sheets>
 </workbook>`;
     const workbookRelationships = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-    <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+    ${worksheetRelationships}
+    <Relationship Id="rId${stylesRelationshipId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
 </Relationships>`;
     const packageRelationships = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -1799,7 +1837,7 @@ const downloadXlsxFromHtml = (html, fileName) => {
     <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
     <Default Extension="xml" ContentType="application/xml"/>
     <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-    <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+    ${worksheetContentTypes}
     <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
 </Types>`;
     const zip = xlsxBuildZip([
@@ -1808,7 +1846,10 @@ const downloadXlsxFromHtml = (html, fileName) => {
         ["xl/workbook.xml", workbookXml],
         ["xl/_rels/workbook.xml.rels", workbookRelationships],
         ["xl/styles.xml", xlsxStylesXml],
-        ["xl/worksheets/sheet1.xml", xlsxWorksheetXml(title, tables)],
+        ...sheets.map((sheet, index) => [
+            `xl/worksheets/sheet${index + 1}.xml`,
+            xlsxWorksheetXml(index === 0 ? title : sheet.name, sheet.tables),
+        ]),
     ]);
     const blob = new Blob([zip], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1981,14 +2022,26 @@ const exportCurrentTable = () => {
 
     if (isAccessDocumentsReport.value) {
         const rows = accessDocumentTableRows.value
-            .map((document) => `
+            .map((document) => {
+                const loanNumbers = new Set(document.consultations.map((item) => item.loan_number));
+
+                return `
                 <tr>
                     <td>${escapeHtml(document.title)}</td>
                     <td>${escapeHtml(document.series)}</td>
                     <td>${escapeHtml(document.total)}</td>
-                    <td>${escapeHtml(document.consultations.map((item) => item.loan_number).join(", "))}</td>
-                    <td>${escapeHtml(document.consultations.map((item) => item.date_label).join(", "))}</td>
-                </tr>`)
+                    <td>${escapeHtml(loanNumbers.size)}</td>
+                </tr>`;
+            })
+            .join("");
+        const detailRows = accessDocumentTableRows.value
+            .flatMap((document) => document.consultations.map((consultation) => `
+                <tr>
+                    <td>${escapeHtml(document.title)}</td>
+                    <td>${escapeHtml(document.series)}</td>
+                    <td>${escapeHtml(consultation.loan_number)}</td>
+                    <td>${escapeHtml(consultation.date_label)}</td>
+                </tr>`))
             .join("");
 
         const workbook = `
@@ -2004,17 +2057,27 @@ const exportCurrentTable = () => {
                 </head>
                 <body>
                     <h1>${escapeHtml(chartTitle.value)}</h1>
-                    <table>
+                    <table data-sheet="Resumen">
                         <thead>
                             <tr>
                                 <th>Documento</th>
                                 <th>Serie</th>
                                 <th>Consultas</th>
-                                <th>Prestamos</th>
-                                <th>Fechas</th>
+                                <th>Préstamos involucrados</th>
                             </tr>
                         </thead>
                         <tbody>${rows}</tbody>
+                    </table>
+                    <table data-sheet="Detalle de consultas">
+                        <thead>
+                            <tr>
+                                <th>Documento</th>
+                                <th>Serie</th>
+                                <th>Préstamo</th>
+                                <th>Fecha de consulta</th>
+                            </tr>
+                        </thead>
+                        <tbody>${detailRows}</tbody>
                     </table>
                 </body>
             </html>
@@ -2035,7 +2098,8 @@ const exportCurrentTable = () => {
                         <td>${escapeHtml(loan.status)}</td>
                         <td>${escapeHtml(loan.requested_at_label)}</td>
                         <td>${escapeHtml(document.title)}</td>
-                        <td>${escapeHtml(document.date_label)}</td>
+                        <td>${escapeHtml(document.loan_date_label)}</td>
+                        <td>${escapeHtml(document.return_date_label)}</td>
                         <td>${escapeHtml(document.status)}</td>
                     </tr>`)
             )
@@ -2063,7 +2127,8 @@ const exportCurrentTable = () => {
                                 <th>Estado</th>
                                 <th>Fecha solicitud</th>
                                 <th>Documento</th>
-                                <th>Fecha</th>
+                                <th>Fecha préstamo</th>
+                                <th>Fecha devolución</th>
                                 <th>Estado documento</th>
                             </tr>
                         </thead>
@@ -2088,7 +2153,7 @@ const exportCurrentTable = () => {
         ["Año documental", "year"],
         ["Paginas", "pages"],
         ["Transferencia", "transfer_code"],
-        ["Caja", "box_number"],
+        ["Caja", "box"],
     ];
 
     const rows = visibleDocuments.value
@@ -3197,7 +3262,8 @@ onMounted(fetchReportSummary);
                                     >
                                         <span>
                                             <strong>{{ document.title }}</strong>
-                                            <small>Fecha: {{ document.date_label }}</small>
+                                            <small>Préstamo: {{ document.loan_date_label }} · N.º {{ document.loan_number }}</small>
+                                            <small>Devolución: {{ document.return_date_label }}</small>
                                         </span>
                                         <span class="reports-access-document__status">
                                             {{ document.status }}

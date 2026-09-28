@@ -915,6 +915,7 @@ class ReportController extends Controller
             'year' => $document->year_label ?: 'N/D',
             'pages' => $document->pages_label ?: 'N/D',
             'transfer_code' => $transfer?->code ?: 'N/D',
+            'box' => $box?->boxCode($transfer?->code) ?: 'N/D',
             'box_number' => $box?->formattedBoxNumber() ?: 'N/D',
         ];
     }
@@ -970,7 +971,15 @@ class ReportController extends Controller
             ->flatMap(fn ($return) => $return->items->pluck('loan_document_id'))
             ->unique()
             ->values();
+        $returnEventsByDocumentId = $loan->returns
+            ->flatMap(fn ($return) => $return->items->map(fn ($item) => [
+                'document_id' => $item->loan_document_id,
+                'return' => $return,
+            ]))
+            ->groupBy('document_id')
+            ->map(fn ($events) => $events->first()['return']);
         $selectedDocuments = $this->accessConsultationLoanedDocumentsForLoan($loan);
+        $dispatch = $loan->latestDispatch;
 
         if ($selectedDocuments->isEmpty()) {
             return null;
@@ -990,17 +999,35 @@ class ReportController extends Controller
             'requested_at_label' => $loan->requested_at?->format('d/m/Y H:i') ?: 'Sin fecha',
             'documents_count' => $selectedDocuments->count(),
             'documents' => $selectedDocuments
-                ->map(fn (LoanDocument $document) => [
-                    'id' => $document->id,
-                    'title' => $document->title,
-                    'series' => $document->series_label ?: $document->group_title,
-                    'date_label' => $loan->latestDispatch?->loan_date?->format('Y-m-d')
-                        ?: $loan->requested_at?->format('Y-m-d')
-                        ?: 'Sin fecha',
-                    'status' => $returnedDocumentIds->contains($document->id) || $document->returned
-                        ? 'Devuelto'
-                        : 'Prestado',
-                ])
+                ->map(function (LoanDocument $document) use (
+                    $dispatch,
+                    $returnEventsByDocumentId,
+                    $returnedDocumentIds,
+                    $loan,
+                ) {
+                    $returnEvent = $returnEventsByDocumentId->get($document->id);
+                    $loanDateLabel = $this->formatAccessDateTime(
+                        $dispatch?->loan_date ?: $loan->requested_at,
+                        $dispatch?->created_at,
+                    );
+
+                    return [
+                        'id' => $document->id,
+                        'title' => $document->title,
+                        'series' => $document->series_label ?: $document->group_title,
+                        'date_label' => $loanDateLabel,
+                        'loan_date_label' => $loanDateLabel,
+                        'return_date_label' => $returnEvent === null
+                            ? 'Sin devolución'
+                            : $this->formatAccessDateTime(
+                                $returnEvent->return_date,
+                                $returnEvent->created_at,
+                            ),
+                        'status' => $returnedDocumentIds->contains($document->id) || $document->returned
+                            ? 'Devuelto'
+                            : 'Prestado',
+                    ];
+                })
                 ->values(),
         ];
     }
@@ -1105,11 +1132,22 @@ class ReportController extends Controller
                 'document' => $document->title,
                 'unit' => $loan->unit?->name ?: 'Sin unidad',
                 'started_at' => $startedAt->toDateString(),
-                'started_at_label' => $startedAt->format('Y-m-d'),
+                'started_at_label' => $startedAt->format('d/m/Y H:i'),
                 'completed_at' => $completedAt->toDateString(),
-                'completed_at_label' => $completedAt->format('Y-m-d'),
+                'completed_at_label' => $completedAt->format('d/m/Y H:i'),
                 'minutes' => $minutes,
             ]);
+    }
+
+    private function formatAccessDateTime($date, $recordedAt): string
+    {
+        if ($date === null) {
+            return 'Sin fecha';
+        }
+
+        $label = $date->format('d/m/Y');
+
+        return $recordedAt === null ? $label : $label . ' ' . $recordedAt->format('H:i');
     }
 
     private function accessHistoryStatusCode(Loan $loan): ?string
