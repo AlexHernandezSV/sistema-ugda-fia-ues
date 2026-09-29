@@ -83,7 +83,7 @@ class TransferController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'file' => ['required', 'file', 'mimes:xlsx', 'max:5120'],
-            'current_box_series' => ['nullable', 'string', 'max:2000'],
+            'current_box_series' => ['nullable', 'string', 'max:50000'],
             'unit_id' => ['nullable', 'integer', 'exists:units,id'],
             'box_year_start' => ['nullable', 'integer', 'min:1900', 'max:2100'],
             'box_year_end' => ['nullable', 'integer', 'min:1900', 'max:2100'],
@@ -983,7 +983,6 @@ class TransferController extends Controller
                 }
 
                 $seriesLabel = $series->code . ' - ' . $series->name;
-                $labels[$this->normalizeSeriesLabel($seriesLabel)] = $seriesLabel;
 
                 foreach ($series->subseries as $subseries) {
                     $subseriesUnitIds = $subseries->units->pluck('id')->map(fn ($id) => (int) $id);

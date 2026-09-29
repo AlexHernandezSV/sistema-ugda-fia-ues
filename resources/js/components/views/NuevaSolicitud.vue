@@ -193,17 +193,10 @@ const buildSeriesOptionsForUnit = (seriesData, unitId) => (Array.isArray(seriesD
             ? series.subseries.filter((subseries) => subseries.is_active && isAssignedToUnit(subseries, unitId))
             : [];
 
-        if (activeSubseries.length > 0) {
-            return activeSubseries.map((subseries) => ({
-                id: `subseries-${subseries.id}`,
-                label: `${series.code} - ${series.name} / ${subseries.code} - ${subseries.name}`,
-            }));
-        }
-
-        return [{
-            id: `series-${series.id}`,
-            label: `${series.code} - ${series.name}`,
-        }];
+        return activeSubseries.map((subseries) => ({
+            id: `subseries-${subseries.id}`,
+            label: `${series.code} - ${series.name} / ${subseries.code} - ${subseries.name}`,
+        }));
     });
 
 const isPdfFileName = (fileName) => String(fileName ?? '').toLowerCase().endsWith('.pdf');

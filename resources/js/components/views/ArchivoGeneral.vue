@@ -246,7 +246,7 @@ onMounted(() => fetchArchive());
                     <InputText
                         v-model="query"
                         type="text"
-                        placeholder="Ej: Expediente, Acta, OFC-001, Caja 003, 19/03/2025..."
+                        placeholder="Ej: Expediente, Acta, OFC-001, C-2026-00008, 19/03/2025..."
                         :disabled="loading"
                     />
                 </span>

@@ -14,6 +14,14 @@ const loadingReserved = ref(false);
 const addDialogVisible = ref(false);
 const availableDocuments = ref([]);
 const availableResultsCount = ref(0);
+const availablePagination = ref({
+    current_page: 1,
+    last_page: 1,
+    per_page: 10,
+    total: 0,
+    from: null,
+    to: null,
+});
 const availableQuery = ref('');
 const loadingAvailable = ref(false);
 const classificationOptions = ref([]);
@@ -70,6 +78,28 @@ const allVisibleSelected = computed(() => (
     availableResults.value.length > 0
     && availableResults.value.every((document) => selectedDocumentIds.value.has(document.id))
 ));
+const availablePageLabel = computed(() => {
+    if (availablePagination.value.last_page <= 1 || !availablePagination.value.total) {
+        return '';
+    }
+
+    return `Mostrando ${availablePagination.value.from ?? 0}-${availablePagination.value.to ?? 0}`
+        + ` de ${availablePagination.value.total} documentos.`;
+});
+const availableVisiblePages = computed(() => {
+    const totalPages = availablePagination.value.last_page || 1;
+    const currentPage = availablePagination.value.current_page || 1;
+    const start = Math.max(1, currentPage - 1);
+    const end = Math.min(totalPages, start + 2);
+    const normalizedStart = Math.max(1, end - 2);
+    const pages = [];
+
+    for (let page = normalizedStart; page <= end; page += 1) {
+        pages.push(page);
+    }
+
+    return pages;
+});
 const canSubmit = computed(() => (
     ((selectedClassification.value !== null && availableResultsCount.value > 0)
         || selectedDocuments.value.length > 0)
@@ -205,12 +235,27 @@ const onReservedPage = (event) => {
     fetchReservedDocuments(event.page + 1, event.rows);
 };
 
-const fetchAvailableDocuments = async () => {
+const resetAvailablePagination = () => {
+    availablePagination.value = {
+        ...availablePagination.value,
+        current_page: 1,
+        last_page: 1,
+        total: 0,
+        from: null,
+        to: null,
+    };
+};
+
+const fetchAvailableDocuments = async (
+    page = 1,
+    perPage = availablePagination.value.per_page,
+) => {
     const searchTerm = availableQuery.value.trim();
 
     if (!selectedClassification.value && !searchTerm) {
         availableDocuments.value = [];
         availableResultsCount.value = 0;
+        resetAvailablePagination();
         loadingAvailable.value = false;
         return;
     }
@@ -220,6 +265,8 @@ const fetchAvailableDocuments = async () => {
     try {
         const params = {
             available_for_reservation: 1,
+            page,
+            per_page: perPage,
             ...(selectedClassification.value
                 ? { classification_id: selectedClassification.value }
                 : {}),
@@ -228,8 +275,20 @@ const fetchAvailableDocuments = async () => {
         };
         const { data } = await axios.get('/api/archive/documents', { params });
         availableDocuments.value = Array.isArray(data.results) ? data.results : [];
-        availableResultsCount.value = Number(data.results_count ?? availableDocuments.value.length);
+        availableResultsCount.value = Number(data.results_count ?? data.meta?.total ?? availableDocuments.value.length);
+        availablePagination.value = data.meta ?? {
+            ...availablePagination.value,
+            current_page: page,
+            per_page: perPage,
+            last_page: 1,
+            total: availableResultsCount.value,
+            from: availableDocuments.value.length > 0 ? 1 : null,
+            to: availableDocuments.value.length,
+        };
     } catch (error) {
+        availableDocuments.value = [];
+        availableResultsCount.value = 0;
+        resetAvailablePagination();
         toast.add({
             severity: 'error',
             summary: 'Error',
@@ -269,6 +328,7 @@ const openAddDialog = async () => {
     selectedDocuments.value = [];
     availableDocuments.value = [];
     availableResultsCount.value = 0;
+    resetAvailablePagination();
     availableQuery.value = '';
     addDialogVisible.value = true;
     await fetchClassificationOptions();
@@ -284,6 +344,7 @@ const closeAddDialog = () => {
     selectedDocuments.value = [];
     availableDocuments.value = [];
     availableResultsCount.value = 0;
+    resetAvailablePagination();
     availableQuery.value = '';
 };
 
@@ -320,11 +381,24 @@ const onClassificationChange = async () => {
     selectedDocuments.value = [];
     availableQuery.value = '';
 
-    await fetchAvailableDocuments();
+    await fetchAvailableDocuments(1);
 };
 
 const searchAvailableDocuments = async () => {
-    await fetchAvailableDocuments();
+    await fetchAvailableDocuments(1);
+};
+
+const onAvailablePage = (page) => {
+    if (page < 1 || page > availablePagination.value.last_page
+        || page === availablePagination.value.current_page || loadingAvailable.value) {
+        return;
+    }
+
+    fetchAvailableDocuments(page);
+};
+
+const changeAvailablePageSize = () => {
+    fetchAvailableDocuments(1, availablePagination.value.per_page);
 };
 
 const clearAvailableSearch = async () => {
@@ -332,12 +406,13 @@ const clearAvailableSearch = async () => {
     selectedDocuments.value = [];
 
     if (selectedClassification.value) {
-        await fetchAvailableDocuments();
+        await fetchAvailableDocuments(1);
         return;
     }
 
     availableDocuments.value = [];
     availableResultsCount.value = 0;
+    resetAvailablePagination();
 };
 
 const addReservedDocument = async () => {
@@ -935,6 +1010,10 @@ onBeforeUnmount(() => {
                             </div>
                         </div>
 
+                        <p v-if="availablePageLabel" class="reserved-picker-pagination__notice">
+                            {{ availablePageLabel }}
+                        </p>
+
                         <div class="reserved-picker" role="list">
                             <div v-if="loadingAvailable" class="reserved-picker__state">
                                 <i class="pi pi-spin pi-spinner"></i>
@@ -973,6 +1052,71 @@ onBeforeUnmount(() => {
                             </template>
                             <div v-else class="reserved-picker__state">
                                 Realice una búsqueda o seleccione una subserie para consultar documentos.
+                            </div>
+                        </div>
+
+                        <div v-if="availablePagination.last_page > 1" class="reserved-picker-pagination">
+                            <div class="reserved-picker-pagination__controls">
+                                <div class="reserved-picker-pagination__pages">
+                                    <button
+                                        type="button"
+                                        class="reserved-picker-pagination__icon"
+                                        :disabled="availablePagination.current_page <= 1 || loadingAvailable"
+                                        aria-label="Primera página"
+                                        @click="onAvailablePage(1)"
+                                    >
+                                        <i class="pi pi-angle-double-left"></i>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="reserved-picker-pagination__icon"
+                                        :disabled="availablePagination.current_page <= 1 || loadingAvailable"
+                                        aria-label="Página anterior"
+                                        @click="onAvailablePage(availablePagination.current_page - 1)"
+                                    >
+                                        <i class="pi pi-angle-left"></i>
+                                    </button>
+
+                                    <button
+                                        v-for="page in availableVisiblePages"
+                                        :key="page"
+                                        type="button"
+                                        class="reserved-picker-pagination__number"
+                                        :class="{ 'reserved-picker-pagination__number--active': page === availablePagination.current_page }"
+                                        :disabled="loadingAvailable"
+                                        @click="onAvailablePage(page)"
+                                    >
+                                        {{ page }}
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        class="reserved-picker-pagination__icon"
+                                        :disabled="availablePagination.current_page >= availablePagination.last_page || loadingAvailable"
+                                        aria-label="Página siguiente"
+                                        @click="onAvailablePage(availablePagination.current_page + 1)"
+                                    >
+                                        <i class="pi pi-angle-right"></i>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="reserved-picker-pagination__icon"
+                                        :disabled="availablePagination.current_page >= availablePagination.last_page || loadingAvailable"
+                                        aria-label="Última página"
+                                        @click="onAvailablePage(availablePagination.last_page)"
+                                    >
+                                        <i class="pi pi-angle-double-right"></i>
+                                    </button>
+                                </div>
+
+                                <Dropdown
+                                    v-model="availablePagination.per_page"
+                                    :options="rowsPerPageOptions"
+                                    class="reserved-picker-pagination__size"
+                                    :disabled="loadingAvailable"
+                                    aria-label="Resultados por página"
+                                    @change="changeAvailablePageSize"
+                                />
                             </div>
                         </div>
                     </div>
@@ -1331,7 +1475,7 @@ onBeforeUnmount(() => {
     display: flex;
     flex: 1;
     gap: 0.65rem;
-    min-width: 16rem;
+    min-width: 28rem;
     padding: 0 0.75rem;
 }
 
@@ -1679,6 +1823,84 @@ onBeforeUnmount(() => {
     text-align: center;
 }
 
+.reserved-picker-pagination {
+    align-items: center;
+    background: var(--ugda-surface-page);
+    border-top: 1px solid var(--ugda-border);
+    display: flex;
+    justify-content: center;
+    margin: 0;
+    padding: 0.75rem 0.5rem;
+}
+
+.reserved-picker-pagination__notice {
+    background: var(--ugda-surface-soft);
+    border-radius: var(--ugda-radius-sm);
+    color: var(--ugda-text-secondary);
+    font-size: var(--ugda-font-secondary);
+    margin: 0;
+    padding: 0.65rem 0.75rem;
+}
+
+.reserved-picker-pagination__controls,
+.reserved-picker-pagination__pages {
+    align-items: center;
+    display: flex;
+}
+
+.reserved-picker-pagination__controls {
+    gap: 0.75rem;
+}
+
+.reserved-picker-pagination__pages {
+    gap: 0.35rem;
+}
+
+.reserved-picker-pagination button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: 999px;
+    color: var(--ugda-text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    font: inherit;
+    font-weight: var(--ugda-weight-semibold);
+    justify-content: center;
+    min-height: 2.2rem;
+    min-width: 2.2rem;
+    padding: 0 0.5rem;
+}
+
+.reserved-picker-pagination button:hover:not(:disabled) {
+    background: var(--ugda-brand-soft);
+}
+
+.reserved-picker-pagination__icon {
+    color: var(--ugda-text-muted) !important;
+}
+
+.reserved-picker-pagination__number--active {
+    background: var(--ugda-brand-soft) !important;
+    color: var(--ugda-brand-hover) !important;
+}
+
+.reserved-picker-pagination button:disabled {
+    cursor: not-allowed;
+    color: var(--ugda-border-strong);
+}
+
+:deep(.reserved-picker-pagination__size) {
+    min-width: 5.2rem;
+}
+
+:deep(.reserved-picker-pagination__size .p-dropdown-label) {
+    font-size: var(--ugda-font-secondary);
+    font-weight: var(--ugda-weight-semibold);
+    padding-bottom: 0.5rem;
+    padding-top: 0.5rem;
+}
+
 .reserved-modal__footer {
     align-items: center;
     background: var(--ugda-surface-card);
@@ -1854,6 +2076,25 @@ onBeforeUnmount(() => {
 
     .reserved-table-selection__actions :deep(.p-button) {
         flex: 1 1 0;
+    }
+
+    .reserved-picker-pagination {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .reserved-picker-pagination__pages {
+        justify-content: center;
+    }
+
+    .reserved-picker-pagination__controls {
+        align-items: stretch;
+        flex-direction: column;
+        width: 100%;
+    }
+
+    :deep(.reserved-picker-pagination__size) {
+        width: 100%;
     }
 
     .reserved-modal__footer {
