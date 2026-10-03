@@ -6,6 +6,7 @@ import ToastService from 'primevue/toastservice';
 import router from './router';
 import App from './components/App.vue';
 import { installInputSanitizer } from './inputSanitizer';
+import { hasExpiredSessionActivity } from './services/authSession';
 
 // 1. ESTILOS DE ICONOS
 import 'primeicons/primeicons.css';
@@ -38,7 +39,9 @@ axios.interceptors.response.use(
             const isPublicAuthPath = path === '/login' || path.startsWith('/restablecer-contrasena/');
 
             if (!isPublicAuthPath) {
-                window.location.href = '/login';
+                window.location.href = error.response.data?.code === 'SESSION_IDLE_EXPIRED' || hasExpiredSessionActivity()
+                    ? '/login?reason=inactivity'
+                    : '/login';
             }
         }
         return Promise.reject(error);

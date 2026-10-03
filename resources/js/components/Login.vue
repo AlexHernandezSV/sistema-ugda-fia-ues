@@ -1,12 +1,21 @@
 <script setup>
 import { ref, nextTick, computed, onBeforeUnmount } from 'vue';
 import Button from 'primevue/button';
+import Dialog from 'primevue/dialog';
 import { useToast } from 'primevue/usetoast';
 import { useRoute } from 'vue-router';
 import axios from 'axios';
+import { clearSessionActivity } from '../services/authSession';
 
 const toast = useToast();
 const route = useRoute();
+const expirationAcknowledged = ref(false);
+const showExpiredSession = computed(() => route.query.reason === 'inactivity' && !expirationAcknowledged.value);
+const acknowledgeExpiration = async () => {
+    expirationAcknowledged.value = true;
+    await nextTick();
+    document.querySelector('.login-field__input')?.focus();
+};
 
 const step = ref(1);
 const loading = ref(false);
@@ -132,6 +141,7 @@ const resolveLoginRedirect = (fallback = '/dashboard') => loginRedirectTarget.va
 
 const handleLoginResponse = (data) => {
     if (data.redirect) {
+        clearSessionActivity();
         window.location.href = resolveLoginRedirect(data.redirect);
         return;
     }
@@ -368,6 +378,7 @@ const handleVerifyCode = async () => {
             life: 2000
         });
 
+        clearSessionActivity();
         setTimeout(() => {
             window.location.href = resolveLoginRedirect(response.data.redirect);
         }, 1000);
@@ -503,6 +514,18 @@ onBeforeUnmount(() => {
 
 <template>
     <div class="login-shell font-custom">
+        <Dialog :visible="showExpiredSession" modal header="Sesión expirada"
+            :closable="false" :draggable="false" :dismissableMask="false" :closeOnEscape="false"
+            :style="{ width: '30rem', maxWidth: 'calc(100vw - 2rem)' }">
+            <div class="expired-session-content">
+                <div class="expired-session-icon"><i class="pi pi-lock" aria-hidden="true"></i></div>
+                <p class="expired-session-title">Tu sesión expiró por inactividad</p>
+                <p>Por tu seguridad, se cerró la sesión. Inicia sesión nuevamente para continuar trabajando.</p>
+            </div>
+            <template #footer>
+                <Button label="Iniciar sesión" icon="pi pi-sign-in" class="login-primary-button" @click="acknowledgeExpiration" />
+            </template>
+        </Dialog>
         <div class="login-shell__orb login-shell__orb--top"></div>
         <div class="login-shell__orb login-shell__orb--bottom"></div>
 
@@ -860,6 +883,27 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.expired-session-content {
+    color: var(--ugda-text-secondary);
+    line-height: 1.6;
+}
+.expired-session-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 5rem;
+    margin-bottom: 1rem;
+    border-radius: var(--ugda-radius-lg);
+    background: var(--ugda-surface-soft);
+    color: var(--ugda-brand);
+    font-size: 2.5rem;
+}
+.expired-session-title {
+    color: var(--ugda-text-primary);
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
 .font-custom,
 .font-custom * {
     font-family: var(--ugda-font-family) !important;

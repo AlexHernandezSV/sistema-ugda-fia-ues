@@ -472,6 +472,8 @@ class AuthController extends Controller
     {
         Auth::login($user);
         $request->session()->regenerate();
+        \App\Support\SessionIdle::touch($request);
+        $request->session()->forget('expired_by_inactivity');
 
         $user->forceFill([
             'last_login_at' => Carbon::now(),

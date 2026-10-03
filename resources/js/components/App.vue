@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router';
 import Toast from 'primevue/toast';
 
 import AppSidebar from './layout/AppSidebar.vue';
+import SessionIdleDialog from './SessionIdleDialog.vue';
 
 const route = useRoute();
 const isPublicAuthPage = computed(() => ['login', 'password-reset'].includes(route.name));
@@ -19,6 +20,7 @@ const toggleMobileSidebar = () => {
         <Toast position="top-right" />
 
         <AppSidebar v-if="!isPublicAuthPage" />
+        <SessionIdleDialog v-if="!isPublicAuthPage" />
 
         <div
             class="flex flex-column transition-all transition-duration-200 app-shell"

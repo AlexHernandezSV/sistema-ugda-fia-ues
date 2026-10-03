@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import { getCurrentUser } from './services/authSession';
+import { getCurrentUser, hasExpiredSessionActivity } from './services/authSession';
 
 // 1. IMPORTACIÓN DE COMPONENTES
 // Ajusta estas rutas si tus archivos están en carpetas diferentes
@@ -262,7 +262,10 @@ router.beforeEach(async (to) => {
             return true;
         }
 
-        return { path: '/login', query: { redirect: to.fullPath } };
+        return { path: '/login', query: {
+            redirect: to.fullPath,
+            ...(error.response?.data?.code === 'SESSION_IDLE_EXPIRED' || hasExpiredSessionActivity() ? { reason: 'inactivity' } : {}),
+        } };
     }
 });
 

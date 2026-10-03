@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
-import { clearCachedUser, getCachedUser, getCurrentUser } from '../../services/authSession';
+import { clearCachedUser, clearSessionActivity, getCachedUser, getCurrentUser } from '../../services/authSession';
 import {
     fetchNotificationSummary,
     getNotificationState,
@@ -360,6 +360,7 @@ const goToProfile = () => {
 const handleLogout = async () => {
     isLoggingOut.value = true;
     clearCachedUser();
+    clearSessionActivity();
 
     try {
         await axios.get('/logout');

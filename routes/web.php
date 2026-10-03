@@ -50,6 +50,8 @@ Route::get('/restablecer-contrasena/{token}', function () {
 // ------------------------------------------------------------------------
 
 Route::middleware('auth')->group(function () {
+    Route::get('/api/session/activity', [\App\Http\Controllers\SessionActivityController::class, 'show']);
+    Route::post('/api/session/activity', [\App\Http\Controllers\SessionActivityController::class, 'store']);
     Route::get('/api/user', function (Request $request) {
         $user = $request->user()->load([
             'units' => function ($query) {
