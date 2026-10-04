@@ -8,6 +8,7 @@ const router = useRouter();
 
 const loadingSummary = ref(true);
 const loadingRegistry = ref(false);
+const exportingReport = ref(false);
 const errorMessage = ref("");
 const registryErrorMessage = ref("");
 const selectedCategory = ref(null);
@@ -1534,6 +1535,72 @@ const paginationLabel = (meta, singular, plural) => {
     return `Mostrando ${meta.from ?? 0} - ${meta.to ?? 0} de ${meta.total} ${itemLabel}`;
 };
 
+const fetchAllClassificationDocumentsForExport = async () => {
+    const documents = [];
+    const documentsPerPage = 100;
+    const exportFilters = {
+        unit: filters.unit,
+        series: filters.series,
+        support: filters.support,
+        search: filters.search.trim() || null,
+    };
+    let documentsPage = 1;
+    let lastPage = 1;
+
+    do {
+        const { data } = await axios.get(
+            "/api/reports/classification-organization/series-subseries",
+            {
+                params: {
+                    ...exportFilters,
+                    subseries_page: 1,
+                    subseries_per_page: 1,
+                    documents_page: documentsPage,
+                    documents_per_page: documentsPerPage,
+                },
+            }
+        );
+
+        documents.push(...(data.documents?.data ?? []));
+        lastPage = Math.max(1, Number(data.documents?.meta?.last_page ?? documentsPage));
+        documentsPage += 1;
+    } while (documentsPage <= lastPage);
+
+    return documents;
+};
+
+const fetchAllUnclassifiedDocumentsForExport = async () => {
+    const documents = [];
+    const documentsPerPage = 100;
+    const exportFilters = {
+        unit: filters.unit,
+        series: filters.series,
+        support: filters.support,
+        search: filters.search.trim() || null,
+    };
+    let documentsPage = 1;
+    let lastPage = 1;
+
+    do {
+        const { data } = await axios.get(
+            "/api/reports/classification-organization/unclassified-documents",
+            {
+                params: {
+                    ...exportFilters,
+                    documents_page: documentsPage,
+                    documents_per_page: documentsPerPage,
+                },
+            }
+        );
+
+        documents.push(...(data.documents?.data ?? []));
+        lastPage = Math.max(1, Number(data.documents?.meta?.last_page ?? documentsPage));
+        documentsPage += 1;
+    } while (documentsPage <= lastPage);
+
+    return documents;
+};
+
 const toggleAccessUserPanel = (key) => {
     const nextExpanded = new Set(expandedAccessUsers.value);
 
@@ -1867,6 +1934,7 @@ const downloadXlsxFromHtml = (html, fileName) => {
 
 const isCurrentExportDisabled = computed(() =>
     loadingRegistry.value ||
+    exportingReport.value ||
     (isUnclassifiedDocumentsReport.value
         ? unclassifiedDocuments.value.length === 0
         : isClassificationSeriesReport.value
@@ -1880,10 +1948,14 @@ const isCurrentExportDisabled = computed(() =>
         : visibleDocuments.value.length === 0)
 );
 
-const exportCurrentTable = () => {
+const exportCurrentTable = async () => {
     if (isUnclassifiedDocumentsReport.value) {
-        const rows = unclassifiedDocuments.value
-            .map((document) => `
+        exportingReport.value = true;
+
+        try {
+            const exportDocuments = await fetchAllUnclassifiedDocumentsForExport();
+            const rows = exportDocuments
+                .map((document) => `
                 <tr>
                     <td>${escapeHtml(document.code)}</td>
                     <td>${escapeHtml(document.name)}</td>
@@ -1891,9 +1963,9 @@ const exportCurrentTable = () => {
                     <td>${escapeHtml(document.date_label)}</td>
                     <td>${escapeHtml(document.box)}</td>
                 </tr>`)
-            .join("");
+                .join("");
 
-        const workbook = `
+            const workbook = `
             <html>
                 <head>
                     <meta charset="UTF-8" />
@@ -1920,15 +1992,28 @@ const exportCurrentTable = () => {
                     </table>
                 </body>
             </html>
-        `;
+            `;
 
-        downloadXlsxFromHtml(workbook, "documentos-sin-clasificacion.xlsx");
+            downloadXlsxFromHtml(workbook, "documentos-sin-clasificacion.xlsx");
+        } catch (error) {
+            console.error("Error al exportar documentos sin clasificación:", error);
+            registryErrorMessage.value =
+                error.response?.data?.message ??
+                "No se pudo exportar el reporte de documentos sin clasificación.";
+        } finally {
+            exportingReport.value = false;
+        }
+
         return;
     }
 
     if (isClassificationSeriesReport.value) {
-        const rows = classificationDocuments.value
-            .map((document) => `
+        exportingReport.value = true;
+
+        try {
+            const exportDocuments = await fetchAllClassificationDocumentsForExport();
+            const rows = exportDocuments
+                .map((document) => `
                 <tr>
                     <td>${escapeHtml(document.code)}</td>
                     <td>${escapeHtml(document.name)}</td>
@@ -1937,9 +2022,9 @@ const exportCurrentTable = () => {
                     <td>${escapeHtml(document.date_label)}</td>
                     <td>${escapeHtml(document.support)}</td>
                 </tr>`)
-            .join("");
+                .join("");
 
-        const workbook = `
+            const workbook = `
             <html>
                 <head>
                     <meta charset="UTF-8" />
@@ -1967,9 +2052,18 @@ const exportCurrentTable = () => {
                     </table>
                 </body>
             </html>
-        `;
+            `;
 
-        downloadXlsxFromHtml(workbook, "series-y-subseries-documentales.xlsx");
+            downloadXlsxFromHtml(workbook, "series-y-subseries-documentales.xlsx");
+        } catch (error) {
+            console.error("Error al exportar series y subseries documentales:", error);
+            registryErrorMessage.value =
+                error.response?.data?.message ??
+                "No se pudo exportar el reporte de series y subseries documentales.";
+        } finally {
+            exportingReport.value = false;
+        }
+
         return;
     }
 
@@ -3265,7 +3359,12 @@ onMounted(fetchReportSummary);
                                             <small>Préstamo: {{ document.loan_date_label }} · N.º {{ document.loan_number }}</small>
                                             <small>Devolución: {{ document.return_date_label }}</small>
                                         </span>
-                                        <span class="reports-access-document__status">
+                                        <span
+                                            class="reports-access-document__status"
+                                            :class="{
+                                                'reports-access-document__status--loaned': document.status === 'Prestado',
+                                            }"
+                                        >
                                             {{ document.status }}
                                         </span>
                                     </div>
@@ -4624,6 +4723,11 @@ onMounted(fetchReportSummary);
     font-weight: 700;
     padding: 0.28rem 0.7rem;
     white-space: nowrap;
+}
+
+.reports-access-document__status--loaned {
+    background: #fef3c7;
+    color: #b45309;
 }
 
 .reports-bars {
