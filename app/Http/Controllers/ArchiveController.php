@@ -21,6 +21,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
@@ -268,7 +269,7 @@ class ArchiveController extends Controller
             'documents.*.support' => ['nullable', 'string', 'max:30'],
             'documents.*.pages' => ['nullable', 'string', 'max:50'],
             'documents.*.digital_file_name' => ['nullable', 'string', 'max:255'],
-            'documents.*.digital_file_base64' => ['nullable', 'string'],
+            'documents.*.digital_file' => ['nullable', 'file', 'max:20480'],
             'existing_document_ids' => ['nullable', 'array'],
             'existing_document_ids.*' => ['integer', 'exists:transfer_box_documents,id'],
         ], [
@@ -284,6 +285,8 @@ class ArchiveController extends Controller
             'shelf_id.required' => 'Debe seleccionar el estante.',
             'end_year.gte' => 'El ano final no puede ser menor que el ano inicial.',
             'documents.*.name.required_with' => 'El nombre del documento es obligatorio.',
+            'documents.*.digital_file.max' => PdfUpload::SIZE_ERROR_MESSAGE,
+            'documents.*.digital_file.file' => PdfUpload::TYPE_ERROR_MESSAGE,
         ]);
 
         if ($validator->fails()) {
@@ -339,7 +342,7 @@ class ArchiveController extends Controller
 
         $documentCodes = [];
 
-        foreach ((array) $request->input('documents', []) as $documentPayload) {
+        foreach ((array) $request->input('documents', []) as $documentIndex => $documentPayload) {
             $documentName = trim((string) ($documentPayload['name'] ?? 'documento'));
             $documentSeries = trim((string) ($documentPayload['series'] ?? ''));
 
@@ -417,11 +420,15 @@ class ArchiveController extends Controller
                 ], 422);
             }
 
+            $digitalFile = $request->file("documents.{$documentIndex}.digital_file");
             $digitalFileName = trim((string) ($documentPayload['digital_file_name'] ?? ''));
-            $digitalFileBase64 = trim((string) ($documentPayload['digital_file_base64'] ?? ''));
+
+            if ($digitalFileName === '' && $digitalFile instanceof UploadedFile) {
+                $digitalFileName = $digitalFile->getClientOriginalName();
+            }
 
             if (in_array($support, ['Digital', 'Mixto'], true)
-                && ($digitalFileBase64 === '' || $digitalFileName === '')) {
+                && (!($digitalFile instanceof UploadedFile) || $digitalFileName === '')) {
                 return response()->json([
                     'message' => 'Los datos de la caja no son validos.',
                     'errors' => [
@@ -430,8 +437,8 @@ class ArchiveController extends Controller
                 ], 422);
             }
 
-            if ($digitalFileBase64 !== '') {
-                $pdfError = PdfUpload::validateBase64($digitalFileName, $digitalFileBase64);
+            if ($digitalFile instanceof UploadedFile) {
+                $pdfError = PdfUpload::validateUploadedFile($digitalFile);
 
                 if ($pdfError !== null) {
                     return response()->json([
@@ -526,10 +533,18 @@ class ArchiveController extends Controller
                         });
                 }
 
-                foreach ($request->input('documents', []) as $documentPayload) {
+                foreach ($request->input('documents', []) as $documentIndex => $documentPayload) {
                     $documentSeries = trim((string) ($documentPayload['series'] ?? ''));
                     $resolvedSeries = $documentSeries !== '' ? $documentSeries : $selectedSeriesName;
-                    $digitalDocument = $this->storeDigitalDocumentPayload($documentPayload, $transfer->code . '-' . str_pad((string) $sortOrder, 3, '0', STR_PAD_LEFT));
+                    $digitalDocument = $this->storeDigitalDocumentFile(
+                        $request->file("documents.{$documentIndex}.digital_file"),
+                        $transfer->code . '-' . str_pad((string) $sortOrder, 3, '0', STR_PAD_LEFT),
+                    );
+
+                    if (in_array($this->normalizeArchiveSupport((string) ($documentPayload['support'] ?? 'Fisico')), ['Digital', 'Mixto'], true)
+                        && $digitalDocument === null) {
+                        throw new \RuntimeException('No se pudo guardar el archivo PDF del documento.', 422);
+                    }
 
                     $box->documents()->create([
                         'code' => $documentPayload['code'] ?? 'DOC-' . $transfer->code . '-' . str_pad((string) $sortOrder, 3, '0', STR_PAD_LEFT),
@@ -752,7 +767,7 @@ class ArchiveController extends Controller
             'support' => ['required', 'string', 'in:Fisico,Digital,Mixto'],
             'pages' => ['required', 'integer', 'min:1', 'max:99999'],
             'digital_file_name' => ['nullable', 'string', 'max:255'],
-            'digital_file_base64' => ['nullable', 'string'],
+            'digital_file' => ['nullable', 'file', 'max:20480'],
         ], [
             'box_id.required' => 'Debe seleccionar la caja donde se asignara el documento.',
             'series_id.required' => 'Debe seleccionar la serie o subserie documental.',
@@ -765,6 +780,8 @@ class ArchiveController extends Controller
             'support.in' => 'El tipo de soporte seleccionado no es válido.',
             'pages.required' => 'Debe indicar el número de páginas.',
             'pages.min' => 'El número de páginas debe ser mayor que 0.',
+            'digital_file.max' => PdfUpload::SIZE_ERROR_MESSAGE,
+            'digital_file.file' => PdfUpload::TYPE_ERROR_MESSAGE,
         ]);
 
         if ($validator->fails()) {
@@ -775,12 +792,13 @@ class ArchiveController extends Controller
         }
 
         $support = (string) $request->input('support');
-        $hasDigitalPayload = trim((string) $request->input('digital_file_base64', '')) !== '';
+        $digitalFile = $request->file('digital_file');
+        $hasDigitalFile = $digitalFile instanceof UploadedFile;
 
         if (in_array($support, ['Digital', 'Mixto'], true)) {
-            $fileName = trim((string) $request->input('digital_file_name', ''));
+            $fileName = trim((string) ($request->input('digital_file_name') ?: $digitalFile?->getClientOriginalName()));
 
-            if (!$hasDigitalPayload || $fileName === '') {
+            if (!$hasDigitalFile || $fileName === '') {
                 return response()->json([
                     'message' => 'Los datos del documento no son validos.',
                     'errors' => [
@@ -789,7 +807,7 @@ class ArchiveController extends Controller
                 ], 422);
             }
 
-            $pdfError = PdfUpload::validateBase64($fileName, (string) $request->input('digital_file_base64', ''));
+            $pdfError = PdfUpload::validateUploadedFile($digitalFile);
 
             if ($pdfError !== null) {
                 return response()->json([
@@ -802,7 +820,7 @@ class ArchiveController extends Controller
         }
 
         try {
-            $document = DB::transaction(function () use ($request, $support, $hasDigitalPayload) {
+            $document = DB::transaction(function () use ($request, $support, $hasDigitalFile) {
                 $box = TransferBox::query()
                     ->with('transfer')
                     ->whereHas('transfer', fn (Builder $query) => $query->whereNotNull('completed_at'))
@@ -848,12 +866,13 @@ class ArchiveController extends Controller
                 $sortOrder = ((int) $box->documents()->max('sort_order')) + 1;
                 $digitalDocument = null;
 
-                if ($support !== 'Fisico' && $hasDigitalPayload) {
+                if ($support !== 'Fisico' && $hasDigitalFile) {
                     $fallbackName = ($box->transfer?->code ?? 'archivo-general') . '-' . str_pad((string) $sortOrder, 3, '0', STR_PAD_LEFT);
-                    $digitalDocument = $this->storeDigitalDocumentPayload($request->only([
-                        'digital_file_name',
-                        'digital_file_base64',
-                    ]), $fallbackName);
+                    $digitalDocument = $this->storeDigitalDocumentFile($request->file('digital_file'), $fallbackName);
+
+                    if ($digitalDocument === null) {
+                        throw new \RuntimeException('No se pudo guardar el archivo PDF del documento.', 422);
+                    }
                 }
 
                 return $box->documents()->create([
@@ -917,7 +936,7 @@ class ArchiveController extends Controller
             'support' => ['required', 'string', 'in:Fisico,Digital,Mixto'],
             'pages' => ['required', 'integer', 'min:1', 'max:99999'],
             'digital_file_name' => ['nullable', 'string', 'max:255'],
-            'digital_file_base64' => ['nullable', 'string'],
+            'digital_file' => ['nullable', 'file', 'max:20480'],
         ], [
             'series_id.required' => 'Debe seleccionar la serie o subserie documental.',
             'code.required' => 'El codigo del documento es obligatorio.',
@@ -929,6 +948,8 @@ class ArchiveController extends Controller
             'support.in' => 'El tipo de soporte seleccionado no es válido.',
             'pages.required' => 'Debe indicar el número de páginas.',
             'pages.min' => 'El número de páginas debe ser mayor que 0.',
+            'digital_file.max' => PdfUpload::SIZE_ERROR_MESSAGE,
+            'digital_file.file' => PdfUpload::TYPE_ERROR_MESSAGE,
         ]);
 
         if ($validator->fails()) {
@@ -939,11 +960,10 @@ class ArchiveController extends Controller
         }
 
         $support = (string) $request->input('support');
-        $hasDigitalPayload = trim((string) $request->input('digital_file_base64', '')) !== '';
-        $fileName = trim((string) $request->input('digital_file_name', ''));
-
-        if ($hasDigitalPayload) {
-            $pdfError = PdfUpload::validateBase64($fileName, (string) $request->input('digital_file_base64', ''));
+        $digitalFile = $request->file('digital_file');
+        $hasDigitalFile = $digitalFile instanceof UploadedFile;
+        if ($hasDigitalFile) {
+            $pdfError = PdfUpload::validateUploadedFile($digitalFile);
 
             if ($pdfError !== null) {
                 return response()->json([
@@ -956,7 +976,7 @@ class ArchiveController extends Controller
         }
 
         try {
-            [$document, $oldDigitalPath] = DB::transaction(function () use ($id, $request, $support, $hasDigitalPayload) {
+            [$document, $oldDigitalPath] = DB::transaction(function () use ($id, $request, $support, $hasDigitalFile) {
                 $document = TransferDocument::query()
                     ->with('box.transfer')
                     ->whereHas('box.transfer', fn (Builder $query) => $query->whereNotNull('completed_at'))
@@ -1012,7 +1032,7 @@ class ArchiveController extends Controller
                     && !empty($document->digital_file_path);
 
                 if (in_array($support, ['Digital', 'Mixto'], true)
-                    && !$hasDigitalPayload
+                    && !$hasDigitalFile
                     && !$hasExistingDigitalFile) {
                     throw new \RuntimeException('Debe conservar el archivo PDF actual o adjuntar uno nuevo para el soporte ' . $support . '.', 422);
                 }
@@ -1030,11 +1050,11 @@ class ArchiveController extends Controller
                 $oldDigitalPath = $document->digital_file_path;
                 $digitalDocument = null;
 
-                if ($support !== 'Fisico' && $hasDigitalPayload) {
-                    $digitalDocument = $this->storeDigitalDocumentPayload($request->only([
-                        'digital_file_name',
-                        'digital_file_base64',
-                    ]), ($box->transfer?->code ?: 'archivo-general') . '-' . $document->id);
+                if ($support !== 'Fisico' && $hasDigitalFile) {
+                    $digitalDocument = $this->storeDigitalDocumentFile(
+                        $request->file('digital_file'),
+                        ($box->transfer?->code ?: 'archivo-general') . '-' . $document->id,
+                    );
 
                     if ($digitalDocument === null) {
                         throw new \RuntimeException('No se pudo guardar el archivo PDF del documento.', 422);
@@ -1883,24 +1903,20 @@ class ArchiveController extends Controller
         }
     }
 
-    private function storeDigitalDocumentPayload(array $documentPayload, string $fallbackName): ?array
+    private function storeDigitalDocumentFile(?UploadedFile $file, string $fallbackName): ?array
     {
-        $base64Content = trim((string) ($documentPayload['digital_file_base64'] ?? ''));
-
-        if ($base64Content === '') {
+        if (!($file instanceof UploadedFile)) {
             return null;
         }
 
-        $originalName = trim((string) ($documentPayload['digital_file_name'] ?? ''));
-        $fileName = $originalName !== '' ? $this->sanitizeFileName($originalName) : $this->sanitizeFileName($fallbackName . '.pdf');
-        $decodedContent = PdfUpload::decodeBase64($base64Content);
+        $originalName = trim($file->getClientOriginalName());
+        $fileName = $this->sanitizeFileName($originalName !== '' ? $originalName : $fallbackName . '.pdf');
+        $storedName = Str::uuid() . '-' . $fileName;
+        $storagePath = $file->storeAs('uploads', $storedName, 'local');
 
-        if ($decodedContent === null) {
+        if ($storagePath === false) {
             return null;
         }
-
-        $storagePath = 'uploads/' . $fileName;
-        Storage::disk('local')->put($storagePath, $decodedContent);
 
         return [
             'name' => $fileName,

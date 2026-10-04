@@ -103,19 +103,6 @@ const onPagesInput = (event) => {
     form.value.pages = sanitizePositiveInteger(event.target.value);
 };
 
-const readFileAsBase64 = (file) => new Promise((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onload = () => {
-        const result = reader.result;
-        const base64 = typeof result === 'string' && result.includes(',') ? result.split(',')[1] : '';
-        resolve(base64);
-    };
-
-    reader.onerror = () => reject(new Error('No se pudo leer el archivo PDF.'));
-    reader.readAsDataURL(file);
-});
-
 const fetchCatalog = async () => {
     isLoading.value = true;
 
@@ -259,23 +246,21 @@ const submitDocument = async () => {
     isSaving.value = true;
 
     try {
-        let digitalFileBase64 = null;
+        const payload = new FormData();
+        payload.append('box_id', String(form.value.box_id));
+        payload.append('series_id', String(form.value.series_id));
+        payload.append('code', form.value.code.trim());
+        payload.append('name', form.value.name.trim());
+        payload.append('year', String(Number(form.value.year)));
+        payload.append('support', form.value.support);
+        payload.append('pages', String(Number(form.value.pages)));
 
         if (requiresDigitalFile.value && documentDigitalFile.value) {
-            digitalFileBase64 = await readFileAsBase64(documentDigitalFile.value);
+            payload.append('digital_file_name', documentDigitalFileName.value);
+            payload.append('digital_file', documentDigitalFile.value, documentDigitalFileName.value);
         }
 
-        await axios.post('/api/archive/documents', {
-            box_id: form.value.box_id,
-            series_id: form.value.series_id,
-            code: form.value.code.trim(),
-            name: form.value.name.trim(),
-            year: Number(form.value.year),
-            support: form.value.support,
-            pages: Number(form.value.pages),
-            digital_file_name: requiresDigitalFile.value ? documentDigitalFileName.value : null,
-            digital_file_base64: requiresDigitalFile.value ? digitalFileBase64 : null,
-        });
+        await axios.post('/api/archive/documents', payload);
 
         toast.add({
             severity: 'success',

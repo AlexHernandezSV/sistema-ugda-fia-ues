@@ -288,17 +288,6 @@ const onEditPagesInput = (event) => {
     editForm.value.pages = normalizePositiveInteger(event.target.value);
 };
 
-const readFileAsBase64 = (file) => new Promise((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onload = () => {
-        const result = reader.result;
-        resolve(typeof result === 'string' && result.includes(',') ? result.split(',')[1] : '');
-    };
-    reader.onerror = () => reject(new Error('No se pudo leer el archivo PDF.'));
-    reader.readAsDataURL(file);
-});
-
 const onEditDocumentFileSelect = async (event) => {
     const file = event.target.files?.[0] ?? null;
 
@@ -356,18 +345,21 @@ const saveEditedDocument = async () => {
     editingDocumentSaving.value = true;
 
     try {
-        const payload = {
-            series_id: editForm.value.series_id,
-            code: editForm.value.code.trim(),
-            name: editForm.value.name.trim(),
-            year: Number(year),
-            support: editForm.value.support,
-            pages: Number(pages),
-            digital_file_name: editDocumentFile.value ? editDocumentFileName.value : null,
-            digital_file_base64: editDocumentFile.value ? await readFileAsBase64(editDocumentFile.value) : null,
-        };
+        const payload = new FormData();
+        payload.append('_method', 'PUT');
+        payload.append('series_id', String(editForm.value.series_id));
+        payload.append('code', editForm.value.code.trim());
+        payload.append('name', editForm.value.name.trim());
+        payload.append('year', String(Number(year)));
+        payload.append('support', editForm.value.support);
+        payload.append('pages', String(Number(pages)));
 
-        await axios.put(`/api/archive/documents/${editingDocument.value.id}`, payload);
+        if (editDocumentFile.value) {
+            payload.append('digital_file_name', editDocumentFileName.value);
+            payload.append('digital_file', editDocumentFile.value, editDocumentFileName.value);
+        }
+
+        await axios.post(`/api/archive/documents/${editingDocument.value.id}`, payload);
 
         toast.add({
             severity: 'success',

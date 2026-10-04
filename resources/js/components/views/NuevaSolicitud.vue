@@ -81,7 +81,13 @@ const confirmTitle = computed(() => isEditMode.value ? 'Confirmar Reenvío de So
 const confirmSubtitle = computed(() => isEditMode.value
     ? 'Revise el resumen antes de reenviar la transferencia'
     : 'Revise el resumen antes de enviar la transferencia');
-const confirmButtonLabel = computed(() => isEditMode.value ? 'Confirmar y Reenviar' : 'Confirmar y Enviar');
+const confirmButtonLabel = computed(() => {
+    if (isSubmitting.value) {
+        return 'Enviando solicitud...';
+    }
+
+    return isEditMode.value ? 'Confirmar y Reenviar' : 'Confirmar y Enviar';
+});
 const confirmNotice = computed(() => {
     if (!isEditMode.value) {
         return 'Al confirmar, esta solicitud sera enviada al Director/Jefe de la unidad para su autorización.';
@@ -1044,25 +1050,32 @@ const submitTransfer = async () => {
     try {
         const payload = buildTransferFormData();
 
-        const { data } = isEditMode.value
+        const response = isEditMode.value
             ? await axios.post(`/api/transfers/${editNumber.value}/resubmit-correction`, payload)
             : await axios.post('/api/transfers', payload);
+        const data = response?.data;
+        const transferNumber = typeof data?.number === 'string' ? data.number.trim() : '';
+
+        if (!transferNumber) {
+            showError('El servidor respondió sin confirmar el número de solicitud. No puedo confirmar que se haya guardado. Revise el listado de solicitudes antes de intentar enviarla otra vez.');
+            return;
+        }
 
         toast.add({
             severity: 'success',
             summary: isEditMode.value ? 'Solicitud corregida exitosamente' : 'Solicitud creada exitosamente',
             detail: isEditMode.value
                 ? (isPhysicalCorrection.value
-                    ? `La solicitud #${data.number} ha sido corregida y reenviada a UGDA para revisión.`
-                    : `La solicitud #${data.number} ha sido corregida y enviada al Director/Jefe de la unidad para autorización.`)
-                : `La solicitud #${data.number} ha sido creada y enviada para autorización.`,
+                    ? `La solicitud #${transferNumber} ha sido corregida y reenviada a UGDA para revisión.`
+                    : `La solicitud #${transferNumber} ha sido corregida y enviada al Director/Jefe de la unidad para autorización.`)
+                : `La solicitud #${transferNumber} ha sido creada y enviada para autorización.`,
             life: 3200,
         });
 
         isConfirmModalOpen.value = false;
 
         router.push({
-            path: `/solicitudes/transferencias/${data.number}`,
+            path: `/solicitudes/transferencias/${transferNumber}`,
             query: { tab: 'transferencias' },
         });
     } catch (error) {
@@ -1074,6 +1087,10 @@ const submitTransfer = async () => {
 };
 
 const goBack = () => {
+    if (isSubmitting.value) {
+        return;
+    }
+
     router.go(-1);
 };
 </script>
@@ -1081,7 +1098,7 @@ const goBack = () => {
 <template>
     <section class="transfer-request">
         <header class="transfer-request__header">
-            <Button icon="pi pi-arrow-left" text rounded class="transfer-request__back" aria-label="Volver" @click="goBack" />
+            <Button icon="pi pi-arrow-left" text rounded class="transfer-request__back" aria-label="Volver" :disabled="isSubmitting" @click="goBack" />
             <h1>{{ pageTitle }}</h1>
         </header>
 
@@ -1314,6 +1331,9 @@ const goBack = () => {
             v-model:visible="isConfirmModalOpen"
             modal
             :draggable="false"
+            :closable="!isSubmitting"
+            :closeOnEscape="!isSubmitting"
+            :dismissableMask="!isSubmitting"
             class="transfer-confirm-dialog"
             :style="{ width: 'min(768px, 94vw)' }"
         >

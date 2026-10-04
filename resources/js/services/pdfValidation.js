@@ -1,8 +1,8 @@
 export const PDF_MAX_SIZE_BYTES = 20 * 1024 * 1024;
 export const PDF_MAX_SIZE_LABEL = '20 MB';
-export const PDF_UPLOAD_HINT = `Formato permitido: PDF. Tamaño máximo: ${PDF_MAX_SIZE_LABEL}.`;
+export const PDF_UPLOAD_HINT = `Formato permitido: PDF. Tamaño máximo por archivo: ${PDF_MAX_SIZE_LABEL}.`;
 export const PDF_TYPE_ERROR = 'El archivo seleccionado debe ser un PDF válido.';
-export const PDF_SIZE_ERROR = `El archivo PDF no puede superar los ${PDF_MAX_SIZE_LABEL}.`;
+export const PDF_SIZE_ERROR = `Cada archivo PDF puede medir hasta ${PDF_MAX_SIZE_LABEL}.`;
 
 export const isPdfFile = (file) => Boolean(
     file

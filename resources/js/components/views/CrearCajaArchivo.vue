@@ -368,19 +368,6 @@ const openAddDocumentDialog = () => {
     addDocumentDialogVisible.value = true;
 };
 
-const readFileAsBase64 = (file) => new Promise((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onload = () => {
-        const result = reader.result;
-        const base64 = typeof result === 'string' && result.includes(',') ? result.split(',')[1] : '';
-        resolve(base64);
-    };
-
-    reader.onerror = () => reject(new Error('No se pudo leer el archivo PDF.'));
-    reader.readAsDataURL(file);
-});
-
 const onDocumentDigitalFileSelect = async (event) => {
     const file = event.target.files?.[0] ?? null;
 
@@ -436,7 +423,6 @@ const onNewDocumentFileSelect = async (documentEntry, event) => {
         file,
         file_name: file.name,
         digital_file_name: file.name,
-        digital_file_base64: await readFileAsBase64(file),
         file_url: createPdfPreviewUrl(file),
     };
 };
@@ -471,23 +457,13 @@ const previewStoredDocument = (documentEntry) => {
         return;
     }
 
-    if (!documentEntry?.digital_file_base64) {
+    if (!documentEntry?.file) {
         showError('Este documento no tiene un archivo PDF adjunto.');
         return;
     }
 
-    const binary = atob(documentEntry.digital_file_base64);
-    const bytes = new Uint8Array(binary.length);
-
-    for (let index = 0; index < binary.length; index += 1) {
-        bytes[index] = binary.charCodeAt(index);
-    }
-
-    const blob = new Blob([bytes], { type: 'application/pdf' });
-    const objectUrl = URL.createObjectURL(blob);
-
     documentPreviewTitle.value = documentEntry.digital_file_name || documentEntry.name || 'Documento PDF';
-    documentPreviewSource.value = { url: objectUrl };
+    documentPreviewSource.value = { file: documentEntry.file };
     documentPreviewVisible.value = true;
 };
 
@@ -515,8 +491,8 @@ const validateDocumentForBox = (document, requireDigitalFile = true) => {
     }
 
     if (requireDigitalFile && ['Digital', 'Mixto'].includes(document?.support)
-        && (!document?.digital_file_base64 || !isPdfFileName(document?.digital_file_name))) {
-        return document?.digital_file_base64 ? PDF_TYPE_ERROR : `El documento "${documentName}" requiere un archivo PDF para el soporte ${document.support === 'Fisico' ? 'físico' : document.support}.`;
+        && (!document?.file || !isPdfFileName(document?.digital_file_name))) {
+        return document?.file ? PDF_TYPE_ERROR : `El documento "${documentName}" requiere un archivo PDF para el soporte ${document.support === 'Fisico' ? 'físico' : document.support}.`;
     }
 
     return '';
@@ -563,12 +539,6 @@ const addDocument = async () => {
         return;
     }
 
-    let digitalFileBase64 = null;
-
-    if (requiresDigitalDocFile.value && documentDigitalFile.value) {
-        digitalFileBase64 = await readFileAsBase64(documentDigitalFile.value);
-    }
-
     const documentEntry = {
         id: `manual-${Date.now()}`,
         series: selectedDocSeries?.label ?? selectedSeriesName.value,
@@ -578,7 +548,6 @@ const addDocument = async () => {
         support: docForm.value.support,
         pages: pages === null ? '' : String(pages),
         digital_file_name: documentDigitalFileName.value || null,
-        digital_file_base64: digitalFileBase64,
         file: documentDigitalFile.value,
         file_name: documentDigitalFileName.value || null,
         file_url: documentDigitalFile.value ? createPdfPreviewUrl(documentDigitalFile.value) : null,
@@ -699,7 +668,6 @@ const importDocuments = async () => {
             support: document.support,
             pages: String(document.pages ?? '').trim(),
             digital_file_name: null,
-            digital_file_base64: null,
             file: null,
             file_name: null,
             file_url: null,
@@ -994,7 +962,7 @@ const validateForm = () => {
 
     const documentWithoutPdf = documents.value.find((document) => (
         ['Digital', 'Mixto'].includes(document.support)
-        && (!document.digital_file_base64 || !isPdfFileName(document.digital_file_name))
+        && (!document.file || !isPdfFileName(document.digital_file_name))
     ));
 
     if (documentWithoutPdf) {
@@ -1018,26 +986,31 @@ const submitBox = async () => {
     isSaving.value = true;
 
     try {
-        const payload = {
-            unit_ids: form.value.unit_ids,
-            classification_ids: form.value.classification_ids,
-            start_year: Number(getYearString(form.value.start_year)),
-            end_year: Number(getYearString(form.value.end_year)),
-            office_id: form.value.office_id,
-            aisle_id: form.value.aisle_id,
-            shelf_id: form.value.shelf_id,
-            existing_document_ids: selectedExistingDocuments.value.map((document) => document.id),
-            documents: documents.value.map((document) => ({
-                series: document.series,
-                code: document.code,
-                name: document.name,
-                year: document.year,
-                support: document.support,
-                pages: document.pages,
-                digital_file_name: document.digital_file_name ?? null,
-                digital_file_base64: document.digital_file_base64 ?? null,
-            })),
-        };
+        const payload = new FormData();
+
+        form.value.unit_ids.forEach((id) => payload.append('unit_ids[]', String(id)));
+        form.value.classification_ids.forEach((id) => payload.append('classification_ids[]', String(id)));
+        payload.append('start_year', String(Number(getYearString(form.value.start_year))));
+        payload.append('end_year', String(Number(getYearString(form.value.end_year))));
+        payload.append('office_id', String(form.value.office_id));
+        payload.append('aisle_id', String(form.value.aisle_id));
+        payload.append('shelf_id', String(form.value.shelf_id));
+        selectedExistingDocuments.value.forEach((document) => {
+            payload.append('existing_document_ids[]', String(document.id));
+        });
+
+        documents.value.forEach((document, index) => {
+            const prefix = `documents[${index}]`;
+
+            ['series', 'code', 'name', 'year', 'support', 'pages'].forEach((field) => {
+                payload.append(`${prefix}[${field}]`, String(document[field] ?? ''));
+            });
+            payload.append(`${prefix}[digital_file_name]`, document.digital_file_name ?? document.file?.name ?? '');
+
+            if (document.file) {
+                payload.append(`${prefix}[digital_file]`, document.file, document.digital_file_name ?? document.file.name);
+            }
+        });
 
         await axios.post('/api/archive/boxes', payload);
 
@@ -1251,7 +1224,7 @@ onMounted(fetchCatalog);
                         <template #body="{ data }">
                             <div class="create-box-doc-actions">
                                 <button
-                                    v-if="(data.support === 'Digital' || data.support === 'Mixto') && data.digital_file_base64"
+                                    v-if="(data.support === 'Digital' || data.support === 'Mixto') && data.file"
                                     type="button"
                                     class="create-box-outline"
                                     @click="previewStoredDocument(data)"
@@ -1260,7 +1233,7 @@ onMounted(fetchCatalog);
                                 </button>
                                 <template v-if="(data.source !== 'existente' && (data.support === 'Digital' || data.support === 'Mixto'))">
                                     <button
-                                        v-if="!data.digital_file_base64"
+                                        v-if="!data.file"
                                         type="button"
                                         class="create-box-outline"
                                         title="Adjuntar PDF"
@@ -1421,7 +1394,7 @@ onMounted(fetchCatalog);
                         <template #body="{ data }">
                             <div class="create-box-doc-actions">
                                 <button
-                                    v-if="(data.support === 'Digital' || data.support === 'Mixto') && data.digital_file_base64"
+                                    v-if="(data.support === 'Digital' || data.support === 'Mixto') && data.file"
                                     type="button"
                                     class="create-box-outline"
                                     @click="previewStoredDocument(data)"
@@ -1430,7 +1403,7 @@ onMounted(fetchCatalog);
                                 </button>
                                 <template v-if="data.support === 'Digital' || data.support === 'Mixto'">
                                     <button
-                                        v-if="!data.digital_file_base64"
+                                        v-if="!data.file"
                                         type="button"
                                         class="create-box-outline"
                                         title="Adjuntar PDF"
