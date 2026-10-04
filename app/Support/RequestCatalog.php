@@ -207,6 +207,8 @@ class RequestCatalog
             'unit' => $transfer->unit?->name,
             'responsible' => self::userDisplayName($transfer->requester),
             'receivedAt' => self::formatDateTime($transfer->requested_at),
+            'deliveryDate' => self::formatDate($transfer->scheduled_for),
+            'deliveryTime' => self::formatTime($transfer->scheduled_for),
             'auth' => $transfer->authorizationStatus?->label ?? 'Pendiente',
             'status' => $transfer->workflowStatus?->label ?? 'Pendiente',
             'pageTitle' => ($isReview || $isScheduled) ? 'Revisar Transferencia Documental' : 'Transferencia #' . $transfer->code,
@@ -1248,7 +1250,12 @@ class RequestCatalog
 
         if ($workflowCode === 'loan_status_loaned') {
             return [
-                ['key' => 'registerReturn', 'label' => 'Registrar devolución', 'icon' => 'pi pi-check-circle', 'variant' => 'muted'],
+                [
+                    'key' => 'registerReturn',
+                    'label' => 'Registrar devolución',
+                    'icon' => 'pi pi-check-circle',
+                    'variant' => 'muted',
+                ],
                 ['key' => 'back', 'label' => 'Volver', 'icon' => null, 'variant' => 'secondary'],
             ];
         }
@@ -1329,6 +1336,17 @@ class RequestCatalog
             return null;
         }
 
+        $loanDocuments = $loan->documents
+            ->where('selected_for_loan', true)
+            ->values();
+        $modifiedDocumentIds = $loan->documentModifications
+            ->pluck('loan_document_id')
+            ->map(fn ($id) => (int) $id);
+        $missingModificationCount = $loanDocuments
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->diff($modifiedDocumentIds)
+            ->count();
         $documents = $loan->documents
             ->where('selected_for_loan', true)
             ->where('returned', false)
@@ -1343,6 +1361,7 @@ class RequestCatalog
             'documentsTitle' => $documents->first()->group_title ?? 'Documentos prestados',
             'selectionSummary' => 'Documentos seleccionados para devolución: {count} de {total}',
             'defaultCondition' => 'Documentos devueltos en buen estado',
+            'missingModificationCount' => $missingModificationCount,
             'documents' => $documents->map(fn ($document) => [
                 'id' => $document->id,
                 'title' => $document->title,

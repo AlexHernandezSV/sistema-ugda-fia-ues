@@ -1225,6 +1225,22 @@ class LoanController extends Controller
                 return response()->json(['message' => 'Préstamo no encontrado.'], 404);
             }
 
+            $loanDocumentIds = $loan->documents
+                ->where('selected_for_loan', true)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id);
+            $modifiedDocumentIds = $loan->documentModifications()
+                ->whereIn('loan_document_id', $loanDocumentIds->all())
+                ->pluck('loan_document_id')
+                ->map(fn ($id) => (int) $id);
+            $missingModificationCount = $loanDocumentIds->diff($modifiedDocumentIds)->count();
+
+            if ($missingModificationCount > 0) {
+                return response()->json([
+                    'message' => 'La unidad solicitante debe registrar las modificaciones de todos los documentos prestados antes de registrar la devolución.',
+                ], 422);
+            }
+
             DB::transaction(function () use ($request, $loan) {
                 $selectedIds = collect($request->input('selected_ids'))->map(fn ($id) => (int) $id)->all();
                 $return = $loan->returns()->create([

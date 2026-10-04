@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 import { useToast } from 'primevue/usetoast';
@@ -10,6 +10,7 @@ const router = useRouter();
 const toast = useToast();
 
 const OBSERVATION_MAX_LENGTH = 1000;
+const LOAN_DOCUMENT_MODIFICATIONS_UPDATED_KEY = 'ugda:loan-document-modifications-updated';
 
 const today = () => {
     const date = new Date();
@@ -35,6 +36,7 @@ const currentDecisionAction = ref(null);
 const documentPreviewVisible = ref(false);
 const documentPreviewTitle = ref('Documento PDF');
 const documentPreviewSource = ref(null);
+let detailRequestInProgress = false;
 
 const loanForm = reactive({
     selectedIds: [],
@@ -307,6 +309,22 @@ const handleAction = async (action) => {
             loanModalVisible.value = true;
             break;
         case 'registerReturn':
+            await fetchDetail({
+                resetReturn: false,
+                showLoading: false,
+                navigateOnError: false,
+                force: true,
+            });
+
+            if ((loan.value?.returnRegistration?.missingModificationCount ?? 0) > 0) {
+                const missingModificationCount = loan.value.returnRegistration.missingModificationCount;
+                const missingModificationLabel = missingModificationCount === 1
+                    ? 'documento pendiente'
+                    : 'documentos pendientes';
+                showError(`La unidad solicitante debe registrar las modificaciones de los ${missingModificationCount} ${missingModificationLabel} antes de registrar la devolución.`);
+                return;
+            }
+
             resetReturnForm();
             returnModalVisible.value = true;
             break;
@@ -672,6 +690,14 @@ const submitDocumentModifications = async () => {
             detail: data.message,
             life: 3000,
         });
+        try {
+            window.localStorage.setItem(LOAN_DOCUMENT_MODIFICATIONS_UPDATED_KEY, JSON.stringify({
+                number: loan.value.number,
+                updatedAt: Date.now(),
+            }));
+        } catch (storageError) {
+            // La validación al abrir el registro de devolución consulta siempre el servidor.
+        }
         documentModificationsModalVisible.value = false;
         await fetchDetail();
     } catch (error) {
@@ -707,16 +733,61 @@ const submitReturnRegistration = async () => {
     }
 };
 
-const fetchDetail = async () => {
+const fetchDetail = async ({ resetReturn = true, showLoading = true, navigateOnError = true, force = false } = {}) => {
+    if (detailRequestInProgress && !force) {
+        return;
+    }
+
+    detailRequestInProgress = true;
+
+    if (showLoading) {
+        loading.value = true;
+    }
+
     try {
         const { data } = await axios.get(`/api/loans/${route.params.number}`);
         loan.value = data;
-        resetReturnForm();
+        if (resetReturn) {
+            resetReturnForm();
+        }
     } catch (error) {
         console.error('Error cargando detalle de prestamo:', error);
-        goBack();
+        if (navigateOnError) {
+            goBack();
+        }
     } finally {
-        loading.value = false;
+        if (showLoading) {
+            loading.value = false;
+        }
+        detailRequestInProgress = false;
+    }
+};
+
+const refreshLoanDetail = () => {
+    if (document.visibilityState !== 'visible') {
+        return;
+    }
+
+    fetchDetail({
+        resetReturn: false,
+        showLoading: false,
+        navigateOnError: false,
+    });
+};
+
+const handleLoanDocumentModificationsUpdate = (event) => {
+    if (event.key !== LOAN_DOCUMENT_MODIFICATIONS_UPDATED_KEY || !event.newValue) {
+        return;
+    }
+
+    try {
+        const payload = JSON.parse(event.newValue);
+
+        if (String(payload.number) === String(route.params.number)) {
+            refreshLoanDetail();
+        }
+    } catch (error) {
+        // La actualización periódica mantiene la sincronización si el evento no contiene JSON válido.
     }
 };
 
@@ -742,7 +813,18 @@ const returnAllSelected = computed(() => returnRegistrationDocuments.value.lengt
 const finishSearchAllSelected = computed(() => searchResultDocuments.value.length > 0
     && finishSearchForm.selectedIds.length === searchResultDocuments.value.length);
 
-onMounted(fetchDetail);
+onMounted(() => {
+    fetchDetail();
+    window.addEventListener('storage', handleLoanDocumentModificationsUpdate);
+    window.addEventListener('focus', refreshLoanDetail);
+    document.addEventListener('visibilitychange', refreshLoanDetail);
+});
+
+onBeforeUnmount(() => {
+    window.removeEventListener('storage', handleLoanDocumentModificationsUpdate);
+    window.removeEventListener('focus', refreshLoanDetail);
+    document.removeEventListener('visibilitychange', refreshLoanDetail);
+});
 
 watch(
     () => route.params.number,
