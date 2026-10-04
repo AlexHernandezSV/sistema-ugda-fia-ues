@@ -1315,11 +1315,11 @@ watch(
                 <hr />
                 <div>
                     <span>Fecha de entrega programada</span>
-                    <strong>{{ transfer.scheduledSummary?.deliveryDate || 'Sin fecha' }}</strong>
+                    <strong>{{ transfer.deliveryDate || 'Sin fecha' }}</strong>
                 </div>
                 <div>
                     <span>Hora de entrega</span>
-                    <strong>{{ transfer.scheduledSummary?.deliveryTime || 'Sin hora' }}</strong>
+                    <strong>{{ transfer.deliveryTime || 'Sin hora' }}</strong>
                 </div>
                 <hr />
                 <div>
@@ -1931,7 +1931,7 @@ watch(
                                                     </div>
                                                 </td>
                                                 <td>{{ document.code }}</td>
-                                                <td>{{ document.series }}</td>
+                                                <td class="detalle-document-series">{{ document.series }}</td>
                                                 <td class="ugda-chip-table-cell">
                                                     <div class="ugda-chip-cell">
                                                         <span :class="documentSupportClass(document)">{{ documentSupportLabel(document) }}</span>
@@ -2178,7 +2178,7 @@ watch(
                                                 </div>
                                             </td>
                                             <td>{{ document.code }}</td>
-                                            <td>{{ document.series }}</td>
+                                            <td class="detalle-document-series">{{ document.series }}</td>
                                             <td class="ugda-chip-table-cell">
                                                 <div class="ugda-chip-cell">
                                                     <span :class="documentSupportClass(document)">{{ documentSupportLabel(document) }}</span>
@@ -2517,11 +2517,11 @@ watch(
                         <hr />
                         <div>
                             <span>Fecha de entrega programada</span>
-                            <strong>{{ transfer?.scheduledSummary?.deliveryDate || 'Sin fecha' }}</strong>
+                            <strong>{{ transfer?.deliveryDate || 'Sin fecha' }}</strong>
                         </div>
                         <div>
                             <span>Hora de entrega</span>
-                            <strong>{{ transfer?.scheduledSummary?.deliveryTime || 'Sin hora' }}</strong>
+                            <strong>{{ transfer?.deliveryTime || 'Sin hora' }}</strong>
                         </div>
                         <hr />
                         <div>
@@ -3583,11 +3583,9 @@ watch(
     display: inline-flex;
     font-size: 0.75rem;
     line-height: 1.2;
-    max-width: 20rem;
-    overflow: hidden;
     padding: 0.32rem 0.5rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+    white-space: normal;
 }
 
 .detalle-summary-series-count {
@@ -3646,6 +3644,8 @@ watch(
 .detalle-box-card__header > .flex {
     align-items: center;
     gap: 1.2rem !important;
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 .detalle-box-card__icon {
@@ -3681,11 +3681,9 @@ watch(
     display: inline-flex;
     font-size: 0.78rem;
     line-height: 1.2;
-    max-width: min(100%, 24rem);
-    overflow: hidden;
     padding: 0.35rem 0.55rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+    white-space: normal;
 }
 
 .detalle-box-card__series-count {
@@ -3847,6 +3845,13 @@ watch(
 
 .detalle-table-wrapper {
     overflow-x: auto;
+}
+
+.detalle-document-series {
+    min-width: 18rem;
+    max-width: 26rem;
+    overflow-wrap: anywhere;
+    white-space: normal;
 }
 
 .detalle-document-name,
