@@ -449,7 +449,7 @@ const resetUserPassword = async () => {
         toast.add({
             severity: "warn",
             summary: "Atencion",
-            detail: "Ingrese su contrasena para confirmar.",
+            detail: "Ingrese su contraseña para confirmar.",
             life: 3000,
         });
         return;
@@ -467,7 +467,7 @@ const resetUserPassword = async () => {
         toast.add({
             severity: "success",
             summary: "Contraseña enviada",
-            detail: "Se envio una contrasena temporal al correo del usuario.",
+            detail: "Se envio una contraseña temporal al correo del usuario.",
             life: 3500,
         });
         resetPasswordModal.value = false;
@@ -476,7 +476,7 @@ const resetUserPassword = async () => {
     } catch (error) {
         const detail =
             error.response?.data?.message ||
-            "No se pudo restablecer la contrasena.";
+            "No se pudo restablecer la contraseña.";
         toast.add({ severity: "error", summary: "Error", detail, life: 4000 });
     } finally {
         isResettingPassword.value = false;
@@ -699,7 +699,7 @@ const goBack = () => {
                             rounded
                             severity="secondary"
                             class="text-gray-600 hover:text-blue-600"
-                            title="Restablecer contrasena"
+                            title="Restablecer contraseña"
                             @click="openResetPasswordModal(slotProps.data)"
                         />
                         <Button
@@ -979,7 +979,7 @@ const goBack = () => {
         v-model:visible="resetPasswordModal"
         :modal="true"
         :draggable="false"
-        header="Restablecer contrasena"
+        header="Restablecer contraseña"
         :style="{ width: '520px' }"
         class="p-fluid blue-header-dialog"
         @hide="closeResetPasswordModal"
@@ -989,9 +989,9 @@ const goBack = () => {
                 <i class="pi pi-key"></i>
             </div>
             <div>
-                <h3>Enviar contrasena temporal</h3>
+                <h3>Enviar contraseña temporal</h3>
                 <p>
-                    Se generara una contrasena temporal para
+                    Se generara una contraseña temporal para
                     <strong>{{ selectedUserForReset?.email }}</strong
                     >. Al iniciar sesion, el usuario debera cambiarla.
                 </p>
@@ -999,7 +999,7 @@ const goBack = () => {
         </div>
 
         <div class="field mt-3">
-            <label class="form-label">Su contrasena *</label>
+            <label class="form-label">Su contraseña *</label>
             <InputText
                 v-model="adminPasswordForReset"
                 type="password"
@@ -1008,7 +1008,7 @@ const goBack = () => {
                 data-lpignore="true"
                 data-1p-ignore="true"
                 class="w-full bg-gray-50"
-                placeholder="Confirme su contrasena de administrador"
+                placeholder="Confirme su contraseña de administrador"
                 @keyup.enter="resetUserPassword"
             />
         </div>

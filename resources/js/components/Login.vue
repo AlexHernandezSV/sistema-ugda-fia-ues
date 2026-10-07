@@ -152,7 +152,7 @@ const handleLoginResponse = (data) => {
         toast.add({
             severity: 'warn',
             summary: 'Cambio requerido',
-            detail: 'Actualiza tu contrasena temporal para continuar.',
+            detail: 'Actualiza tu contraseña temporal para continuar.',
             life: 4000
         });
         return;
@@ -312,7 +312,7 @@ const handleTemporaryPasswordChange = async () => {
         toast.add({
             severity: 'warn',
             summary: 'Campos incompletos',
-            detail: 'Completa la contrasena temporal y la nueva contrasena.',
+            detail: 'Completa la contraseña temporal y la nueva contraseña.',
             life: 3500
         });
         return;
@@ -742,9 +742,9 @@ onBeforeUnmount(() => {
                         <div class="login-step__brand">
                             <img src="/images/Logo-UES-Blue.png" alt="Universidad de El Salvador"
                                 class="login-step__logo" onerror="this.style.display='none'" />
-                            <h2 class="login-step__title">Cambiar contrasena temporal</h2>
+                            <h2 class="login-step__title">Cambiar contraseña temporal</h2>
                             <p class="login-step__subtitle">
-                                Antes de continuar, crea una contrasena propia para
+                                Antes de continuar, crea una contraseña propia para
                                 <br />
                                 <strong>{{ email }}</strong>
                             </p>
@@ -759,7 +759,7 @@ onBeforeUnmount(() => {
                                     autocomplete="current-password" class="login-field__input login-password-input"
                                     placeholder="Contraseña recibida" @keyup.enter="handleTemporaryPasswordChange" />
                                 <button v-if="temporaryPassword.length > 0" type="button" class="login-password-toggle"
-                                    :aria-label="showTemporaryPassword ? 'Ocultar contrasena' : 'Mostrar contrasena'"
+                                    :aria-label="showTemporaryPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'"
                                     @mousedown.prevent="showTemporaryPassword = !showTemporaryPassword">
                                     <i :class="showTemporaryPassword ? 'pi pi-eye-slash' : 'pi pi-eye'"></i>
                                 </button>
@@ -767,7 +767,7 @@ onBeforeUnmount(() => {
                         </div>
 
                         <div class="login-field">
-                            <label class="login-field__label">Nueva contrasena</label>
+                            <label class="login-field__label">Nueva contraseña</label>
                             <div class="login-field__shell">
                                 <i class="pi pi-lock login-field__icon"></i>
                                 <input v-model="newPassword"
@@ -775,7 +775,7 @@ onBeforeUnmount(() => {
                                     autocomplete="new-password" class="login-field__input login-password-input"
                                     placeholder="Minimo 10 caracteres" @keyup.enter="handleTemporaryPasswordChange" />
                                 <button v-if="newPassword.length > 0" type="button" class="login-password-toggle"
-                                    :aria-label="showNewPassword ? 'Ocultar contrasena' : 'Mostrar contrasena'"
+                                    :aria-label="showNewPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'"
                                     @mousedown.prevent="showNewPassword = !showNewPassword">
                                     <i :class="showNewPassword ? 'pi pi-eye-slash' : 'pi pi-eye'"></i>
                                 </button>
@@ -783,15 +783,15 @@ onBeforeUnmount(() => {
                         </div>
 
                         <div class="login-field">
-                            <label class="login-field__label">Confirmar nueva contrasena</label>
+                            <label class="login-field__label">Confirmar nueva contraseña</label>
                             <div class="login-field__shell">
                                 <i class="pi pi-lock login-field__icon"></i>
                                 <input v-model="newPasswordConfirmation"
                                     :type="showNewPasswordConfirmation && newPasswordConfirmation.length > 0 ? 'text' : 'password'"
                                     autocomplete="new-password" class="login-field__input login-password-input"
-                                    placeholder="Repite la nueva contrasena" @keyup.enter="handleTemporaryPasswordChange" />
+                                    placeholder="Repite la nueva contraseña" @keyup.enter="handleTemporaryPasswordChange" />
                                 <button v-if="newPasswordConfirmation.length > 0" type="button" class="login-password-toggle"
-                                    :aria-label="showNewPasswordConfirmation ? 'Ocultar contrasena' : 'Mostrar contrasena'"
+                                    :aria-label="showNewPasswordConfirmation ? 'Ocultar contraseña' : 'Mostrar contraseña'"
                                     @mousedown.prevent="showNewPasswordConfirmation = !showNewPasswordConfirmation">
                                     <i :class="showNewPasswordConfirmation ? 'pi pi-eye-slash' : 'pi pi-eye'"></i>
                                 </button>

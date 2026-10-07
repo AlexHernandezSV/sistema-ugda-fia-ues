@@ -92,7 +92,7 @@ const changePassword = async () => {
         resetPasswordForm();
         await fetchProfile();
     } catch (error) {
-        showRequestError(error, 'No se pudo actualizar la contrasena.');
+        showRequestError(error, 'No se pudo actualizar la contraseña.');
     } finally {
         passwordSaving.value = false;
     }
@@ -103,7 +103,7 @@ const changeTwoFactor = async (method) => {
         toast.add({
             severity: 'warn',
             summary: 'Confirmacion requerida',
-            detail: 'Ingrese su contrasena para cambiar el metodo de seguridad.',
+            detail: 'Ingrese su contraseña para cambiar el metodo de seguridad.',
             life: 3200,
         });
         return;
@@ -138,7 +138,7 @@ const prepareAuthenticator = async () => {
         toast.add({
             severity: 'warn',
             summary: 'Confirmacion requerida',
-            detail: 'Ingrese su contrasena para generar el código QR.',
+            detail: 'Ingrese su contraseña para generar el código QR.',
             life: 3200,
         });
         return;
@@ -167,7 +167,7 @@ const confirmAuthenticator = async () => {
         toast.add({
             severity: 'warn',
             summary: 'Confirmacion requerida',
-            detail: 'Ingrese su contrasena para activar Google Authenticator.',
+            detail: 'Ingrese su contraseña para activar Google Authenticator.',
             life: 3200,
         });
         return;
@@ -302,7 +302,7 @@ onMounted(fetchProfile);
                             <strong>{{ profile.last_login_at || 'Sin registro' }}</strong>
                         </div>
                         <div>
-                            <small>Ultimo cambio de contrasena</small>
+                            <small>Ultimo cambio de contraseña</small>
                             <strong>{{ profile.password_changed_at || 'Sin registro' }}</strong>
                         </div>
                     </div>
@@ -341,7 +341,7 @@ onMounted(fetchProfile);
                 <div class="perfil-panel">
                     <div class="perfil-panel__header">
                         <div>
-                            <h3>Cambio de contrasena</h3>
+                            <h3>Cambio de contraseña</h3>
                             <p>Actualiza tu clave de acceso cuando lo necesites.</p>
                         </div>
                     </div>
@@ -352,14 +352,14 @@ onMounted(fetchProfile);
                             <InputText v-model="passwordForm.current_password" type="password" autocomplete="current-password" />
                         </label>
                         <label>
-                            <span>Nueva contrasena</span>
+                            <span>Nueva contraseña</span>
                             <InputText v-model="passwordForm.password" type="password" autocomplete="new-password" placeholder="Minimo 10 caracteres" />
                         </label>
                         <p class="perfil-password-policy">
                             Usa al menos 10 caracteres con mayúscula, minúscula, número y símbolo. No uses secuencias de números o letras consecutivos ni una contraseña similar a la anterior.
                         </p>
                         <label>
-                            <span>Confirmar nueva contrasena</span>
+                            <span>Confirmar nueva contraseña</span>
                             <InputText v-model="passwordForm.password_confirmation" type="password" autocomplete="new-password" />
                         </label>
                         <Button label="Guardar contraseña" icon="pi pi-save" class="perfil-primary" :loading="passwordSaving" @click="changePassword" />
