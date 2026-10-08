@@ -847,7 +847,7 @@ onMounted(fetchBoxes);
                         optionLabel="label"
                         optionValue="value"
                         placeholder="Seleccionar serie documental"
-                        class="w-full"
+                        class="w-full archive-document-edit-form__series-dropdown"
                     />
                 </label>
 
@@ -1284,6 +1284,18 @@ onMounted(fetchBoxes);
     display: grid;
     gap: 1rem;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.archive-document-edit-form__series-dropdown {
+    height: auto;
+    min-width: 0;
+}
+
+.archive-document-edit-form__series-dropdown :deep(.p-dropdown-label) {
+    line-height: 1.35;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
 }
 
 .archive-document-edit-form__file {
