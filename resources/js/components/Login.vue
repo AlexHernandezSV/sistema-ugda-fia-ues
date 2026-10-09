@@ -930,7 +930,8 @@ onBeforeUnmount(() => {
     height: 100dvh;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
     background: linear-gradient(180deg, #f5f9ff 0%, #edf5ff 100%);
 }
 

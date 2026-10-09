@@ -1088,8 +1088,9 @@ onMounted(fetchCatalog);
                         filter
                         :maxSelectedLabels="3"
                         selectedItemsLabel="{0} subseries seleccionadas"
-                        class="w-full"
+                        class="w-full archive-long-label-multiselect"
                         :disabled="isLoading"
+                        overlayClass="archive-long-label-dropdown-overlay"
                     />
                 </label>
 
@@ -1293,7 +1294,8 @@ onMounted(fetchCatalog);
                         optionLabel="label"
                         optionValue="value"
                         placeholder="Seleccionar subserie documental"
-                        class="w-full"
+                        class="w-full archive-long-label-dropdown"
+                        overlayClass="archive-long-label-dropdown-overlay"
                     />
                 </label>
 

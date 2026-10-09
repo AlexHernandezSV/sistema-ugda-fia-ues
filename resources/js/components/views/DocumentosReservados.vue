@@ -980,7 +980,8 @@ onBeforeUnmount(() => {
                                 :loading="loadingClassifications"
                                 showClear
                                 filter
-                                class="w-full"
+                                class="w-full archive-long-label-dropdown"
+                                overlayClass="archive-long-label-dropdown-overlay"
                                 @change="onClassificationChange"
                             />
                         </div>
@@ -1176,7 +1177,8 @@ onBeforeUnmount(() => {
                         :disabled="removingClassification || checkingRemovalClassification"
                         showClear
                         filter
-                        class="w-full"
+                        class="w-full archive-long-label-dropdown"
+                        overlayClass="archive-long-label-dropdown-overlay"
                         @change="checkRemovalClassification"
                     />
                 </label>

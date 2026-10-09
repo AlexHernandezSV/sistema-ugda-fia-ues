@@ -847,7 +847,8 @@ onMounted(fetchBoxes);
                         optionLabel="label"
                         optionValue="value"
                         placeholder="Seleccionar serie documental"
-                        class="w-full archive-document-edit-form__series-dropdown"
+                        class="w-full archive-document-edit-form__series-dropdown archive-long-label-dropdown"
+                        overlayClass="archive-long-label-dropdown-overlay"
                     />
                 </label>
 
@@ -1294,7 +1295,9 @@ onMounted(fetchBoxes);
 .archive-document-edit-form__series-dropdown :deep(.p-dropdown-label) {
     line-height: 1.35;
     min-width: 0;
+    overflow: visible;
     overflow-wrap: anywhere;
+    text-overflow: clip;
     white-space: normal;
 }
 

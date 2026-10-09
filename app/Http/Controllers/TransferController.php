@@ -22,6 +22,10 @@ class TransferController extends Controller
 {
     public function nextCode(Request $request): JsonResponse
     {
+        if (($accessError = $this->requesterOnlyError($request)) !== null) {
+            return $accessError;
+        }
+
         try {
             $requestDate = $request->filled('request_date')
                 ? Carbon::parse($request->input('request_date'), config('app.timezone'))
@@ -39,6 +43,10 @@ class TransferController extends Controller
 
     public function documentImportTemplate(Request $request)
     {
+        if (($accessError = $this->requesterOnlyError($request)) !== null) {
+            return $accessError;
+        }
+
         $headers = [
             'Serie del documento',
             'Nombre del documento',
@@ -81,6 +89,10 @@ class TransferController extends Controller
 
     public function importDocuments(Request $request): JsonResponse
     {
+        if (($accessError = $this->requesterOnlyError($request)) !== null) {
+            return $accessError;
+        }
+
         $validator = Validator::make($request->all(), [
             'file' => ['required', 'file', 'mimes:xlsx', 'max:5120'],
             'current_box_series' => ['nullable', 'string', 'max:50000'],
@@ -589,6 +601,10 @@ class TransferController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        if (($accessError = $this->requesterOnlyError($request)) !== null) {
+            return $accessError;
+        }
+
         $this->normalizeTransferPayload($request);
 
         $validator = Validator::make($request->all(), [
@@ -1322,6 +1338,17 @@ class TransferController extends Controller
         return $user->units()
             ->where('units.id', $transfer->unit_id)
             ->exists();
+    }
+
+    private function requesterOnlyError(Request $request): ?JsonResponse
+    {
+        if ($request->user()?->activeProfile()?->name === 'Unidad Solicitante') {
+            return null;
+        }
+
+        return response()->json([
+            'message' => 'Solo el perfil Unidad Solicitante puede crear solicitudes de transferencia.',
+        ], 403);
     }
 
     private function canUgdaManage(Request $request): bool

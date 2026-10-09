@@ -591,6 +591,59 @@ button[disabled],
     color: var(--ugda-info-text) !important;
 }
 
+.archive-long-label-dropdown {
+    height: auto;
+    min-width: 0;
+}
+
+.archive-long-label-dropdown .p-dropdown-label,
+.archive-long-label-dropdown .p-select-label {
+    line-height: 1.35;
+    min-width: 0;
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
+}
+
+.archive-long-label-dropdown-overlay .p-dropdown-item,
+.archive-long-label-dropdown-overlay .p-select-option,
+.archive-long-label-dropdown-overlay .p-multiselect-option,
+.archive-long-label-dropdown-overlay .p-dropdown-item-label,
+.archive-long-label-dropdown-overlay .p-select-option-label,
+.archive-long-label-dropdown-overlay .p-multiselect-option-label {
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
+.archive-long-label-multiselect {
+    height: auto;
+    min-width: 0;
+}
+
+.archive-long-label-multiselect .p-multiselect-label {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    line-height: 1.35;
+    min-width: 0;
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
+}
+
+.archive-long-label-multiselect .p-multiselect-token,
+.archive-long-label-multiselect .p-multiselect-token-label,
+.archive-long-label-multiselect .p-multiselect-chip-item,
+.archive-long-label-multiselect .p-chip,
+.archive-long-label-multiselect .p-chip-label {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
 @media (max-width: 640px) {
     h1,
     .ugda-h1,

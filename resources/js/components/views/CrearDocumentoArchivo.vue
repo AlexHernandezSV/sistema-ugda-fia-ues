@@ -307,8 +307,9 @@ onMounted(async () => {
                             optionValue="value"
                             filter
                             placeholder="Seleccionar subserie"
-                            class="w-full"
+                            class="w-full archive-long-label-dropdown"
                             :disabled="isLoading"
+                            overlayClass="archive-long-label-dropdown-overlay"
                         />
                     </label>
 

@@ -2664,7 +2664,8 @@ onMounted(fetchReportSummary);
                             optionValue="value"
                             placeholder="Todas"
                             showClear
-                            class="w-full"
+                            class="w-full archive-long-label-dropdown"
+                            overlayClass="archive-long-label-dropdown-overlay"
                         />
                     </label>
 

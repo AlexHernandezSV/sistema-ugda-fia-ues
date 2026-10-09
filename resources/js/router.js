@@ -135,7 +135,7 @@ const routes = [
         meta: {
             title: 'Reportes Dinámicos',
             permission: 'endpoint.ui.reports.read',
-            allowedProfiles: ['Usuario UGDA'],
+            allowedProfiles: ['Administrador', 'Usuario UGDA'],
         },
         component: Reportes
     },
@@ -164,7 +164,11 @@ const routes = [
 
     { path: '/solicitudes/crear',
         name: 'solicitudes-crear',
-        meta: { title: 'Nueva Transferencia Documental', permission: 'endpoint.api.documentary-series.read' },
+        meta: {
+            title: 'Nueva Transferencia Documental',
+            permission: 'endpoint.api.documentary-series.read',
+            allowedProfiles: ['Unidad Solicitante'],
+        },
         component: NuevaSolicitud 
     },
 
@@ -188,7 +192,11 @@ const routes = [
 
     { path: '/solicitudes/transferencias/:number/editar',
         name: 'solicitudes-transferencia-editar',
-        meta: { title: 'Editar Transferencia Documental', permission: 'endpoint.api.documentary-series.read' },
+        meta: {
+            title: 'Editar Transferencia Documental',
+            permission: 'endpoint.api.documentary-series.read',
+            allowedProfiles: ['Unidad Solicitante'],
+        },
         component: NuevaSolicitud
     },
 
@@ -248,11 +256,11 @@ router.beforeEach(async (to) => {
             .map(normalizeValue)
             .includes(normalizeValue(profileName));
 
-        if (to.meta?.permission && !hasPermission && allowedProfiles.length === 0) {
+        if (allowedProfiles.length > 0 && !matchesAllowedProfile) {
             return { path: '/dashboard' };
         }
 
-        if ((to.meta?.permission || allowedProfiles.length > 0) && !hasPermission && !matchesAllowedProfile) {
+        if (to.meta?.permission && !hasPermission) {
             return { path: '/dashboard' };
         }
 

@@ -1210,6 +1210,8 @@ const goBack = () => {
                             placeholder="Seleccionar serie o subserie"
                             filter
                             fluid
+                            class="archive-long-label-dropdown"
+                            overlayClass="archive-long-label-dropdown-overlay"
                         />
                     </div>
 
@@ -1467,6 +1469,8 @@ const goBack = () => {
                             placeholder="Seleccionar"
                             filter
                             fluid
+                            class="archive-long-label-dropdown"
+                            overlayClass="archive-long-label-dropdown-overlay"
                         />
                     </div>
 
@@ -1853,7 +1857,7 @@ const goBack = () => {
 }
 
 .transfer-request__detail-grid {
-    align-items: end;
+    align-items: start;
     display: grid;
     gap: 1rem;
     grid-template-columns: minmax(14rem, 1fr) minmax(10rem, 0.75fr) minmax(10rem, 0.75fr) minmax(10rem, 0.75fr) 14rem;
@@ -1986,7 +1990,10 @@ const goBack = () => {
     display: inline-flex;
     font-size: 0.82rem;
     line-height: 1.2;
+    max-width: 100%;
+    overflow-wrap: anywhere;
     padding: 0.35rem 0.55rem;
+    white-space: normal;
 }
 
 .transfer-request__docs-chip {
