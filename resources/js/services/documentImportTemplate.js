@@ -19,6 +19,7 @@ export const downloadDocumentImportTemplate = async ({
     series = [],
     yearStart = '',
     yearEnd = '',
+    context = '',
 } = {}) => {
     const seriesLabels = Array.isArray(series)
         ? series.map((label) => String(label ?? '').trim()).filter(Boolean)
@@ -37,6 +38,10 @@ export const downloadDocumentImportTemplate = async ({
         params.set('year_end', yearEnd);
     }
 
+    if (context) {
+        params.set('context', context);
+    }
+
     const query = params.toString();
 
     if (query.length <= MAX_GET_QUERY_LENGTH) {
@@ -52,6 +57,10 @@ export const downloadDocumentImportTemplate = async ({
 
     if (yearEnd) {
         payload.year_end = yearEnd;
+    }
+
+    if (context) {
+        payload.context = context;
     }
 
     const { data } = await axios.post(TEMPLATE_PATH, payload, {

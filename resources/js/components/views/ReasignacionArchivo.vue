@@ -30,6 +30,23 @@ const isSearching = ref(false);
 const isSearchingDocuments = ref(false);
 const isSearchingDestinationBoxes = ref(false);
 const isSaving = ref(false);
+const rowsPerPageOptions = [5, 10, 25, 50];
+const boxPagination = ref({
+    current_page: 1,
+    last_page: 1,
+    per_page: 10,
+    total: 0,
+    from: null,
+    to: null,
+});
+const documentPagination = ref({
+    current_page: 1,
+    last_page: 1,
+    per_page: 10,
+    total: 0,
+    from: null,
+    to: null,
+});
 const locations = ref({
     offices: [],
     aisles: [],
@@ -62,6 +79,22 @@ const generatedLocationCode = computed(() => {
 
     return [office?.code, aisle?.code, shelf?.code].filter(Boolean).join('-');
 });
+const getVisiblePages = (pagination) => {
+    const totalPages = pagination.last_page || 1;
+    const currentPage = pagination.current_page || 1;
+    const start = Math.max(1, currentPage - 1);
+    const end = Math.min(totalPages, start + 2);
+    const normalizedStart = Math.max(1, end - 2);
+    const pages = [];
+
+    for (let page = normalizedStart; page <= end; page += 1) {
+        pages.push(page);
+    }
+
+    return pages;
+};
+const visibleBoxPages = computed(() => getVisiblePages(boxPagination.value));
+const visibleDocumentPages = computed(() => getVisiblePages(documentPagination.value));
 
 const getBoxCode = (box) => box?.box_code || box?.boxCode || box?.code || null;
 const displayBoxCode = (box) => getBoxCode(box) || (box?.number ? `Caja #${box.number}` : '---');
@@ -236,13 +269,25 @@ const fetchLocations = async () => {
     }
 };
 
-const searchBoxes = async () => {
+const resetBoxPagination = () => {
+    boxPagination.value = {
+        ...boxPagination.value,
+        current_page: 1,
+        last_page: 1,
+        total: 0,
+        from: null,
+        to: null,
+    };
+};
+
+const fetchBoxSearch = async (page = 1, perPage = boxPagination.value.per_page) => {
     const term = boxSearch.value.trim();
 
     if (!term) {
         boxes.value = [];
         selectedBoxId.value = null;
         selectedBoxRecord.value = null;
+        resetBoxPagination();
         return;
     }
 
@@ -250,10 +295,11 @@ const searchBoxes = async () => {
 
     try {
         const { data } = await axios.get('/api/archive/boxes', {
-            params: { q: term, page: 1, per_page: 50 },
+            params: { q: term, page, per_page: perPage },
         });
 
         boxes.value = Array.isArray(data.boxes) ? data.boxes : [];
+        boxPagination.value = data.meta ?? boxPagination.value;
     } catch (error) {
         showToast('error', 'Error', error.response?.data?.message ?? 'No se pudieron cargar las cajas registradas.');
     } finally {
@@ -261,12 +307,36 @@ const searchBoxes = async () => {
     }
 };
 
+const searchBoxes = () => {
+    fetchBoxSearch(1, boxPagination.value.per_page);
+};
+
 const onBoxSearchInput = () => {
     selectedBoxId.value = null;
     selectedBoxRecord.value = null;
+    boxes.value = [];
+    resetBoxPagination();
 
     window.clearTimeout(boxSearchTimeout);
     boxSearchTimeout = window.setTimeout(searchBoxes, 250);
+};
+
+const goToBoxPage = (page) => {
+    if (page >= 1 && page <= boxPagination.value.last_page && page !== boxPagination.value.current_page) {
+        fetchBoxSearch(page, boxPagination.value.per_page);
+    }
+};
+
+const previousBoxPage = () => {
+    goToBoxPage(boxPagination.value.current_page - 1);
+};
+
+const nextBoxPage = () => {
+    goToBoxPage(boxPagination.value.current_page + 1);
+};
+
+const changeBoxPageSize = () => {
+    fetchBoxSearch(1, boxPagination.value.per_page);
 };
 
 const selectBox = (box) => {
@@ -276,22 +346,40 @@ const selectBox = (box) => {
     boxes.value = [];
 };
 
+const resetDocumentPagination = () => {
+    documentPagination.value = {
+        ...documentPagination.value,
+        current_page: 1,
+        last_page: 1,
+        total: 0,
+        from: null,
+        to: null,
+    };
+};
+
 const resetBoxReassignment = () => {
     selectedBoxId.value = null;
     selectedBoxRecord.value = null;
     boxSearch.value = '';
     boxes.value = [];
+    resetBoxPagination();
     locationForm.value = { office_id: null, aisle_id: null, shelf_id: null };
     confirmBoxDialogVisible.value = false;
 };
 
-const searchDocuments = async () => {
+const clearBoxSearch = () => {
+    window.clearTimeout(boxSearchTimeout);
+    resetBoxReassignment();
+};
+
+const fetchDocumentSearch = async (page = 1, perPage = documentPagination.value.per_page) => {
     const term = documentSearch.value.trim();
 
     if (!term) {
         documents.value = [];
         selectedDocumentId.value = null;
         selectedDocumentRecord.value = null;
+        resetDocumentPagination();
         return;
     }
 
@@ -299,15 +387,20 @@ const searchDocuments = async () => {
 
     try {
         const { data } = await axios.get('/api/archive/documents', {
-            params: { q: term, page: 1, per_page: 50 },
+            params: { q: term, page, per_page: perPage },
         });
 
         documents.value = Array.isArray(data.results) ? data.results : [];
+        documentPagination.value = data.meta ?? documentPagination.value;
     } catch (error) {
         showToast('error', 'Error', error.response?.data?.message ?? 'No se pudieron cargar los documentos.');
     } finally {
         isSearchingDocuments.value = false;
     }
+};
+
+const searchDocuments = () => {
+    fetchDocumentSearch(1, documentPagination.value.per_page);
 };
 
 const onDocumentSearchInput = () => {
@@ -317,9 +410,29 @@ const onDocumentSearchInput = () => {
     selectedDestinationBoxRecord.value = null;
     destinationBoxSearch.value = '';
     destinationBoxes.value = [];
+    documents.value = [];
+    resetDocumentPagination();
 
     window.clearTimeout(documentSearchTimeout);
     documentSearchTimeout = window.setTimeout(searchDocuments, 250);
+};
+
+const goToDocumentPage = (page) => {
+    if (page >= 1 && page <= documentPagination.value.last_page && page !== documentPagination.value.current_page) {
+        fetchDocumentSearch(page, documentPagination.value.per_page);
+    }
+};
+
+const previousDocumentPage = () => {
+    goToDocumentPage(documentPagination.value.current_page - 1);
+};
+
+const nextDocumentPage = () => {
+    goToDocumentPage(documentPagination.value.current_page + 1);
+};
+
+const changeDocumentPageSize = () => {
+    fetchDocumentSearch(1, documentPagination.value.per_page);
 };
 
 const selectDocument = (document) => {
@@ -338,7 +451,13 @@ const resetDocumentReassignment = () => {
     destinationBoxSearch.value = '';
     documents.value = [];
     destinationBoxes.value = [];
+    resetDocumentPagination();
     confirmDocumentDialogVisible.value = false;
+};
+
+const clearDocumentSearch = () => {
+    window.clearTimeout(documentSearchTimeout);
+    resetDocumentReassignment();
 };
 
 const searchDestinationBoxes = async () => {
@@ -376,6 +495,14 @@ const onDestinationBoxSearchInput = () => {
 
     window.clearTimeout(destinationBoxSearchTimeout);
     destinationBoxSearchTimeout = window.setTimeout(searchDestinationBoxes, 250);
+};
+
+const clearDestinationBoxSearch = () => {
+    window.clearTimeout(destinationBoxSearchTimeout);
+    selectedDestinationBoxId.value = null;
+    selectedDestinationBoxRecord.value = null;
+    destinationBoxSearch.value = '';
+    destinationBoxes.value = [];
 };
 
 const selectDestinationBox = (box) => {
@@ -542,6 +669,10 @@ onMounted(async () => {
                             placeholder="Buscar por código de caja, número, serie o unidad productora..."
                             @input="onBoxSearchInput"
                         />
+                        <button type="button" class="reassign-clear" @click="clearBoxSearch">
+                            <i class="pi pi-filter-slash"></i>
+                            Limpiar
+                        </button>
                     </form>
 
                     <div v-if="isSearching" class="reassign-results-state">Buscando cajas...</div>
@@ -561,6 +692,71 @@ onMounted(async () => {
                     </div>
                     <div v-else-if="boxSearch.trim() && !selectedBox" class="reassign-results-state">
                         No se encontraron cajas con ese criterio.
+                    </div>
+
+                    <div v-if="boxes.length && boxPagination.total > 0" class="reassign-pagination">
+                        <div class="reassign-pagination__controls">
+                            <div class="reassign-pagination__pages">
+                                <button
+                                    type="button"
+                                    class="reassign-pagination__icon"
+                                    :disabled="boxPagination.current_page <= 1 || isSearching"
+                                    aria-label="Primera página"
+                                    @click="goToBoxPage(1)"
+                                >
+                                    <i class="pi pi-angle-double-left"></i>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="reassign-pagination__icon"
+                                    :disabled="boxPagination.current_page <= 1 || isSearching"
+                                    aria-label="Página anterior"
+                                    @click="previousBoxPage"
+                                >
+                                    <i class="pi pi-angle-left"></i>
+                                </button>
+
+                                <button
+                                    v-for="page in visibleBoxPages"
+                                    :key="page"
+                                    type="button"
+                                    class="reassign-pagination__number"
+                                    :class="{ 'reassign-pagination__number--active': page === boxPagination.current_page }"
+                                    :disabled="isSearching"
+                                    @click="goToBoxPage(page)"
+                                >
+                                    {{ page }}
+                                </button>
+
+                                <button
+                                    type="button"
+                                    class="reassign-pagination__icon"
+                                    :disabled="boxPagination.current_page >= boxPagination.last_page || isSearching"
+                                    aria-label="Página siguiente"
+                                    @click="nextBoxPage"
+                                >
+                                    <i class="pi pi-angle-right"></i>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="reassign-pagination__icon"
+                                    :disabled="boxPagination.current_page >= boxPagination.last_page || isSearching"
+                                    aria-label="Última página"
+                                    @click="goToBoxPage(boxPagination.last_page)"
+                                >
+                                    <i class="pi pi-angle-double-right"></i>
+                                </button>
+                            </div>
+
+                            <Dropdown
+                                v-model="boxPagination.per_page"
+                                :options="rowsPerPageOptions"
+                                class="reassign-pagination__size"
+                                :disabled="isSearching"
+                                aria-label="Resultados por página"
+                                @change="changeBoxPageSize"
+                            />
+                        </div>
                     </div>
                 </section>
 
@@ -640,6 +836,10 @@ onMounted(async () => {
                             placeholder="Buscar por nombre, código o número de caja..."
                              @input="onDocumentSearchInput"
                         />
+                        <button type="button" class="reassign-clear" @click="clearDocumentSearch">
+                            <i class="pi pi-filter-slash"></i>
+                            Limpiar
+                        </button>
                     </form>
 
                     <div v-if="isSearchingDocuments" class="reassign-results-state">Buscando documentos...</div>
@@ -660,6 +860,71 @@ onMounted(async () => {
                     <div v-else-if="documentSearch.trim() && !selectedDocument" class="reassign-results-state">
                         No se encontraron documentos con ese criterio.
                     </div>
+
+                    <div v-if="documents.length && documentPagination.total > 0" class="reassign-pagination">
+                        <div class="reassign-pagination__controls">
+                            <div class="reassign-pagination__pages">
+                                <button
+                                    type="button"
+                                    class="reassign-pagination__icon"
+                                    :disabled="documentPagination.current_page <= 1 || isSearchingDocuments"
+                                    aria-label="Primera página"
+                                    @click="goToDocumentPage(1)"
+                                >
+                                    <i class="pi pi-angle-double-left"></i>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="reassign-pagination__icon"
+                                    :disabled="documentPagination.current_page <= 1 || isSearchingDocuments"
+                                    aria-label="Página anterior"
+                                    @click="previousDocumentPage"
+                                >
+                                    <i class="pi pi-angle-left"></i>
+                                </button>
+
+                                <button
+                                    v-for="page in visibleDocumentPages"
+                                    :key="page"
+                                    type="button"
+                                    class="reassign-pagination__number"
+                                    :class="{ 'reassign-pagination__number--active': page === documentPagination.current_page }"
+                                    :disabled="isSearchingDocuments"
+                                    @click="goToDocumentPage(page)"
+                                >
+                                    {{ page }}
+                                </button>
+
+                                <button
+                                    type="button"
+                                    class="reassign-pagination__icon"
+                                    :disabled="documentPagination.current_page >= documentPagination.last_page || isSearchingDocuments"
+                                    aria-label="Página siguiente"
+                                    @click="nextDocumentPage"
+                                >
+                                    <i class="pi pi-angle-right"></i>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="reassign-pagination__icon"
+                                    :disabled="documentPagination.current_page >= documentPagination.last_page || isSearchingDocuments"
+                                    aria-label="Última página"
+                                    @click="goToDocumentPage(documentPagination.last_page)"
+                                >
+                                    <i class="pi pi-angle-double-right"></i>
+                                </button>
+                            </div>
+
+                            <Dropdown
+                                v-model="documentPagination.per_page"
+                                :options="rowsPerPageOptions"
+                                class="reassign-pagination__size"
+                                :disabled="isSearchingDocuments"
+                                aria-label="Resultados por página"
+                                @change="changeDocumentPageSize"
+                            />
+                        </div>
+                    </div>
                 </section>
 
                 <section v-if="selectedDocument" class="reassign-section">
@@ -679,6 +944,10 @@ onMounted(async () => {
                             placeholder="Buscar código de caja de destino..."
                             @input="onDestinationBoxSearchInput"
                         />
+                        <button type="button" class="reassign-clear" @click="clearDestinationBoxSearch">
+                            <i class="pi pi-filter-slash"></i>
+                            Limpiar
+                        </button>
                     </form>
 
                     <div v-if="isSearchingDestinationBoxes" class="reassign-results-state">Buscando cajas de destino...</div>
@@ -959,7 +1228,7 @@ onMounted(async () => {
     border-radius: 0.45rem;
     display: grid;
     gap: 0.65rem;
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
     padding: 0.35rem 0.35rem 0.35rem 0.9rem;
 }
 
@@ -979,8 +1248,6 @@ onMounted(async () => {
     border: 1px solid #d8e1ec;
     border-radius: 0.45rem;
     margin-top: 1rem;
-    max-height: 18.75rem;
-    overflow: auto;
 }
 
 .reassign-result-item {
@@ -1019,6 +1286,76 @@ onMounted(async () => {
     padding: 1rem;
 }
 
+.reassign-pagination {
+    align-items: center;
+    background: #f8fafc;
+    border: 1px solid #d8e1ec;
+    border-radius: 0.45rem;
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-top: 1rem;
+    padding: 1rem 1.25rem;
+}
+
+.reassign-pagination__controls,
+.reassign-pagination__pages {
+    align-items: center;
+    display: flex;
+}
+
+.reassign-pagination__controls {
+    gap: 0.75rem;
+}
+
+.reassign-pagination__pages {
+    gap: 0.5rem;
+}
+
+.reassign-pagination button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: 999px;
+    color: #334155;
+    cursor: pointer;
+    display: inline-flex;
+    font: inherit;
+    justify-content: center;
+    min-height: 2.4rem;
+    min-width: 2.4rem;
+    padding: 0 0.55rem;
+}
+
+.reassign-pagination button:hover:not(:disabled) {
+    background: #eaf2f9;
+}
+
+.reassign-pagination__icon {
+    color: #64748b !important;
+}
+
+.reassign-pagination__number--active {
+    background: #eaf2f9 !important;
+    color: #2f6f9f !important;
+}
+
+.reassign-pagination button:disabled {
+    cursor: not-allowed;
+    color: #cbd5e1;
+}
+
+:deep(.reassign-pagination__size) {
+    min-width: 5.2rem;
+}
+
+:deep(.reassign-pagination__size .p-dropdown-label) {
+    font-size: 0.86rem;
+    font-weight: 700;
+    padding-bottom: 0.55rem;
+    padding-top: 0.55rem;
+}
+
 .reassign-search button,
 .reassign-primary,
 .reassign-cancel {
@@ -1038,6 +1375,17 @@ onMounted(async () => {
     background: var(--ugda-brand);
     border: 1px solid var(--ugda-brand);
     color: var(--ugda-text-inverse);
+}
+
+.reassign-search .reassign-clear {
+    background: #ffffff;
+    border-color: #d8e1ec;
+    color: #0f172a;
+}
+
+.reassign-search .reassign-clear:hover {
+    background: #f8fafc;
+    border-color: #b8c6d8;
 }
 
 .reassign-cancel {
@@ -1361,6 +1709,25 @@ button:disabled {
 
     .reassign-search button {
         grid-column: 1 / -1;
+        width: 100%;
+    }
+
+    .reassign-pagination {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .reassign-pagination__pages {
+        justify-content: center;
+    }
+
+    .reassign-pagination__controls {
+        align-items: stretch;
+        flex-direction: column;
+        width: 100%;
+    }
+
+    :deep(.reassign-pagination__size) {
         width: 100%;
     }
 

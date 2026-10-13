@@ -48,6 +48,9 @@ const form = ref({
 });
 
 const documents = ref([]);
+const documentRowsPerPageOptions = [5, 10, 25, 50];
+const documentRowsPerPage = ref(documentRowsPerPageOptions[0]);
+const documentCurrentPage = ref(1);
 const addDocumentDialogVisible = ref(false);
 const importDialogVisible = ref(false);
 const searchDialogVisible = ref(false);
@@ -62,6 +65,14 @@ const documentFileInputRef = ref(null);
 const isExcelDragging = ref(false);
 const documentSearch = ref('');
 const documentSearchResults = ref([]);
+const documentSearchPagination = ref({
+    current_page: 1,
+    last_page: 1,
+    per_page: 100,
+    total: 0,
+    from: null,
+    to: null,
+});
 const selectedExistingDocuments = ref([]);
 const documentPreviewVisible = ref(false);
 const documentPreviewTitle = ref('Documento PDF');
@@ -117,6 +128,21 @@ const selectedSeriesName = computed(() => selectedSeriesOptions.value
     .map((item) => item.label)
     .join('; '));
 
+const documentSearchVisiblePages = computed(() => {
+    const totalPages = documentSearchPagination.value.last_page || 1;
+    const currentPage = documentSearchPagination.value.current_page || 1;
+    const start = Math.max(1, currentPage - 1);
+    const end = Math.min(totalPages, start + 2);
+    const normalizedStart = Math.max(1, end - 2);
+    const pages = [];
+
+    for (let page = normalizedStart; page <= end; page += 1) {
+        pages.push(page);
+    }
+
+    return pages;
+});
+
 const requiresDigitalDocFile = computed(() => ['Digital', 'Mixto'].includes(docForm.value.support));
 const normalizeSupportOptions = (options) => (Array.isArray(options) ? options : []).map((option) => {
     const value = typeof option === 'string' ? option : option.value;
@@ -153,6 +179,72 @@ const allDocuments = computed(() => [
         source: 'manual',
     })),
 ]);
+
+const documentTotalPages = computed(() => Math.max(
+    1,
+    Math.ceil(allDocuments.value.length / documentRowsPerPage.value),
+));
+
+const documentPagination = computed(() => {
+    const currentPage = Math.min(documentCurrentPage.value, documentTotalPages.value);
+    const total = allDocuments.value.length;
+    const from = total === 0 ? null : ((currentPage - 1) * documentRowsPerPage.value) + 1;
+
+    return {
+        current_page: currentPage,
+        last_page: documentTotalPages.value,
+        per_page: documentRowsPerPage.value,
+        total,
+        from,
+        to: total === 0 ? null : Math.min(currentPage * documentRowsPerPage.value, total),
+    };
+});
+
+const visibleDocuments = computed(() => {
+    const start = (documentPagination.value.current_page - 1) * documentRowsPerPage.value;
+
+    return allDocuments.value.slice(start, start + documentRowsPerPage.value);
+});
+
+const documentVisiblePages = computed(() => {
+    const totalPages = documentPagination.value.last_page;
+    const currentPage = documentPagination.value.current_page;
+    const start = Math.max(1, currentPage - 1);
+    const end = Math.min(totalPages, start + 2);
+    const normalizedStart = Math.max(1, end - 2);
+    const pages = [];
+
+    for (let page = normalizedStart; page <= end; page += 1) {
+        pages.push(page);
+    }
+
+    return pages;
+});
+
+watch(
+    () => allDocuments.value.length,
+    () => {
+        documentCurrentPage.value = Math.min(documentCurrentPage.value, documentTotalPages.value);
+    },
+);
+
+const goToDocumentPage = (page) => {
+    if (page >= 1 && page <= documentPagination.value.last_page && page !== documentPagination.value.current_page) {
+        documentCurrentPage.value = page;
+    }
+};
+
+const previousDocumentPage = () => {
+    goToDocumentPage(documentPagination.value.current_page - 1);
+};
+
+const nextDocumentPage = () => {
+    goToDocumentPage(documentPagination.value.current_page + 1);
+};
+
+const changeDocumentPageSize = () => {
+    documentCurrentPage.value = 1;
+};
 
 const generatedLocationCode = computed(() => {
     const office = locationOptions.value.offices.find((item) => item.id === form.value.office_id);
@@ -628,6 +720,7 @@ const downloadTemplate = async () => {
             series: selectedSeriesOptions.value.map((item) => item.label),
             yearStart: templateYearStart,
             yearEnd: templateYearEnd,
+            context: 'archive_box',
         });
     } catch (error) {
         console.error('Error descargando plantilla de documentos:', error);
@@ -647,6 +740,7 @@ const importDocuments = async () => {
         const formData = new FormData();
         formData.append('file', excelFile.value);
         formData.append('current_box_series', selectedSeriesName.value);
+        formData.append('context', 'archive_box');
 
         const { data } = await axios.post('/api/transfers/import-documents', formData, {
             headers: { 'Content-Type': 'multipart/form-data' },
@@ -700,8 +794,10 @@ const importDocuments = async () => {
     }
 };
 
-const searchExistingDocuments = async () => {
-    if (!documentSearch.value.trim()) {
+const searchExistingDocuments = async (page = 1) => {
+    const searchTerm = documentSearch.value.trim();
+
+    if (!searchTerm) {
         showError('Ingrese un criterio para buscar documentos existentes.');
         return;
     }
@@ -710,17 +806,54 @@ const searchExistingDocuments = async () => {
 
     try {
         const { data } = await axios.get('/api/archive/documents', {
-            params: { q: documentSearch.value.trim() },
+            params: {
+                q: searchTerm,
+                page,
+                per_page: documentSearchPagination.value.per_page,
+            },
         });
 
         const selectedIds = new Set(selectedExistingDocuments.value.map((item) => item.id));
         documentSearchResults.value = (Array.isArray(data.results) ? data.results : [])
             .filter((document) => !selectedIds.has(document.id));
+        documentSearchPagination.value = data.meta ?? documentSearchPagination.value;
     } catch (error) {
         showError(error.response?.data?.message ?? 'No se pudo buscar documentos existentes.');
     } finally {
         isSearchingDocuments.value = false;
     }
+};
+
+const clearExistingDocumentSearch = () => {
+    documentSearch.value = '';
+    documentSearchResults.value = [];
+    documentSearchPagination.value = {
+        ...documentSearchPagination.value,
+        current_page: 1,
+        last_page: 1,
+        total: 0,
+        from: null,
+        to: null,
+    };
+};
+
+const goToDocumentSearchPage = (page) => {
+    if (
+        page >= 1
+        && page <= documentSearchPagination.value.last_page
+        && page !== documentSearchPagination.value.current_page
+        && !isSearchingDocuments.value
+    ) {
+        searchExistingDocuments(page);
+    }
+};
+
+const previousDocumentSearchPage = () => {
+    goToDocumentSearchPage(documentSearchPagination.value.current_page - 1);
+};
+
+const nextDocumentSearchPage = () => {
+    goToDocumentSearchPage(documentSearchPagination.value.current_page + 1);
 };
 
 const addExistingDocument = (document) => {
@@ -1211,7 +1344,7 @@ onMounted(fetchCatalog);
 
                 <DataTable
                     v-else
-                    :value="allDocuments"
+                    :value="visibleDocuments"
                     responsiveLayout="scroll"
                     class="create-box-documents-table"
                 >
@@ -1257,6 +1390,69 @@ onMounted(fetchCatalog);
                         </template>
                     </Column>
                 </DataTable>
+
+                <div v-if="documentPagination.last_page > 1" class="create-box-documents-pagination">
+                    <div class="create-box-documents-pagination__controls">
+                        <div class="create-box-documents-pagination__pages">
+                            <button
+                                type="button"
+                                class="create-box-documents-pagination__icon"
+                                :disabled="documentPagination.current_page <= 1"
+                                aria-label="Primera página"
+                                @click="goToDocumentPage(1)"
+                            >
+                                <i class="pi pi-angle-double-left"></i>
+                            </button>
+                            <button
+                                type="button"
+                                class="create-box-documents-pagination__icon"
+                                :disabled="documentPagination.current_page <= 1"
+                                aria-label="Página anterior"
+                                @click="previousDocumentPage"
+                            >
+                                <i class="pi pi-angle-left"></i>
+                            </button>
+
+                            <button
+                                v-for="page in documentVisiblePages"
+                                :key="page"
+                                type="button"
+                                class="create-box-documents-pagination__number"
+                                :class="{ 'create-box-documents-pagination__number--active': page === documentPagination.current_page }"
+                                @click="goToDocumentPage(page)"
+                            >
+                                {{ page }}
+                            </button>
+
+                            <button
+                                type="button"
+                                class="create-box-documents-pagination__icon"
+                                :disabled="documentPagination.current_page >= documentPagination.last_page"
+                                aria-label="Página siguiente"
+                                @click="nextDocumentPage"
+                            >
+                                <i class="pi pi-angle-right"></i>
+                            </button>
+                            <button
+                                type="button"
+                                class="create-box-documents-pagination__icon"
+                                :disabled="documentPagination.current_page >= documentPagination.last_page"
+                                aria-label="Última página"
+                                @click="goToDocumentPage(documentPagination.last_page)"
+                            >
+                                <i class="pi pi-angle-double-right"></i>
+                            </button>
+                        </div>
+
+                        <Dropdown
+                            v-model="documentRowsPerPage"
+                            :options="documentRowsPerPageOptions"
+                            class="create-box-documents-pagination__size"
+                            aria-label="Resultados por página"
+                            @change="changeDocumentPageSize"
+                        />
+                    </div>
+                </div>
             </section>
 
             <footer class="create-box-footer">
@@ -1520,7 +1716,7 @@ onMounted(fetchCatalog);
                     type="button"
                     class="create-box-outline"
                     :disabled="isSearchingDocuments || (!documentSearch && documentSearchResults.length === 0)"
-                    @click="documentSearch = ''; documentSearchResults = []"
+                    @click="clearExistingDocumentSearch"
                 >
                     Limpiar
                 </button>
@@ -1546,6 +1742,61 @@ onMounted(fetchCatalog);
                     <div class="create-box-empty create-box-empty--small">No hay resultados para mostrar.</div>
                 </template>
             </DataTable>
+
+            <div v-if="documentSearchPagination.total > 0" class="archive-existing-results-summary">
+                Mostrando {{ documentSearchPagination.from ?? 0 }}-{{ documentSearchPagination.to ?? 0 }} de
+                {{ documentSearchPagination.total }} coincidencias.
+            </div>
+
+            <div v-if="documentSearchPagination.last_page > 1" class="archive-existing-pagination">
+                <button
+                    type="button"
+                    class="archive-existing-pagination__icon"
+                    :disabled="documentSearchPagination.current_page <= 1 || isSearchingDocuments"
+                    aria-label="Primera página"
+                    @click="goToDocumentSearchPage(1)"
+                >
+                    <i class="pi pi-angle-double-left"></i>
+                </button>
+                <button
+                    type="button"
+                    class="archive-existing-pagination__icon"
+                    :disabled="documentSearchPagination.current_page <= 1 || isSearchingDocuments"
+                    aria-label="Página anterior"
+                    @click="previousDocumentSearchPage"
+                >
+                    <i class="pi pi-angle-left"></i>
+                </button>
+                <button
+                    v-for="page in documentSearchVisiblePages"
+                    :key="page"
+                    type="button"
+                    class="archive-existing-pagination__number"
+                    :class="{ 'archive-existing-pagination__number--active': page === documentSearchPagination.current_page }"
+                    :disabled="isSearchingDocuments"
+                    @click="goToDocumentSearchPage(page)"
+                >
+                    {{ page }}
+                </button>
+                <button
+                    type="button"
+                    class="archive-existing-pagination__icon"
+                    :disabled="documentSearchPagination.current_page >= documentSearchPagination.last_page || isSearchingDocuments"
+                    aria-label="Página siguiente"
+                    @click="nextDocumentSearchPage"
+                >
+                    <i class="pi pi-angle-right"></i>
+                </button>
+                <button
+                    type="button"
+                    class="archive-existing-pagination__icon"
+                    :disabled="documentSearchPagination.current_page >= documentSearchPagination.last_page || isSearchingDocuments"
+                    aria-label="Última página"
+                    @click="goToDocumentSearchPage(documentSearchPagination.last_page)"
+                >
+                    <i class="pi pi-angle-double-right"></i>
+                </button>
+            </div>
         </Dialog>
 
         <Dialog
@@ -1835,6 +2086,75 @@ onMounted(fetchCatalog);
     margin: 0;
 }
 
+.create-box-documents-pagination {
+    align-items: center;
+    background: #f8fafc;
+    border-top: 1px solid #e5edf6;
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    padding: 1rem 1.25rem;
+}
+
+.create-box-documents-pagination__controls,
+.create-box-documents-pagination__pages {
+    align-items: center;
+    display: flex;
+}
+
+.create-box-documents-pagination__controls {
+    gap: 0.75rem;
+}
+
+.create-box-documents-pagination__pages {
+    gap: 0.5rem;
+}
+
+.create-box-documents-pagination button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: 999px;
+    color: #334155;
+    cursor: pointer;
+    display: inline-flex;
+    font: inherit;
+    font-weight: 700;
+    justify-content: center;
+    min-height: 2.4rem;
+    min-width: 2.4rem;
+    padding: 0 0.55rem;
+}
+
+.create-box-documents-pagination button:hover:not(:disabled) {
+    background: #eaf2f9;
+}
+
+.create-box-documents-pagination__icon {
+    color: #64748b !important;
+}
+
+.create-box-documents-pagination__number--active {
+    background: #eaf2f9 !important;
+    color: #2f6f9f !important;
+}
+
+.create-box-documents-pagination button:disabled {
+    color: #cbd5e1;
+    cursor: not-allowed;
+}
+
+:deep(.create-box-documents-pagination__size) {
+    min-width: 5.2rem;
+}
+
+:deep(.create-box-documents-pagination__size .p-dropdown-label) {
+    font-size: 0.86rem;
+    font-weight: 700;
+    padding-bottom: 0.55rem;
+    padding-top: 0.55rem;
+}
+
 .create-box-documents-actions {
     display: flex;
     flex-wrap: wrap;
@@ -2111,8 +2431,58 @@ onMounted(fetchCatalog);
 .archive-existing-search {
     display: grid;
     gap: 0.75rem;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     margin-bottom: 1rem;
+}
+
+.archive-existing-results-summary {
+    color: #64748b;
+    font-size: 0.86rem;
+    margin-top: 0.75rem;
+}
+
+.archive-existing-pagination {
+    align-items: center;
+    border-top: 1px solid #e5edf6;
+    display: flex;
+    gap: 0.35rem;
+    justify-content: center;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+}
+
+.archive-existing-pagination button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: 999px;
+    color: #334155;
+    cursor: pointer;
+    display: inline-flex;
+    font: inherit;
+    justify-content: center;
+    min-height: 2.25rem;
+    min-width: 2.25rem;
+    padding: 0 0.5rem;
+}
+
+.archive-existing-pagination button:hover:not(:disabled) {
+    background: #eaf2f9;
+}
+
+.archive-existing-pagination__icon {
+    color: #64748b !important;
+}
+
+.archive-existing-pagination__number--active {
+    background: #eaf2f9 !important;
+    color: #2f6f9f !important;
+    font-weight: 700;
+}
+
+.archive-existing-pagination button:disabled {
+    color: #cbd5e1;
+    cursor: not-allowed;
 }
 
 :global(.archive-existing-documents-dialog-content) {
@@ -2432,6 +2802,27 @@ onMounted(fetchCatalog);
     .create-box-documents-head {
         align-items: stretch;
         flex-direction: column;
+    }
+
+    .create-box-documents-pagination {
+        align-items: stretch;
+        flex-direction: column;
+        margin-left: -1.1rem;
+        margin-right: -1.1rem;
+    }
+
+    .create-box-documents-pagination__pages {
+        justify-content: center;
+    }
+
+    .create-box-documents-pagination__controls {
+        align-items: stretch;
+        flex-direction: column;
+        width: 100%;
+    }
+
+    :deep(.create-box-documents-pagination__size) {
+        width: 100%;
     }
 
     .create-box-documents-actions,

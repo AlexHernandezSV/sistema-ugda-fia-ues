@@ -43,7 +43,7 @@ class TransferController extends Controller
 
     public function documentImportTemplate(Request $request)
     {
-        if (($accessError = $this->requesterOnlyError($request)) !== null) {
+        if (($accessError = $this->requesterOnlyError($request, allowArchiveBox: true)) !== null) {
             return $accessError;
         }
 
@@ -89,7 +89,7 @@ class TransferController extends Controller
 
     public function importDocuments(Request $request): JsonResponse
     {
-        if (($accessError = $this->requesterOnlyError($request)) !== null) {
+        if (($accessError = $this->requesterOnlyError($request, allowArchiveBox: true)) !== null) {
             return $accessError;
         }
 
@@ -1340,9 +1340,17 @@ class TransferController extends Controller
             ->exists();
     }
 
-    private function requesterOnlyError(Request $request): ?JsonResponse
+    private function requesterOnlyError(Request $request, bool $allowArchiveBox = false): ?JsonResponse
     {
-        if ($request->user()?->activeProfile()?->name === 'Unidad Solicitante') {
+        $profileName = $request->user()?->activeProfile()?->name;
+
+        if (in_array($profileName, ['Administrador', 'Unidad Solicitante'], true)) {
+            return null;
+        }
+
+        if ($allowArchiveBox
+            && $request->input('context') === 'archive_box'
+            && $profileName === 'Usuario UGDA') {
             return null;
         }
 
