@@ -289,7 +289,14 @@ onMounted(async () => {
 
             <div class="col-12 md:col-6 xl:col">
                 <label class="solicitudes-filter__label">Unidad</label>
-                <Dropdown v-model="filters.unit" :options="unitsList" placeholder="Seleccionar" showClear class="w-full mt-2" />
+                <Dropdown
+                    v-model="filters.unit"
+                    :options="unitsList"
+                    placeholder="Seleccionar"
+                    showClear
+                    class="w-full mt-2 archive-long-label-dropdown"
+                    overlayClass="archive-long-label-dropdown-overlay"
+                />
             </div>
 
             <div class="col-12 md:col-6 xl:col">
@@ -330,7 +337,14 @@ onMounted(async () => {
 
             <div class="col-12 md:col-6 xl:col">
                 <label class="solicitudes-filter__label">Unidad</label>
-                <Dropdown v-model="filters.unit" :options="unitsList" placeholder="Seleccionar" showClear class="w-full mt-2" />
+                <Dropdown
+                    v-model="filters.unit"
+                    :options="unitsList"
+                    placeholder="Seleccionar"
+                    showClear
+                    class="w-full mt-2 archive-long-label-dropdown"
+                    overlayClass="archive-long-label-dropdown-overlay"
+                />
             </div>
 
             <div class="col-12 md:col-6 xl:col">

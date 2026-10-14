@@ -1208,6 +1208,7 @@ const goBack = () => {
                             :disabled="isLoading"
                             optionLabel="label"
                             placeholder="Seleccionar serie o subserie"
+                            showClear
                             filter
                             fluid
                             class="archive-long-label-dropdown"
@@ -1945,6 +1946,7 @@ const goBack = () => {
 }
 
 .transfer-request__add {
+    align-self: start;
     min-height: 3.15rem;
 }
 
@@ -2669,6 +2671,12 @@ const goBack = () => {
 
     .transfer-request__add {
         width: 100%;
+    }
+}
+
+@media (min-width: 1181px) {
+    .transfer-request__add {
+        margin-top: 1.7rem;
     }
 }
 
